@@ -97,7 +97,7 @@ class StorageToolProvider @Inject constructor(
                           "For external/SD paths READ_EXTERNAL_STORAGE must be granted. " +
                           "Common paths: /sdcard/Download, /sdcard/DCIM, /sdcard/Documents.",
             params      = mapOf(
-                "path"  to ("string"  to "Absolute directory path to list", ),
+                "path"  to ("string"  to "Absolute directory path to list"),
                 "limit" to ("integer" to "Max entries to return (default 50, max 200)"),
             ),
             required    = listOf("path"),
