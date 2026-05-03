@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phase U splash placeholder. The composable in SplashActivity draws the
+     real logo on top of this once the activity inflates; this layer just
+     stops the launcher animation from flashing white first. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#0E0E10"
+                android:endColor="#1C1C1E"
+                android:type="linear" />
+        </shape>
+    </item>
+    <item android:gravity="center">
+        <shape android:shape="oval">
+            <size android:width="96dp" android:height="96dp" />
+            <gradient
+                android:type="radial"
+                android:gradientRadius="80"
+                android:startColor="#FF6B35"
+                android:endColor="#E55A2B" />
+        </shape>
+    </item>
+</layer-list>

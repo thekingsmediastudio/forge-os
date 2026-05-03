@@ -1,0 +1,58 @@
+package com.forge.os.domain.workspace
+
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import timber.log.Timber
+import java.io.File
+import java.util.UUID
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class GhostWorkspaceProvider @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+    private val ghostsBaseDir = File(context.filesDir, "workspace/temp/ghosts")
+
+    init {
+        if (!ghostsBaseDir.exists()) ghostsBaseDir.mkdirs()
+    }
+
+    /**
+     * Creates a new ephemeral workspace for a ghost agent.
+     * @return The absolute path to the sandbox root.
+     */
+    fun createSandbox(): File {
+        val sandboxId = UUID.randomUUID().toString().take(8)
+        val sandboxDir = File(ghostsBaseDir, sandboxId)
+        sandboxDir.mkdirs()
+        
+        // Seed with basic structure if needed
+        File(sandboxDir, "projects").mkdirs()
+        File(sandboxDir, "notes").mkdirs()
+        File(sandboxDir, "temp").mkdirs()
+        
+        Timber.d("Created ghost sandbox: ${sandboxDir.absolutePath}")
+        return sandboxDir
+    }
+
+    /**
+     * Deletes a sandbox and all its contents.
+     */
+    fun destroySandbox(sandboxDir: File) {
+        if (sandboxDir.startsWith(ghostsBaseDir)) {
+            sandboxDir.deleteRecursively()
+            Timber.d("Destroyed ghost sandbox: ${sandboxDir.absolutePath}")
+        } else {
+            Timber.w("Refusing to destroy non-sandbox dir: ${sandboxDir.absolutePath}")
+        }
+    }
+
+    /**
+     * Wipes all ghost sandboxes.
+     */
+    fun cleanupAll() {
+        ghostsBaseDir.deleteRecursively()
+        ghostsBaseDir.mkdirs()
+    }
+}

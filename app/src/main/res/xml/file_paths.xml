@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Internal files dir: covers workspace/, exports/, and all sub-folders -->
+    <files-path name="workspace" path="workspace/" />
+    <files-path name="exports" path="workspace/exports/" />
+    <!-- External files dir: covers any file written to getExternalFilesDir() -->
+    <external-files-path name="external_files" path="." />
+    <!-- Cache dir: covers temp / cache files that may need to be shared -->
+    <cache-path name="cache" path="." />
+</paths>
