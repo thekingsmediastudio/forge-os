@@ -7,6 +7,7 @@ import com.chaquo.python.android.AndroidPlatform
 import com.forge.os.data.api.AiApiManager
 import com.forge.os.data.api.ApiCallLog
 import com.forge.os.data.api.CostMeter
+import com.forge.os.data.api.ForgeBridgeDiscovery
 import com.forge.os.data.conversations.ConversationRepository
 import com.forge.os.data.mcp.McpClient
 import com.forge.os.data.mcp.McpServerRepository
@@ -119,8 +120,9 @@ object AppModule {
     @Provides @Singleton fun provideAiApiManager(
         @ApplicationContext ctx: Context,
         ks: SecureKeyStore, cr: ConfigRepository,
-        cer: CustomEndpointRepository, log: ApiCallLog, cm: CostMeter
-    ) = AiApiManager(ks, cr, cer, log, cm, ctx)
+        cer: CustomEndpointRepository, log: ApiCallLog, cm: CostMeter,
+        bridgeDiscovery: ForgeBridgeDiscovery,
+    ) = AiApiManager(ks, cr, cer, log, cm, ctx, bridgeDiscovery)
     @Provides @Singleton fun provideConversationRepository(@ApplicationContext ctx: Context) =
         ConversationRepository(ctx)
     @Provides @Singleton fun provideSkillRecorder(sm: SkillMemory) = SkillRecorder(sm)

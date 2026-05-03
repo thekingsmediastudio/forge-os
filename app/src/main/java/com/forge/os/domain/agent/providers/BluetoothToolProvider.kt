@@ -18,6 +18,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** BluetoothProfile.HID_HOST (API 34+); literal value avoids missing symbol on older compile SDK stubs. */
+private const val BLUETOOTH_PROFILE_HID_HOST = 4
+
 /**
  * Bluetooth tools — inspect and navigate Bluetooth from Forge OS.
  *
@@ -167,10 +170,10 @@ class BluetoothToolProvider @Inject constructor(
         if (!a.isEnabled) return """{"ok":true,"enabled":false,"devices":[]}"""
 
         val profileIds = listOf(
-            BluetoothProfile.A2DP     to "A2DP (Audio)",
-            BluetoothProfile.HEADSET  to "Headset (HFP/HSP)",
-            BluetoothProfile.HID_HOST to "HID (Keyboard/Mouse/Gamepad)",
-            BluetoothProfile.GATT     to "GATT (BLE)",
+            BluetoothProfile.A2DP          to "A2DP (Audio)",
+            BluetoothProfile.HEADSET       to "Headset (HFP/HSP)",
+            BLUETOOTH_PROFILE_HID_HOST     to "HID (Keyboard/Mouse/Gamepad)",
+            BluetoothProfile.GATT          to "GATT (BLE)",
         )
 
         data class ConnectedEntry(val device: BluetoothDevice, val profile: String)
