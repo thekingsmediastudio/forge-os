@@ -1,8 +1,11 @@
 package com.forge.os.presentation
 
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -62,6 +65,7 @@ import com.forge.os.presentation.screens.projects.ProjectsScreen
 import com.forge.os.presentation.screens.skills.SkillsScreen
 import com.forge.os.presentation.screens.snapshots.SnapshotsScreen
 import com.forge.os.presentation.screens.tools.ToolsScreen
+import com.forge.os.data.android.AutoPhoneConnection
 import com.forge.os.presentation.theme.ForgeTheme
 import com.forge.os.presentation.theme.ThemeMode
 import dagger.hilt.android.AndroidEntryPoint
@@ -74,6 +78,12 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var configRepository: ConfigRepository
     @Inject lateinit var sandboxManager: SandboxManager
+    @Inject lateinit var autoPhoneConnection: AutoPhoneConnection
+
+    private val requestAutoPhoneControl =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) autoPhoneConnection.connect()
+        }
 
     /**
      * Pending in-app navigation request, populated by [consumeIntentExtras]
@@ -89,6 +99,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ensureAutoPhoneControlPermission()
         consumeIntentExtras(intent)
         setContent {
             val themeMode by configRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
@@ -338,7 +349,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Forge AutoPhone defines this permission; bind only after the user grants it. */
+    private fun ensureAutoPhoneControlPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, AUTO_PHONE_CONTROL) == PackageManager.PERMISSION_GRANTED ->
+                autoPhoneConnection.connect()
+            else ->
+                requestAutoPhoneControl.launch(AUTO_PHONE_CONTROL)
+        }
+    }
+
     companion object {
+        private const val AUTO_PHONE_CONTROL = "com.forge.autophone.permission.CONTROL"
+
         // Whitelist of routes that may be requested via a notification's
         // `nav` extra. Anything else is ignored to avoid pushing an unknown
         // destination onto the back stack.

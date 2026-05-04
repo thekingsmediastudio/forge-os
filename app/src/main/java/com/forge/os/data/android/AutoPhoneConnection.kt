@@ -55,9 +55,12 @@ class AutoPhoneConnection @Inject constructor(
         }
     }
 
-    /** Initiate the binding. Safe to call multiple times. */
+    /** Initiate the binding. Safe to call multiple times (e.g. after granting CONTROL). */
     fun connect() {
-        if (_state.value == State.CONNECTED || _state.value == State.CONNECTING) return
+        when (_state.value) {
+            State.CONNECTED, State.CONNECTING -> return
+            else -> { }
+        }
         _state.value = State.CONNECTING
         val intent = Intent("com.forge.autophone.IAutoPhoneService").apply {
             setPackage("com.forge.autophone")

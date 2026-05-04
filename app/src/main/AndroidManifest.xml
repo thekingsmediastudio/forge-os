@@ -49,6 +49,8 @@
         tools:ignore="QueryAllPackagesPermission" />
 
     <!-- ── AutoPhone OS integration ─────────────────────────────────────────── -->
+    <!-- Defined by Forge AutoPhone; dangerous so Forge OS can bind to IAutoPhoneService. -->
+    <uses-permission android:name="com.forge.autophone.permission.CONTROL" />
     <!-- Contacts -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
