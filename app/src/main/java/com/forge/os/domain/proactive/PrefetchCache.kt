@@ -18,7 +18,10 @@ import javax.inject.Singleton
  * Entries automatically expire after [TTL_MS] (default 1 hour).
  */
 @Singleton
-class PrefetchCache @Inject constructor() {
+class PrefetchCache @Inject constructor(
+    // Enhanced Integration: Connect with learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager
+) {
 
     companion object {
         /** How long a prefetched result stays valid. */
@@ -61,6 +64,19 @@ class PrefetchCache @Inject constructor() {
             }
             cache.remove(key)
             Timber.d("PrefetchCache: HIT for $toolName (age=${age}ms)")
+            
+            // Enhanced Integration: Record successful prefetch hit for learning
+            try {
+                reflectionManager.recordPattern(
+                    pattern = "Successful prefetch hit: $toolName",
+                    description = "Prefetch cache successfully predicted and cached result for $toolName (age=${age}ms)",
+                    applicableTo = listOf("prefetch", "prediction_accuracy", toolName),
+                    tags = listOf("prefetch_hit", "prediction_success", "cache_efficiency", "proactive_success")
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record prefetch hit pattern")
+            }
+            
             return entry.result
         }
     }

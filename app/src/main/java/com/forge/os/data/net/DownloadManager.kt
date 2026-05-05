@@ -32,6 +32,9 @@ class DownloadManager @Inject constructor(
     private val sandboxManager: SandboxManager,
     private val permissionManager: PermissionManager,
     private val headlessBrowser: HeadlessBrowser,
+    // Enhanced Integration: Connect with learning systems
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) {
     data class Result(
         val path: String,
@@ -134,6 +137,39 @@ class DownloadManager @Inject constructor(
             val ws = File(sandboxManager.getWorkspacePath()).canonicalFile
             val rel = target.canonicalFile.toRelativeString(ws)
             Timber.i("download: $url → $rel ($written B, sha=${sha.take(12)})")
+            
+            // Enhanced Integration: Learn download patterns
+            try {
+                val domain = try { URI(url).host?.lowercase() ?: "" } catch (e: Exception) { "" }
+                if (domain.isNotBlank()) {
+                    userPreferencesManager.recordInteractionPattern("downloads_from_$domain", 1)
+                }
+                
+                // Learn file type preferences
+                val extension = target.extension.lowercase()
+                if (extension.isNotBlank()) {
+                    userPreferencesManager.recordInteractionPattern("downloads_$extension", 1)
+                }
+                
+                // Learn download size patterns
+                val sizeCategory = when {
+                    written < 1024 * 1024 -> "small_files"  // < 1MB
+                    written < 50 * 1024 * 1024 -> "medium_files"  // < 50MB
+                    else -> "large_files"  // >= 50MB
+                }
+                userPreferencesManager.recordInteractionPattern("downloads_$sizeCategory", 1)
+                
+                // Record successful download pattern
+                reflectionManager.recordPattern(
+                    pattern = "Successful download: $extension from $domain",
+                    description = "Downloaded ${written}B file from $domain to $rel",
+                    applicableTo = listOf("download", "file_management", extension, domain),
+                    tags = listOf("download_success", "file_acquisition", "network_usage")
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to learn download patterns")
+            }
+            
             return Result(rel, written, sha, mime)
         }
     }

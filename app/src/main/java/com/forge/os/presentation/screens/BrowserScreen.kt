@@ -63,6 +63,9 @@ import com.forge.os.data.browser.BrowserHistoryEntry
 import com.forge.os.data.browser.BrowserSessionManager
 import com.forge.os.data.browser.NavigationCommand
 import com.forge.os.presentation.theme.LocalForgePalette
+import com.forge.os.presentation.screens.browser.BrowserNavBar
+import com.forge.os.presentation.screens.browser.BrowserAddressBar
+import com.forge.os.presentation.screens.browser.BrowserTabStrip
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.ReadOnlyComposable
@@ -234,83 +237,59 @@ fun BrowserScreen(
             .background(Bg)
             .statusBarsPadding()
     ) {
-        // ── Address bar ─────────────────────────────────────────────────
-        Row(
+        // ── Phase 3: New Chrome-like Tab Strip ───────────────────────────
+        BrowserTabStrip(
+            tabs = tabs.map { tab ->
+                com.forge.os.presentation.screens.browser.BrowserTab(
+                    id = tab.id,
+                    title = tab.title.ifBlank { tab.url.removePrefix("https://").removePrefix("http://").take(24) },
+                    url = tab.url,
+                    isActive = tab.id == activeTabId
+                )
+            },
+            onTabSelect = { tabId -> viewModel.switchTab(tabId) },
+            onTabClose = { tabId -> viewModel.closeTab(tabId) },
+            onNewTab = { viewModel.newTab() },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onNavigateBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextPrimary)
-            }
-            IconButton(onClick = { webViewRef?.goBack() }, enabled = webViewRef?.canGoBack() == true) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Go back", tint = if (webViewRef?.canGoBack() == true) TextPrimary else TextMuted)
-            }
-            IconButton(onClick = { webViewRef?.goForward() }, enabled = webViewRef?.canGoForward() == true) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Go forward", tint = if (webViewRef?.canGoForward() == true) TextPrimary else TextMuted)
-            }
-            IconButton(onClick = { webViewRef?.reload() }) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Reload", tint = TextPrimary)
-            }
+                .height(40.dp)
+        )
 
-            OutlinedTextField(
-                value = addressBarText,
-                onValueChange = { addressBarText = it },
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp),
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, color = TextPrimary),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go, keyboardType = KeyboardType.Uri),
-                keyboardActions = KeyboardActions(onGo = {
-                    val url = addressBarText.trim()
-                    if (url.isNotBlank()) {
-                        val target = if (url.startsWith("http")) url else "https://$url"
-                        webViewRef?.loadUrl(target)
-                    }
-                }),
-                trailingIcon = {
-                    Row {
-                        // Bookmark toggle.
-                        val starred = viewModel.isBookmarked(currentUrl)
-                        IconButton(onClick = {
-                            val title = pageTitle.ifBlank { currentUrl }
-                            viewModel.toggleBookmark(currentUrl, title)
-                        }) {
-                            Icon(
-                                if (starred) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                                contentDescription = if (starred) "Remove bookmark" else "Add bookmark",
-                                tint = if (starred) Orange else TextMuted,
-                            )
-                        }
-                        if (addressBarText.isNotEmpty()) {
-                            IconButton(onClick = { addressBarText = "" }) {
-                                Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = TextMuted)
-                            }
-                        }
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Orange,
-                    unfocusedBorderColor = Surface2,
-                    focusedContainerColor = Surface,
-                    unfocusedContainerColor = Surface,
-                )
-            )
+        // ── Phase 3: New Chrome-like Address Bar ─────────────────────────
+        BrowserAddressBar(
+            url = addressBarText,
+            onUrlChange = { addressBarText = it },
+            onNavigate = { url ->
+                val target = if (url.startsWith("http")) url else "https://$url"
+                webViewRef?.loadUrl(target)
+            },
+            isSecure = currentUrl.startsWith("https"),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
 
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp).padding(start = 6.dp),
-                    color = Orange,
-                    strokeWidth = 2.dp
-                )
-            }
+        // ── Phase 3: New Chrome-like Navigation Bar ──────────────────────
+        BrowserNavBar(
+            canGoBack = webViewRef?.canGoBack() == true,
+            canGoForward = webViewRef?.canGoForward() == true,
+            isBookmarked = viewModel.isBookmarked(currentUrl),
+            onBackClick = { webViewRef?.goBack() },
+            onForwardClick = { webViewRef?.goForward() },
+            onRefreshClick = { webViewRef?.reload() },
+            onBookmarkClick = {
+                val title = pageTitle.ifBlank { currentUrl }
+                viewModel.toggleBookmark(currentUrl, title)
+            },
+            onMenuClick = { showMenu = true },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+        )
 
-            Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(Icons.Filled.MoreVert, contentDescription = "Menu", tint = TextPrimary)
-                }
+        // ── Menu (for find, bookmarks, history, clear) ───────────────────
+        Box {
+            if (showMenu) {
                 DropdownMenu(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false },
@@ -337,61 +316,6 @@ fun BrowserScreen(
                         onClick = { showMenu = false; showClearDialog = true },
                     )
                 }
-            }
-        }
-
-        // ── Tab strip ────────────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Surface)
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LazyRow(modifier = Modifier.weight(1f)) {
-                items(tabs, key = { it.id }) { tab ->
-                    val isActive = tab.id == activeTabId
-                    Row(
-                        modifier = Modifier
-                            .padding(end = 6.dp)
-                            .background(
-                                if (isActive) Surface2 else Bg,
-                                RoundedCornerShape(8.dp),
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = if (isActive) Orange else Surface2,
-                                shape = RoundedCornerShape(8.dp),
-                            )
-                            .clickable { viewModel.switchTab(tab.id) }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        val label = tab.title.ifBlank {
-                            tab.url.removePrefix("https://").removePrefix("http://").take(24)
-                                .ifBlank { "New tab" }
-                        }
-                        Text(
-                            label,
-                            color = if (isActive) TextPrimary else TextMuted,
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Filled.Close,
-                            contentDescription = "Close tab",
-                            tint = TextMuted,
-                            modifier = Modifier
-                                .size(14.dp)
-                                .clickable { viewModel.closeTab(tab.id) },
-                        )
-                    }
-                }
-            }
-            IconButton(onClick = { viewModel.newTab() }) {
-                Icon(Icons.Filled.Add, contentDescription = "New tab", tint = Orange)
             }
         }
 

@@ -359,12 +359,14 @@ class AiApiManager @Inject constructor(
      * model the provider offers — fetched live from `/models` (cached 24h).
      * If a provider's catalog can't be fetched, it falls back to its single
      * hard-coded default. Custom endpoints still surface as their saved spec.
+     * 
+     * @param forceRefresh If true, bypass the 24h cache and fetch fresh model lists.
      */
-    suspend fun availableSpecsExpanded(): List<ProviderSpec> = withContext(Dispatchers.IO) {
+    suspend fun availableSpecsExpanded(forceRefresh: Boolean = false): List<ProviderSpec> = withContext(Dispatchers.IO) {
         val builtins = ApiKeyProvider.entries
             .filter { secureKeyStore.hasKey(it) }
             .flatMap { provider ->
-                val ids = runCatching { listModels(provider) }
+                val ids = runCatching { listModels(provider, forceRefresh) }
                     .getOrElse { listOf(provider.defaultModel) }
                     .ifEmpty { listOf(provider.defaultModel) }
                 ids.map { ProviderSpec.Builtin(provider, it) }
@@ -376,7 +378,7 @@ class AiApiManager @Inject constructor(
         val customs = customEndpoints.list()
             .filter { secureKeyStore.hasCustomKey(it.id) }
             .flatMap { ep ->
-                val ids = runCatching { listCustomModels(ep) }
+                val ids = runCatching { listCustomModels(ep, forceRefresh) }
                     .getOrElse { listOf(ep.defaultModel) }
                     .ifEmpty { listOf(ep.defaultModel) }
                 ids.map { mid -> ProviderSpec.Custom(ep, mid) }
@@ -385,9 +387,12 @@ class AiApiManager @Inject constructor(
     }
 
     /** Phase U2 — all selectable (provider, model) pairs across both built-in
-     *  providers and custom endpoints. Wraps [availableSpecsExpanded]. */
-    suspend fun availableModels(): List<Quad> {
-        val specs = runCatching { availableSpecsExpanded() }
+     *  providers and custom endpoints. Wraps [availableSpecsExpanded].
+     *  
+     *  @param forceRefresh If true, bypass the 24h cache and fetch fresh model lists.
+     */
+    suspend fun availableModels(forceRefresh: Boolean = false): List<Quad> {
+        val specs = runCatching { availableSpecsExpanded(forceRefresh) }
             .getOrElse { emptyList() }
         return specs.map { spec ->
             when (spec) {

@@ -29,6 +29,8 @@ class SkillSynthesizer @Inject constructor(
     @ApplicationContext private val context: Context,
     private val auditLog: ToolAuditLog,
     private val aiApiManager: AiApiManager,
+    // Enhanced Integration: Connect with learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private val synthesizedFile = File(context.filesDir, "workspace/system/synthesized_skills.txt")
@@ -44,6 +46,48 @@ class SkillSynthesizer @Inject constructor(
             val skill = synthesizeFromAudit(candidate)
             if (skill != null) {
                 markAsSynthesized(candidate.id)
+                
+                // Enhanced Integration: Record skill synthesis pattern in ReflectionManager
+                try {
+                    reflectionManager.recordPattern(
+                        pattern = "Skill synthesis from Python execution",
+                        description = "Successfully synthesized '${skill.name}' from repeated Python pattern: ${skill.description}",
+                        applicableTo = listOf("python", "automation", "skill_creation", skill.tool_name),
+                        tags = listOf("skill_synthesis", "python_pattern", "automation_discovery", "reusable_code")
+                    )
+                    
+                    // Record the successful synthesis execution
+                    reflectionManager.recordExecution(
+                        taskId = "skill_synthesis_${skill.id}",
+                        goal = "Synthesize reusable skill from Python execution pattern",
+                        steps = listOf(
+                            com.forge.os.domain.agent.ExecutionStep(
+                                stepNumber = 1,
+                                action = "Analyze Python execution pattern",
+                                tool = "skill_synthesizer",
+                                args = candidate.args.take(200),
+                                result = "Identified reusable pattern: ${skill.name}",
+                                duration = 0L,
+                                success = true
+                            ),
+                            com.forge.os.domain.agent.ExecutionStep(
+                                stepNumber = 2,
+                                action = "Generate skill definition",
+                                tool = "ai_synthesis",
+                                args = skill.description,
+                                result = "Created skill: ${skill.tool_name}",
+                                duration = 0L,
+                                success = true
+                            )
+                        ),
+                        success = true,
+                        outcome = "Successfully synthesized skill '${skill.name}' for reuse",
+                        tags = listOf("skill_synthesis", "background_learning", "automation_creation")
+                    )
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record skill synthesis in ReflectionManager")
+                }
+                
                 return skill
             }
         }

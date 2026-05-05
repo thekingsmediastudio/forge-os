@@ -47,7 +47,10 @@ data class SnapshotInfo(
 @Singleton
 class SnapshotManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val workspaceLock: com.forge.os.domain.workspace.WorkspaceLock
+    private val workspaceLock: com.forge.os.domain.workspace.WorkspaceLock,
+    // Enhanced Integration: Connect with other systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val backupManager: com.forge.os.domain.backup.BackupManager,
 ) {
     private val workspace = File(context.filesDir, "workspace").apply { mkdirs() }
     private val snapDir = File(workspace, ".snapshots").apply { mkdirs() }
@@ -64,18 +67,22 @@ class SnapshotManager @Inject constructor(
             workspaceLock.mutex.lock()
             try {
                 val ts = System.currentTimeMillis()
+                Timber.d("Creating snapshot: $label")
                 val git = getGit()
                 
                 // 1. Stage all files
+                Timber.d("Staging files...")
                 git.add().addFilepattern(".").call()
                 
                 // 2. We need to handle deletions too (git add -u)
+                Timber.d("Staging deletions...")
                 git.add().addFilepattern(".").setUpdate(true).call()
 
                 // 3. Commit
                 val name = "Forge Snapshots"
                 val email = "snapshots@forge.os"
                 val commitMessage = label?.takeIf { it.isNotBlank() } ?: defaultLabel(ts)
+                Timber.d("Committing snapshot: $commitMessage")
                 val rev = git.commit()
                     .setAuthor(PersonIdent(name, email))
                     .setCommitter(PersonIdent(name, email))
@@ -93,12 +100,37 @@ class SnapshotManager @Inject constructor(
                 )
                 File(snapDir, "$id.meta.json").writeText(metaJson(info))
                 _snapshots.value = load()
+                Timber.i("Snapshot created: $id")
+                
+                // Enhanced Integration: Learn snapshot creation patterns
+                try {
+                    reflectionManager.recordPattern(
+                        pattern = "Snapshot creation: $commitMessage",
+                        description = "Created workspace snapshot with label: $commitMessage",
+                        applicableTo = listOf("snapshot_management", "workspace_backup", "version_control"),
+                        tags = listOf("snapshot_creation", "workspace_management", "backup", "git")
+                    )
+                    
+                    // Cross-reference with backup system
+                    val backups = backupManager.listBackups()
+                    if (backups.isNotEmpty()) {
+                        reflectionManager.recordPattern(
+                            pattern = "Snapshot with existing backups",
+                            description = "Created snapshot while ${backups.size} backups exist - good backup hygiene",
+                            applicableTo = listOf("backup_strategy", "data_protection"),
+                            tags = listOf("backup_hygiene", "data_protection", "snapshot_backup_combo")
+                        )
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record snapshot creation patterns")
+                }
+                
                 info
             } finally {
                 workspaceLock.mutex.unlock()
             }
         }
-    }.onFailure { Timber.e(it, "snapshot create (git)") }
+    }.onFailure { Timber.e(it, "snapshot create (git) failed") }
 
     private fun getGit(): Git {
         val ignoreFile = File(workspace, ".gitignore")
@@ -157,6 +189,27 @@ class SnapshotManager @Inject constructor(
                         .call()
                     // Cleanup any untracked files that weren't in the snapshot
                     git.clean().setCleanDirectories(true).setIgnore(false).call()
+                    
+                    // Enhanced Integration: Learn snapshot restoration patterns
+                    try {
+                        reflectionManager.recordPattern(
+                            pattern = "Snapshot restoration: ${info.label}",
+                            description = "Restored workspace from snapshot: ${info.label}",
+                            applicableTo = listOf("snapshot_restoration", "workspace_recovery", "version_control"),
+                            tags = listOf("snapshot_restore", "workspace_recovery", "git_restore", "data_recovery")
+                        )
+                        
+                        // Record recovery strategy
+                        reflectionManager.recordFailureAndRecovery(
+                            taskId = "snapshot_restore_$id",
+                            failureReason = "Workspace restoration requested",
+                            recoveryStrategy = "Successfully restored workspace from snapshot: ${info.label}",
+                            tags = listOf("workspace_recovery", "snapshot_restore", "successful_recovery")
+                        )
+                    } catch (e: Exception) {
+                        Timber.w(e, "Failed to record snapshot restoration patterns")
+                    }
+                    
                     0 // We don't have a count easily
                 } else {
                     val zipFile = File(snapDir, "$id.zip")

@@ -209,6 +209,17 @@ class BackupManager @Inject constructor(
         val timestamp: Long
     )
 
+    /**
+     * Get a shareable URI for a backup file (for sharing via Intent).
+     */
+    fun getBackupUri(file: File): android.net.Uri {
+        return androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            file
+        )
+    }
+
     private fun addFileToZip(zos: ZipOutputStream, file: File, entryName: String) {
         zos.putNextEntry(ZipEntry(entryName))
         FileInputStream(file).use { fis -> fis.copyTo(zos) }

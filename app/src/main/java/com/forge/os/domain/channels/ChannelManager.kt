@@ -60,6 +60,9 @@ class ChannelManager @Inject constructor(
     private val aiApiManagerLazy: Lazy<AiApiManager>,
     private val conversationIndex: com.forge.os.domain.memory.ConversationIndex,
     @ApplicationContext private val context: Context,
+    // Enhanced Integration: Connect with learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val channels = ConcurrentHashMap<String, Channel>()
     private val ingestJobs = ConcurrentHashMap<String, Job>()
@@ -560,6 +563,34 @@ class ChannelManager @Inject constructor(
     private fun handleIncoming(ch: Channel, msg: IncomingMessage) {
         val cfg = ch.config
         val sessionKey = "${cfg.id}:${msg.fromId}"
+
+        // Enhanced Integration: Learn user communication patterns
+        scope.launch {
+            try {
+                // Learn channel preferences
+                userPreferencesManager.recordInteractionPattern("uses_${cfg.type}_channel", 1)
+                
+                // Learn communication timing patterns
+                val hour = java.time.LocalDateTime.now().hour
+                userPreferencesManager.recordInteractionPattern("active_hour_$hour", 1)
+                
+                // Learn message length preferences
+                val messageLength = when {
+                    msg.text.length < 50 -> "short_messages"
+                    msg.text.length < 200 -> "medium_messages"
+                    else -> "long_messages"
+                }
+                userPreferencesManager.recordInteractionPattern("prefers_$messageLength", 1)
+                
+                // Learn attachment usage patterns
+                if (msg.attachmentKind != null) {
+                    userPreferencesManager.recordInteractionPattern("uses_${msg.attachmentKind}_attachments", 1)
+                }
+                
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to learn communication patterns")
+            }
+        }
 
         // 1. Mirror the incoming message into the session log.
         sessionStore.record(

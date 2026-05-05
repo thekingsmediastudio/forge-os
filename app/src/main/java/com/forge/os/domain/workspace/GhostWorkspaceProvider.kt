@@ -10,7 +10,9 @@ import javax.inject.Singleton
 
 @Singleton
 class GhostWorkspaceProvider @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    // Enhanced Integration: Connect with other systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) {
     private val ghostsBaseDir = File(context.filesDir, "workspace/temp/ghosts")
 
@@ -33,6 +35,19 @@ class GhostWorkspaceProvider @Inject constructor(
         File(sandboxDir, "temp").mkdirs()
         
         Timber.d("Created ghost sandbox: ${sandboxDir.absolutePath}")
+        
+        // Enhanced Integration: Learn ghost workspace creation patterns
+        try {
+            reflectionManager.recordPattern(
+                pattern = "Ghost workspace creation: $sandboxId",
+                description = "Created ephemeral workspace for ghost agent with ID $sandboxId",
+                applicableTo = listOf("ghost_workspace", "delegation", "sandbox_management"),
+                tags = listOf("ghost_workspace", "sandbox_creation", "delegation", sandboxId)
+            )
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record ghost workspace creation patterns")
+        }
+        
         return sandboxDir
     }
 
@@ -41,8 +56,21 @@ class GhostWorkspaceProvider @Inject constructor(
      */
     fun destroySandbox(sandboxDir: File) {
         if (sandboxDir.startsWith(ghostsBaseDir)) {
+            val sandboxId = sandboxDir.name
             sandboxDir.deleteRecursively()
             Timber.d("Destroyed ghost sandbox: ${sandboxDir.absolutePath}")
+            
+            // Enhanced Integration: Learn ghost workspace cleanup patterns
+            try {
+                reflectionManager.recordPattern(
+                    pattern = "Ghost workspace cleanup: $sandboxId",
+                    description = "Cleaned up ephemeral workspace for ghost agent with ID $sandboxId",
+                    applicableTo = listOf("ghost_workspace", "cleanup", "sandbox_management"),
+                    tags = listOf("ghost_workspace", "sandbox_cleanup", "delegation", sandboxId)
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record ghost workspace cleanup patterns")
+            }
         } else {
             Timber.w("Refusing to destroy non-sandbox dir: ${sandboxDir.absolutePath}")
         }

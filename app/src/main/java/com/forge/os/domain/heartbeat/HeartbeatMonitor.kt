@@ -43,7 +43,10 @@ data class SystemStatus(
 class HeartbeatMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val configRepository: ConfigRepository,
-    private val alertManager: AlertManager
+    private val alertManager: AlertManager,
+    // Enhanced Integration: Connect with learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var monitorJob: Job? = null
@@ -134,12 +137,67 @@ class HeartbeatMonitor @Inject constructor(
             else -> HealthLevel.HEALTHY
         }
 
-        SystemStatus(
+        val status = SystemStatus(
             overallHealth = overallHealth,
             components = components,
             alerts = alerts,
             recommendations = recommendations
         )
+        
+        // Enhanced Integration: Learn heartbeat monitoring patterns
+        try {
+            // Record monitoring frequency patterns
+            userPreferencesManager.recordInteractionPattern("heartbeat_monitoring_active", 1)
+            
+            // Learn system health trends
+            when (overallHealth) {
+                HealthLevel.HEALTHY -> {
+                    reflectionManager.recordPattern(
+                        pattern = "System health stable",
+                        description = "Heartbeat monitor reports all systems healthy: ${components.keys.joinToString()}",
+                        applicableTo = listOf("system_health", "monitoring", "stability"),
+                        tags = listOf("health_stable", "monitoring_success", "system_reliability")
+                    )
+                }
+                HealthLevel.WARNING -> {
+                    reflectionManager.recordPattern(
+                        pattern = "System health warning detected",
+                        description = "Heartbeat monitor detected warnings: ${alerts.joinToString { it.message }}",
+                        applicableTo = listOf("system_health", "monitoring", "early_warning"),
+                        tags = listOf("health_warning", "monitoring_alert", "preventive_maintenance")
+                    )
+                }
+                HealthLevel.CRITICAL -> {
+                    reflectionManager.recordFailureAndRecovery(
+                        taskId = "heartbeat_critical_${System.currentTimeMillis()}",
+                        failureReason = "Critical system health issues detected: ${alerts.joinToString { it.message }}",
+                        recoveryStrategy = "Immediate attention required: ${recommendations.joinToString("; ")}",
+                        tags = listOf("health_critical", "system_failure", "urgent_maintenance")
+                    )
+                }
+                HealthLevel.DOWN -> {
+                    reflectionManager.recordFailureAndRecovery(
+                        taskId = "heartbeat_down_${System.currentTimeMillis()}",
+                        failureReason = "System components are down: ${alerts.joinToString { it.message }}",
+                        recoveryStrategy = "System restart or emergency maintenance required",
+                        tags = listOf("health_down", "system_outage", "emergency_maintenance")
+                    )
+                }
+            }
+            
+            // Learn component-specific patterns
+            components.forEach { (component, status) ->
+                if (status.health != HealthLevel.HEALTHY.name) {
+                    userPreferencesManager.recordInteractionPattern("${component}_health_issues", 1)
+                }
+            }
+            
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record heartbeat monitoring patterns")
+        }
+        
+        return status
+    }
     }
 
     private fun checkStorage(): ComponentStatus {

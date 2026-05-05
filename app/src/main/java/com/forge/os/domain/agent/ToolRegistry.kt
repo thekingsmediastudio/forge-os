@@ -130,6 +130,20 @@ class ToolRegistry @Inject constructor(
     private val locationToolProvider: com.forge.os.domain.agent.providers.LocationToolProvider,
     private val storageToolProvider: com.forge.os.domain.agent.providers.StorageToolProvider,
     private val androidUiToolProvider: com.forge.os.domain.agent.providers.AndroidUiToolProvider,
+    // Phase 1: Project-AI Integration
+    private val projectToolProvider: com.forge.os.domain.projects.ProjectToolProvider,
+    // Phase 2: Project Python Execution
+    private val projectPythonRunner: com.forge.os.domain.projects.ProjectPythonRunner,
+    // Task 4: Agent Learning & Personalization
+    private val reflectionManager: ReflectionManager,
+    private val executionHistoryManager: ExecutionHistoryManager,
+    private val agentPersonality: AgentPersonality,
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    // Wishlist Features
+    private val voiceInputManager: com.forge.os.domain.voice.VoiceInputManager,
+    private val multiDeviceSyncManager: com.forge.os.domain.sync.MultiDeviceSyncManager,
+    private val codeReviewService: com.forge.os.domain.code.CodeReviewService,
+    private val projectHealthMonitor: com.forge.os.domain.projects.ProjectHealthMonitor,
 ) {
     private val httpServer: ForgeHttpServer get() = httpServerLazy.get()
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -156,7 +170,8 @@ class ToolRegistry @Inject constructor(
         deviceInfoToolProvider.getTools() +
         locationToolProvider.getTools() +
         storageToolProvider.getTools() +
-        androidUiToolProvider.getTools()
+        androidUiToolProvider.getTools() +
+        projectToolProvider.getTools()
 
     fun getDefinitions(): List<ToolDefinition> {
         val config = configRepository.get()
@@ -429,6 +444,8 @@ class ToolRegistry @Inject constructor(
                 "snapshot_list"      -> snapshotList()
                 "snapshot_restore"   -> snapshotRestore(args)
                 "snapshot_delete"    -> snapshotDelete(args)
+                // Model catalog
+                "model_cache_refresh" -> modelCacheRefresh()
                 // ─── MCP ───────────────────────────────────────────────────────────
                 "mcp_refresh"        -> mcpRefresh()
                 "mcp_list_tools"     -> mcpListTools()
@@ -679,6 +696,214 @@ class ToolRegistry @Inject constructor(
                     maxBytes = (args["max_bytes"] as? Number)?.toLong()
                         ?: com.forge.os.data.net.DownloadManager.DEFAULT_MAX_BYTES,
                 ).toString()
+                // ─── Phase 1: Project-AI Integration ───────────────────────────────
+                "project_list"           -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_list"
+                "project_read_metadata"  -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_read_metadata"
+                "project_write_metadata" -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_write_metadata"
+                "project_read_file"      -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_read_file"
+                "project_write_file"     -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_write_file"
+                "project_list_files"     -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_list_files"
+                "project_activate"       -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_activate"
+                "project_get_active"     -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_get_active"
+                // ─── Phase 2: Project Python Execution ─────────────────────────────
+                "project_python_run_file" -> {
+                    val slug = args["slug"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: slug required", isError = true)
+                    val scriptPath = args["script_path"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: script_path required", isError = true)
+                    val argsJson = args["args"] as? List<*> ?: emptyList<String>()
+                    val argsList = argsJson.mapNotNull { it as? String }
+                    projectPythonRunner.executeFile(slug, scriptPath, argsList)
+                }
+                "project_python_run_code" -> {
+                    val slug = args["slug"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: slug required", isError = true)
+                    val code = args["code"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: code required", isError = true)
+                    val argsJson = args["args"] as? List<*> ?: emptyList<String>()
+                    val argsList = argsJson.mapNotNull { it as? String }
+                    projectPythonRunner.executeCode(slug, code, argsList)
+                }
+                // ─── Task 4: Agent Learning & Personalization ──────────────────────
+                "reflection_get_context" -> {
+                    val goal = args["goal"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: goal required", isError = true)
+                    val limit = args["limit"]?.toString()?.toIntOrNull() ?: 5
+                    val context = reflectionManager.createReflectionPrompt(goal, limit = limit)
+                    context
+                }
+                "history_show" -> {
+                    val sessionId = args["session_id"]?.toString()
+                    val history = if (sessionId != null) {
+                        executionHistoryManager.getFormattedHistory(sessionId)
+                    } else {
+                        val current = executionHistoryManager.getCurrentSession()
+                        if (current != null) {
+                            executionHistoryManager.getFormattedHistory(current.sessionId)
+                        } else {
+                            "No execution history available yet."
+                        }
+                    }
+                    history
+                }
+                "personality_update" -> {
+                    val personality = agentPersonality.getPersonality()
+                    val updated = personality.copy(
+                        name = args["name"]?.toString() ?: personality.name,
+                        systemPrompt = args["system_prompt"]?.toString() ?: personality.systemPrompt,
+                        traits = args["traits"]?.toString()?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: personality.traits,
+                        communicationStyle = args["communication_style"]?.toString() ?: personality.communicationStyle,
+                        customInstructions = args["custom_instructions"]?.toString() ?: personality.customInstructions,
+                        lastModified = System.currentTimeMillis()
+                    )
+                    agentPersonality.updatePersonality(updated)
+                    "✅ Agent personality updated:\n${agentPersonality.getPersonalitySummary()}"
+                }
+                "preferences_show" -> {
+                    userPreferencesManager.getPreferencesSummary()
+                }
+                // ─── Wishlist Features ─────────────────────────────────────────────
+                "voice_start_listening" -> {
+                    voiceInputManager.startListening()
+                    "🎤 Started listening for voice input"
+                }
+                "voice_stop_listening" -> {
+                    voiceInputManager.stopListening()
+                    "🎤 Stopped listening"
+                }
+                "voice_speak" -> {
+                    val text = args["text"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: text required", isError = true)
+                    voiceInputManager.speak(text)
+                    "🔊 Speaking: $text"
+                }
+                "sync_export" -> {
+                    val includeConfig = args["include_config"]?.toString()?.toBoolean() ?: true
+                    val includeProjects = args["include_projects"]?.toString()?.toBoolean() ?: true
+                    val includeMemory = args["include_memory"]?.toString()?.toBoolean() ?: true
+                    val includePreferences = args["include_preferences"]?.toString()?.toBoolean() ?: true
+                    
+                    val options = com.forge.os.domain.sync.SyncOptions(
+                        syncConfig = includeConfig,
+                        syncProjects = includeProjects,
+                        syncMemory = includeMemory,
+                        syncPreferences = includePreferences
+                    )
+                    
+                    val file = multiDeviceSyncManager.exportSyncPackage(options)
+                    "✅ Sync package exported to: ${file.name}\nSize: ${file.length() / 1024} KB"
+                }
+                "sync_import" -> {
+                    val path = args["path"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: path required", isError = true)
+                    val file = java.io.File(appContext.filesDir, "workspace/$path")
+                    
+                    val includeConfig = args["include_config"]?.toString()?.toBoolean() ?: true
+                    val includeProjects = args["include_projects"]?.toString()?.toBoolean() ?: true
+                    val includeMemory = args["include_memory"]?.toString()?.toBoolean() ?: true
+                    val includePreferences = args["include_preferences"]?.toString()?.toBoolean() ?: true
+                    
+                    val options = com.forge.os.domain.sync.SyncOptions(
+                        syncConfig = includeConfig,
+                        syncProjects = includeProjects,
+                        syncMemory = includeMemory,
+                        syncPreferences = includePreferences
+                    )
+                    
+                    val result = multiDeviceSyncManager.importSyncPackage(file, options)
+                    if (result.success) "✅ ${result.message}" else "❌ ${result.message}"
+                }
+                "sync_init_device" -> {
+                    val deviceName = args["device_name"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: device_name required", isError = true)
+                    val deviceId = args["device_id"]?.toString()
+                    
+                    if (deviceId != null) {
+                        multiDeviceSyncManager.initializeDevice(deviceName, deviceId)
+                    } else {
+                        multiDeviceSyncManager.initializeDevice(deviceName)
+                    }
+                    "✅ Device initialized: $deviceName"
+                }
+                "code_review_project" -> {
+                    val slug = args["slug"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: slug required", isError = true)
+                    val checkQuality = args["check_quality"]?.toString()?.toBoolean() ?: true
+                    val checkSecurity = args["check_security"]?.toString()?.toBoolean() ?: true
+                    val checkPerformance = args["check_performance"]?.toString()?.toBoolean() ?: true
+                    val checkDocs = args["check_documentation"]?.toString()?.toBoolean() ?: true
+                    val useAI = args["use_ai"]?.toString()?.toBoolean() ?: false
+                    
+                    val options = com.forge.os.domain.code.ReviewOptions(
+                        checkQuality = checkQuality,
+                        checkSecurity = checkSecurity,
+                        checkPerformance = checkPerformance,
+                        checkDocumentation = checkDocs,
+                        useAI = useAI
+                    )
+                    
+                    val result = codeReviewService.reviewProject(slug, options)
+                    if (result.success) {
+                        buildString {
+                            appendLine(result.summary)
+                            appendLine()
+                            appendLine("Overall Score: ${result.overallScore}/100")
+                            appendLine()
+                            appendLine("Files with issues:")
+                            result.fileReviews.filter { it.issues.isNotEmpty() }.take(10).forEach { review ->
+                                appendLine("  • ${review.filePath}: ${review.issues.size} issues (score: ${review.score})")
+                            }
+                        }
+                    } else {
+                        "❌ ${result.error}"
+                    }
+                }
+                "code_review_file" -> {
+                    val path = args["path"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: path required", isError = true)
+                    val checkQuality = args["check_quality"]?.toString()?.toBoolean() ?: true
+                    val checkSecurity = args["check_security"]?.toString()?.toBoolean() ?: true
+                    val checkPerformance = args["check_performance"]?.toString()?.toBoolean() ?: true
+                    val checkDocs = args["check_documentation"]?.toString()?.toBoolean() ?: true
+                    val useAI = args["use_ai"]?.toString()?.toBoolean() ?: false
+                    
+                    val options = com.forge.os.domain.code.ReviewOptions(
+                        checkQuality = checkQuality,
+                        checkSecurity = checkSecurity,
+                        checkPerformance = checkPerformance,
+                        checkDocumentation = checkDocs,
+                        useAI = useAI
+                    )
+                    
+                    val review = codeReviewService.reviewFile(path, options)
+                    buildString {
+                        appendLine("Code Review: $path")
+                        appendLine("Score: ${review.score}/100")
+                        appendLine("Lines of Code: ${review.linesOfCode}")
+                        appendLine()
+                        if (review.issues.isEmpty()) {
+                            appendLine("✅ No issues found!")
+                        } else {
+                            appendLine("Issues found:")
+                            review.issues.forEach { issue ->
+                                appendLine("  [${issue.severity}] Line ${issue.line}: ${issue.message}")
+                                if (issue.suggestion != null) {
+                                    appendLine("    💡 ${issue.suggestion}")
+                                }
+                            }
+                        }
+                    }
+                }
+                "project_health" -> {
+                    val slug = args["slug"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: slug required", isError = true)
+                    val health = projectHealthMonitor.getProjectHealth(slug)
+                    projectHealthMonitor.generateHealthReport(health)
+                }
+                "project_health_all" -> {
+                    val healthMap = projectHealthMonitor.getAllProjectsHealth()
+                    buildString {
+                        appendLine("🏥 All Projects Health")
+                        appendLine("=" .repeat(50))
+                        appendLine()
+                        healthMap.forEach { (slug, health) ->
+                            appendLine("${health.status.emoji} ${health.projectName}")
+                            appendLine("  Tests: ${health.testStatus.passingTests}/${health.testStatus.totalTests} passing")
+                            appendLine("  Code Quality: ${health.codeQuality.score}/100")
+                            appendLine("  Build: ${if (health.buildStatus.canBuild) "✓" else "✗"}")
+                            appendLine()
+                        }
+                    }
+                }
                 else -> {
                     if (toolName.startsWith("mcp.")) {
                         val resolved = mcpClient.resolveTool(toolName)
@@ -1093,6 +1318,19 @@ class ToolRegistry @Inject constructor(
     private fun snapshotDelete(args: Map<String, Any>): String {
         val id = args["id"]?.toString() ?: return "Error: id required"
         return if (snapshotManager.delete(id)) "✅ Deleted $id" else "❌ Snapshot not found: $id"
+    }
+
+    // ─── Model catalog ───────────────────────────────────────────────────────
+
+    private suspend fun modelCacheRefresh(): String {
+        return try {
+            val models = aiApiManager.availableModels(forceRefresh = true)
+            val providerCount = models.map { it.providerKey }.distinct().size
+            val modelCount = models.size
+            "✅ Model catalog refreshed: $modelCount models across $providerCount provider(s)"
+        } catch (e: Exception) {
+            "❌ Model cache refresh failed: ${e.message}"
+        }
     }
 
     // ─── MCP tools ───────────────────────────────────────────────────────────
@@ -2145,6 +2383,51 @@ To use Composio:
         return configJson.substring(q1 + 1, q2)
     }
 
+    // ─── Enhanced Integration: Project Context Methods ──────────────────────
+
+    /**
+     * Get the currently active project for enhanced context building.
+     */
+    fun getActiveProject(): com.forge.os.domain.projects.Project? {
+        return try {
+            projectToolProvider.dispatch("project_get_active", emptyMap())?.let { result ->
+                if (result.contains("No active project")) null
+                else {
+                    // Extract project slug from the result and get full project details
+                    val slugMatch = Regex("\\(([^)]+)\\)").find(result)
+                    val slug = slugMatch?.groupValues?.get(1)
+                    if (slug != null) {
+                        // Get project details from repository
+                        val projectsRepository = projectToolProvider.javaClass.getDeclaredField("repository").let { field ->
+                            field.isAccessible = true
+                            field.get(projectToolProvider) as com.forge.os.domain.projects.ProjectsRepository
+                        }
+                        projectsRepository.get(slug)
+                    } else null
+                }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to get active project")
+            null
+        }
+    }
+
+    /**
+     * Get the file count for a project.
+     */
+    fun getProjectFileCount(slug: String): Int {
+        return try {
+            val projectsRepository = projectToolProvider.javaClass.getDeclaredField("repository").let { field ->
+                field.isAccessible = true
+                field.get(projectToolProvider) as com.forge.os.domain.projects.ProjectsRepository
+            }
+            projectsRepository.fileCount(slug)
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to get project file count for $slug")
+            0
+        }
+    }
+
     /** Recent inbound chats per channel (or for one channel if specified). */
     private fun telegramListChats(args: Map<String, Any>): String {
         val onlyChannel = args["channel_id"]?.toString()?.takeIf { it.isNotBlank() }
@@ -2689,6 +2972,12 @@ To use Composio:
             params("id" to "string:Snapshot id"), required = listOf("id")),
         tool("snapshot_delete", "Delete a workspace snapshot",
             params("id" to "string:Snapshot id"), required = listOf("id")),
+        // Model catalog
+        tool("model_cache_refresh", 
+            "Force refresh the model catalog for all configured providers. " +
+            "By default, model lists are cached for 24 hours. Use this to fetch " +
+            "the latest available models immediately (e.g. after adding a new API key).",
+            params()),
         // MCP
         tool("mcp_refresh", "Refresh MCP server tool catalog", params()),
         tool("mcp_list_tools", "List cached MCP tools", params()),
@@ -3249,12 +3538,17 @@ To use Composio:
                    "token" to "string:Optional PAT for private repos"),
             required = listOf("url", "dest")),
         tool("git_push",
-            "Push the current branch to a remote. Token resolution: explicit `token`, " +
-            "then memory 'git_credentials/<host>'.",
+            "Push the current branch to a remote. For private repos, use `secret_request` " +
+            "to authenticate with a GitHub PAT (Personal Access Token). WORKFLOW: " +
+            "1) Call `secret_list` to see registered secrets. 2) If no GitHub PAT is registered, " +
+            "tell the user to add one in Settings → Custom API Keys (name: 'github_pat', " +
+            "auth style: 'bearer'). 3) Use `secret_request {name: 'github_pat', url: 'https://api.github.com/user', " +
+            "method: 'GET'}` to verify the token works. 4) Pass the token to git_push via the `token` parameter. " +
+            "Alternatively, store credentials in memory via `memory_store_secret` for reuse.",
             params("path" to "string:Workspace-relative repo dir",
                    "remote" to "string:Remote name (default 'origin')",
                    "branch" to "string:Branch (default = current)",
-                   "token" to "string:Optional PAT")),
+                   "token" to "string:Optional PAT (GitHub, GitLab, etc.)")),
         tool("git_pull",
             "Pull updates from a remote. Same token resolution as git_push.",
             params("path" to "string:Workspace-relative repo dir",
@@ -3326,6 +3620,126 @@ To use Composio:
             "This wipes the current workspace and replaces it with the backup content.",
             params("path" to "string:Workspace-relative path to the backup ZIP file"),
             required = listOf("path")),
+        // ─── Phase 2: Project Python Execution ─────────────────────────────────
+        tool("project_python_run_file",
+            "Execute a Python file from a project. The script runs in the project's " +
+            "context with access to all pre-installed packages. If the project " +
+            "requires packages that are not pre-installed, you'll get a helpful " +
+            "error message with instructions to add them to build.gradle and rebuild.",
+            params("slug" to "string:Project slug",
+                   "script_path" to "string:Path to Python file relative to project root (e.g. 'main.py')",
+                   "args" to "array:Optional command-line arguments to pass to the script"),
+            required = listOf("slug", "script_path")),
+        tool("project_python_run_code",
+            "Execute Python code directly within a project context. The code runs " +
+            "with access to all pre-installed packages and the project directory " +
+            "in sys.path. Use this for quick Python snippets or testing.",
+            params("slug" to "string:Project slug",
+                   "code" to "string:Python source code to execute",
+                   "args" to "array:Optional command-line arguments (accessible via sys.argv)"),
+            required = listOf("slug", "code")),
+        // ─── Task 4: Agent Learning & Personalization ──────────────────────
+        tool("reflection_get_context",
+            "Retrieve context from past executions and learned patterns. Use this " +
+            "when starting a new task to understand what similar tasks were done " +
+            "before and what patterns the agent has learned. Returns previous " +
+            "session context, similar past executions, and applicable patterns.",
+            params("goal" to "string:Current task goal (used to find similar past executions)",
+                   "limit" to "string:Max similar executions to return (default 5)"),
+            required = listOf("goal")),
+        tool("history_show",
+            "Display the execution history of the current session. Shows all steps " +
+            "taken so far, their success/failure status, and any errors. Use this " +
+            "when the user says 'continue' after a failure to understand what " +
+            "happened and where to resume.",
+            params("session_id" to "string:Optional specific session id (default: current session)")),
+        tool("personality_update",
+            "Update the agent's personality configuration. Allows customizing the " +
+            "agent's name, system prompt, traits, communication style, and custom " +
+            "instructions. Changes take effect immediately.",
+            params("name" to "string:Agent name (e.g. 'Forge', 'Claude')",
+                   "system_prompt" to "string:Custom system prompt describing how the agent should behave",
+                   "traits" to "string:Comma-separated personality traits (e.g. 'helpful,direct,technical')",
+                   "communication_style" to "string:How the agent should communicate (e.g. 'concise,technical,warm')",
+                   "custom_instructions" to "string:Additional custom instructions for this agent")),
+        tool("preferences_show",
+            "Display the user's saved preferences including UI settings, remembered " +
+            "projects, interaction patterns, and custom shortcuts. Use this to " +
+            "understand what the user has configured.",
+            params()),
+        // ─── Wishlist Features ─────────────────────────────────────────────────
+        // Feature 2: Voice Input
+        tool("voice_start_listening",
+            "Start listening for voice input using Android's speech recognition. " +
+            "Perfect for hands-free control while cooking, driving, or coding. " +
+            "The agent will receive voice commands that can be parsed and executed.",
+            params()),
+        tool("voice_stop_listening",
+            "Stop listening for voice input.",
+            params()),
+        tool("voice_speak",
+            "Speak text using Android's text-to-speech engine. Use this to provide " +
+            "audio feedback to the user.",
+            params("text" to "string:Text to speak"),
+            required = listOf("text")),
+        // Feature 4: Multi-Device Sync
+        tool("sync_export",
+            "Export a sync package containing projects, memory, config, and preferences. " +
+            "The package can be imported on another device for seamless workflow. " +
+            "Supports selective sync - choose what to include.",
+            params("include_config" to "string:Include config (default true)",
+                   "include_projects" to "string:Include projects metadata (default true)",
+                   "include_memory" to "string:Include memory metadata (default true)",
+                   "include_preferences" to "string:Include user preferences (default true)")),
+        tool("sync_import",
+            "Import a sync package from another device. Merges the synced data with " +
+            "current device state. Use this to sync flashcard progress, projects, " +
+            "and preferences between phone and laptop.",
+            params("path" to "string:Workspace-relative path to sync package JSON file",
+                   "include_config" to "string:Import config (default true)",
+                   "include_projects" to "string:Import projects (default true)",
+                   "include_memory" to "string:Import memory (default true)",
+                   "include_preferences" to "string:Import preferences (default true)"),
+            required = listOf("path")),
+        tool("sync_init_device",
+            "Initialize this device for multi-device sync. Sets device name and ID " +
+            "for tracking sync operations.",
+            params("device_name" to "string:Human-readable device name (e.g. 'My Phone', 'Laptop')",
+                   "device_id" to "string:Optional unique device ID (auto-generated if omitted)"),
+            required = listOf("device_name")),
+        // Feature 5: AI-Powered Code Review
+        tool("code_review_project",
+            "Review all code files in a project and suggest improvements. Checks for " +
+            "code quality, security issues, performance problems, and documentation. " +
+            "Elevates project quality without manual effort.",
+            params("slug" to "string:Project slug",
+                   "check_quality" to "string:Check code quality (default true)",
+                   "check_security" to "string:Check security issues (default true)",
+                   "check_performance" to "string:Check performance (default true)",
+                   "check_documentation" to "string:Check documentation (default true)",
+                   "use_ai" to "string:Use AI-powered review (default false)"),
+            required = listOf("slug")),
+        tool("code_review_file",
+            "Review a single code file and suggest improvements. Returns detailed " +
+            "issues with line numbers and suggestions.",
+            params("path" to "string:Workspace-relative path to file",
+                   "check_quality" to "string:Check code quality (default true)",
+                   "check_security" to "string:Check security issues (default true)",
+                   "check_performance" to "string:Check performance (default true)",
+                   "check_documentation" to "string:Check documentation (default true)",
+                   "use_ai" to "string:Use AI-powered review (default false)"),
+            required = listOf("path")),
+        // Feature 7: Project Health Dashboard
+        tool("project_health",
+            "Get comprehensive health status for a project including test results, " +
+            "build status, git commits, code quality score, dependencies, and memory usage. " +
+            "Quick overview of what's working and what's not.",
+            params("slug" to "string:Project slug"),
+            required = listOf("slug")),
+        tool("project_health_all",
+            "Get health status for all projects. Shows a summary dashboard of all " +
+            "projects with their status, test results, and code quality scores.",
+            params()),
     )
 
     private fun humanAgo(ms: Long): String {

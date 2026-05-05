@@ -17,6 +17,9 @@ class PatternAnalyzer @Inject constructor(
     private val memoryManager: MemoryManager,
     private val apiManager: AiApiManager,
     private val toolRegistry: ToolRegistry,
+    // Enhanced Integration: Connect with learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val executionHistoryManager: com.forge.os.domain.agent.ExecutionHistoryManager,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -49,16 +52,48 @@ class PatternAnalyzer @Inject constructor(
     """.trimIndent()
 
     suspend fun predictNextTool(): Prediction? {
+        // Enhanced Integration: Use ReflectionManager patterns for better predictions
         val recentEvents = memoryManager.daily.readRecent(days = 1).takeLast(20)
         if (recentEvents.isEmpty()) return null
+
+        // Get learned patterns from ReflectionManager for context
+        val learnedPatterns = try {
+            reflectionManager.getRelevantPatterns("tool_prediction").take(5)
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to get learned patterns")
+            emptyList()
+        }
+
+        // Get recent execution history for better context
+        val recentSessions = try {
+            executionHistoryManager.getRecentSessions(limit = 3)
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to get recent sessions")
+            emptyList()
+        }
 
         val history = recentEvents.joinToString("\n") { event ->
             "[${event.role}] ${event.content.take(200)}"
         }
 
+        // Enhanced context with learned patterns
+        val patternContext = if (learnedPatterns.isNotEmpty()) {
+            "\n\nLearned Patterns:\n" + learnedPatterns.joinToString("\n") { pattern ->
+                "- ${pattern.pattern}: ${pattern.description}"
+            }
+        } else ""
+
+        // Enhanced context with recent successful tool sequences
+        val sessionContext = if (recentSessions.isNotEmpty()) {
+            "\n\nRecent Successful Tool Sequences:\n" + recentSessions.take(2).joinToString("\n") { session ->
+                val tools = session.steps.filter { it.success }.map { it.tool }.distinct().joinToString(" -> ")
+                "- Goal: ${session.goal.take(50)} | Tools: $tools"
+            }
+        } else ""
+
         val tools = toolRegistry.getDefinitions().map { it.function.name }.joinToString(", ")
         
-        val prompt = "Available Tools: $tools\n\nRecent Activity:\n$history\n\nPredict the next tool call:"
+        val prompt = "Available Tools: $tools\n\nRecent Activity:\n$history$patternContext$sessionContext\n\nPredict the next tool call:"
 
         return try {
             val response = apiManager.chatWithFallback(
@@ -70,7 +105,23 @@ class PatternAnalyzer @Inject constructor(
             )
             
             val content = response.content?.trim() ?: return null
-            parsePrediction(content)
+            val prediction = parsePrediction(content)
+            
+            // Enhanced Integration: Record prediction for accuracy tracking
+            if (prediction != null) {
+                try {
+                    reflectionManager.recordPattern(
+                        pattern = "Tool prediction: ${prediction.toolName}",
+                        description = "Pattern analyzer predicted ${prediction.toolName} based on recent activity and learned patterns",
+                        applicableTo = listOf("prediction", "pattern_analysis", prediction.toolName),
+                        tags = listOf("tool_prediction", "pattern_analysis", "proactive_prediction", "accuracy_tracking")
+                    )
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record prediction pattern")
+                }
+            }
+            
+            prediction
         } catch (e: Exception) {
             Timber.w(e, "PatternAnalyzer: prediction failed")
             null

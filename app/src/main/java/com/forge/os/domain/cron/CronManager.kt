@@ -33,7 +33,10 @@ class CronManager @Inject constructor(
     // dagger.Lazy avoids any cycle risk and defers construction until a PROMPT
     // job is actually run.
     private val reActAgent: Lazy<ReActAgent>,
-    private val backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager
+    private val backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
+    // Enhanced Integration: Connect with learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
 
     // ─── CRUD ────────────────────────────────────────────────────────────────
@@ -114,6 +117,26 @@ class CronManager @Inject constructor(
         var output = ""
         var error: String? = null
 
+        // Enhanced Integration: Learn cron job patterns
+        try {
+            userPreferencesManager.recordInteractionPattern("uses_cron_${job.taskType.name.lowercase()}", 1)
+            
+            // Learn scheduling patterns
+            val hour = java.time.LocalDateTime.now().hour
+            userPreferencesManager.recordInteractionPattern("cron_active_hour_$hour", 1)
+            
+            // Learn job frequency patterns
+            val scheduleType = when {
+                job.schedule.intervalMinutes != null -> "interval_based"
+                job.schedule.dailyAt != null -> "daily_scheduled"
+                job.schedule.oneShotAt != null -> "one_shot"
+                else -> "custom_schedule"
+            }
+            userPreferencesManager.recordInteractionPattern("prefers_$scheduleType", 1)
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to learn cron patterns")
+        }
+
         try {
             val result: Result<String> = when (job.taskType) {
                 TaskType.PYTHON -> sandboxManager.executePython(job.payload)
@@ -138,6 +161,48 @@ class CronManager @Inject constructor(
             success = success, output = output.take(4000), error = error
         )
         repository.recordExecution(execution)
+
+        // Enhanced Integration: Record cron execution patterns
+        try {
+            val steps = listOf(
+                com.forge.os.domain.agent.ExecutionStep(
+                    stepNumber = 1,
+                    action = "Cron job execution: ${job.taskType}",
+                    tool = "cron_${job.taskType.name.lowercase()}",
+                    args = job.payload.take(200),
+                    result = output.take(500),
+                    duration = finished - started,
+                    success = success
+                )
+            )
+            
+            reflectionManager.recordExecution(
+                taskId = "cron_${job.id}_${started}",
+                goal = "Execute scheduled job: ${job.name}",
+                steps = steps,
+                success = success,
+                outcome = if (success) "Cron job completed successfully" else "Cron job failed: $error",
+                tags = listOf("cron_execution", "scheduled_task", job.taskType.name.lowercase()) + job.tags
+            )
+            
+            if (success) {
+                reflectionManager.recordPattern(
+                    pattern = "Successful cron execution: ${job.taskType}",
+                    description = "Cron job '${job.name}' executed successfully in ${finished - started}ms",
+                    applicableTo = listOf("cron", "scheduling", job.taskType.name.lowercase()),
+                    tags = listOf("cron_success", "scheduling_pattern", "automation")
+                )
+            } else {
+                reflectionManager.recordFailureAndRecovery(
+                    taskId = "cron_${job.id}_${started}",
+                    failureReason = "Cron job failed: $error",
+                    recoveryStrategy = "Check job configuration, validate payload, or adjust schedule",
+                    tags = listOf("cron_failure", "scheduling_error", job.taskType.name.lowercase())
+                )
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record cron execution in ReflectionManager")
+        }
 
         // Reschedule or remove
         if (job.schedule.oneShotAt != null) {

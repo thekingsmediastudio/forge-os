@@ -43,6 +43,16 @@ class ReActAgent @Inject constructor(
     private val traceManager: com.forge.os.domain.debug.TraceManager,
     private val reflector: Reflector,
     private val userInputBroker: UserInputBroker,
+    // Task 4: Agent Learning & Personalization
+    private val reflectionManager: ReflectionManager,
+    private val executionHistoryManager: ExecutionHistoryManager,
+    private val agentPersonality: AgentPersonality,
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    // System Integration: Enhanced Intelligence
+    private val doctorService: com.forge.os.domain.doctor.DoctorService,
+    private val permissionManager: com.forge.os.domain.security.PermissionManager,
+    private val hapticFeedbackManager: com.forge.os.domain.haptic.HapticFeedbackManager,
+    private val alertManager: com.forge.os.domain.heartbeat.AlertManager,
 ) {
     private val baseSystemPrompt = """
 You are Forge, a precise, security-conscious AI agent running on Android.
@@ -243,6 +253,16 @@ Tools available ({tool_count} total): {tool_catalog}
         agentId: String? = null,
         depth: Int = 0
     ): kotlinx.coroutines.flow.Flow<AgentEvent> = kotlinx.coroutines.flow.flow {
+        // Task 4: Start execution session for learning
+        val executionSession = executionHistoryManager.startSession(userMessage)
+        var stepNumber = 0
+        
+        // System Integration: Execution start feedback
+        try {
+            hapticFeedbackManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.THINKING_START)
+        } catch (e: Exception) {
+            Timber.w(e, "Haptic feedback failed")
+        }
         val agentContext = com.forge.os.domain.agents.AgentContext(agentId, depth)
         val config = configRepository.get()
         val maxIterations = config.behaviorRules.maxIterations
@@ -258,8 +278,87 @@ Tools available ({tool_count} total): {tool_catalog}
             parentId = parentId
         )
 
-        val memoryContext = try { memoryManager.buildContext(userMessage) }
-                           catch (e: Exception) { Timber.w(e); "" }
+        // System Integration: Enhanced auto-context building with robust error handling
+        val memoryContext = try { 
+            val baseContext = memoryManager.buildContext(userMessage)
+            
+            // Enhanced reflection context from ReflectionManager with safety
+            val reflectionContext = try {
+                val reflectionPrompt = reflectionManager.createReflectionPrompt(userMessage)
+                if (reflectionPrompt.isNotBlank()) {
+                    "\n\nREFLECTION CONTEXT:\n" + reflectionPrompt
+                } else ""
+            } catch (e: Exception) { 
+                Timber.w(e, "Failed to load reflection context")
+                "" 
+            }
+            
+            // Current session context from ExecutionHistoryManager with safety
+            val executionContext = try {
+                val currentSession = executionHistoryManager.getCurrentSession()
+                if (currentSession != null && currentSession.steps.isNotEmpty()) {
+                    "\n\nCURRENT SESSION CONTEXT:\n" + 
+                    executionHistoryManager.getSessionContext(currentSession.sessionId)
+                } else ""
+            } catch (e: Exception) { 
+                Timber.w(e, "Failed to load execution context")
+                "" 
+            }
+            
+            // User preferences context with safety
+            val preferencesContext = try {
+                val prefs = userPreferencesManager.getPreferences()
+                if (prefs.rememberedProjects.isNotEmpty() || prefs.interactionPatterns.isNotEmpty()) {
+                    "\n\nUSER PREFERENCES:\n" + 
+                    "• Remembered projects: ${prefs.rememberedProjects.take(3).joinToString { it.name }}\n" +
+                    "• Common patterns: ${prefs.interactionPatterns.entries.sortedByDescending { it.value }.take(3).joinToString { "${it.key} (${it.value}x)" }}"
+                } else ""
+            } catch (e: Exception) { 
+                Timber.w(e, "Failed to load preferences context")
+                "" 
+            }
+            
+            // Enhanced Integration: Project context awareness
+            val projectContext = try {
+                val activeProject = toolRegistry.getActiveProject()
+                if (activeProject != null) {
+                    "\n\nACTIVE PROJECT CONTEXT:\n" + 
+                    "• Project: ${activeProject.name} (${activeProject.slug})\n" +
+                    "• Description: ${activeProject.description}\n" +
+                    "• Type: ${activeProject.tags.joinToString(", ")}\n" +
+                    "• Files: ${toolRegistry.getProjectFileCount(activeProject.slug)}\n" +
+                    "• Python: ${activeProject.pythonVersion}\n" +
+                    "• Tools: ${activeProject.scopedTools.joinToString(", ")}"
+                } else ""
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to load project context")
+                ""
+            }
+            
+            // Additional learned context from other systems with safety
+            val systemContext = try {
+                val recentPatterns = reflectionManager.getRelevantPatterns(userMessage).take(3)
+                if (recentPatterns.isNotEmpty()) {
+                    "\n\nLEARNED PATTERNS:\n" + 
+                    recentPatterns.joinToString("\n") { "• ${it.pattern}: ${it.description}" }
+                } else ""
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to load learned patterns")
+                ""
+            }
+            
+            // Combine all contexts safely
+            baseContext + reflectionContext + executionContext + preferencesContext + projectContext + systemContext
+        } catch (e: Exception) { 
+            Timber.w(e, "Failed to build memory context, using fallback")
+            try {
+                // Fallback to basic memory context only
+                memoryManager.buildContext(userMessage)
+            } catch (e2: Exception) {
+                Timber.e(e2, "Even fallback context failed, using empty context")
+                ""
+            }
+        }
 
         val conversationRagContext = try {
             val results = conversationIndex.search(userMessage)
@@ -292,14 +391,28 @@ Tools available ({tool_count} total): {tool_catalog}
                 .ofPattern("EEEE, yyyy-MM-dd HH:mm:ss zzz"))
             val catalog = tools.joinToString(", ") { it.function.name }
                 .let { if (it.length > 1800) it.take(1800) + ", …" else it }
-            append(baseSystemPrompt
-                .replace("{current_time}", timeStr)
-                .replace("{config_version}", config.version)
-                .replace("{agent_name}",
-                    if (mode == Mode.COMPANION) personaManager.get().name
-                    else config.agentIdentity.name)
-                .replace("{tool_count}", tools.size.toString())
-                .replace("{tool_catalog}", catalog))
+            
+            // Task 4: Integrate personality configuration
+            val personalityPrompt = if (mode != Mode.COMPANION) {
+                agentPersonality.getSystemPrompt()
+            } else {
+                baseSystemPrompt
+                    .replace("{current_time}", timeStr)
+                    .replace("{config_version}", config.version)
+                    .replace("{agent_name}", personaManager.get().name)
+                    .replace("{tool_count}", tools.size.toString())
+                    .replace("{tool_catalog}", catalog)
+            }
+            
+            if (mode != Mode.COMPANION) {
+                append(personalityPrompt
+                    .replace("{current_time}", timeStr)
+                    .replace("{config_version}", config.version)
+                    .replace("{tool_count}", tools.size.toString())
+                    .replace("{tool_catalog}", catalog))
+            } else {
+                append(personalityPrompt)
+            }
             if (memoryContext.isNotBlank()) { appendLine(); appendLine(); append(memoryContext) }
             if (conversationRagContext.isNotBlank()) {
                 appendLine(); appendLine(); append(conversationRagContext)
@@ -315,6 +428,40 @@ Tools available ({tool_count} total): {tool_catalog}
 
         val messages = history.toMutableList()
         messages.add(ApiMessage(role = "user", content = userMessage))
+
+        // System Integration: Automatic preference learning
+        try {
+            // Learn interaction patterns from user messages
+            val messageWords = userMessage.lowercase().split(" ")
+            
+            // Detect project-related preferences
+            if (messageWords.any { it in listOf("create", "build", "make", "new") } && 
+                messageWords.any { it in listOf("project", "app", "website", "script") }) {
+                val projectType = messageWords.find { it in listOf("python", "react", "node", "web", "android", "ios") }
+                if (projectType != null) {
+                    userPreferencesManager.recordInteractionPattern("prefers_$projectType", 1)
+                }
+            }
+            
+            // Detect tool preferences
+            if (messageWords.contains("use") || messageWords.contains("with")) {
+                val tools = listOf("typescript", "javascript", "tailwind", "bootstrap", "pytest", "jest", "docker", "git")
+                tools.forEach { tool ->
+                    if (messageWords.contains(tool)) {
+                        userPreferencesManager.recordInteractionPattern("prefers_$tool", 1)
+                    }
+                }
+            }
+            
+            // Detect location preferences
+            val locationWords = messageWords.filter { it.contains("/") || it.startsWith("~") }
+            locationWords.forEach { location ->
+                userPreferencesManager.recordInteractionPattern("prefers_location_$location", 1)
+            }
+            
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to learn user preferences")
+        }
 
         try { memoryManager.logEvent("user", userMessage) }
         catch (e: Exception) { Timber.w(e) }
@@ -343,12 +490,38 @@ Tools available ({tool_count} total): {tool_catalog}
                 if (approval != "approve") {
                     emit(AgentEvent.Thinking("❌ Agent execution cancelled: cost estimate \$${"%.4f".format(estimate.estimatedUsd)} exceeds budget threshold \$${"%.4f".format(costThreshold)}."))
                     traceManager.finishTrace(traceId, false, "Budget rejected")
+                    
+                    // Task 4: Complete execution session
+                    executionHistoryManager.completeSession(executionSession.sessionId, "cancelled")
+                    
                     emit(AgentEvent.Done)
                     return@flow
                 }
                 emit(AgentEvent.Thinking("✅ Budget approved. Starting ReAct loop..."))
             }
         }
+        
+        // System Integration: Pre-execution health check
+        try {
+            val healthReport = doctorService.runChecks()
+            if (healthReport.hasFailures) {
+                emit(AgentEvent.Thinking("🩺 System health check detected issues. Attempting auto-fix..."))
+                healthReport.checks.filter { it.status == com.forge.os.domain.doctor.CheckStatus.FAIL && it.fixable }
+                    .forEach { check ->
+                        try {
+                            val fixed = doctorService.fix(check.id)
+                            if (fixed.status == com.forge.os.domain.doctor.CheckStatus.OK) {
+                                emit(AgentEvent.Thinking("✅ Fixed: ${check.title}"))
+                            }
+                        } catch (e: Exception) {
+                            Timber.w(e, "Auto-fix failed for ${check.id}")
+                        }
+                    }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Health check failed")
+        }
+        
         while (iterations < maxIterations) {
             iterations++
             val response = try {
@@ -357,19 +530,67 @@ Tools available ({tool_count} total): {tool_catalog}
                 Timber.e(ace, "API call failed")
                 emit(AgentEvent.Error(ace.error.userFacing(), ace.error))
                 traceManager.finishTrace(traceId, false, "API Call Failed: ${ace.message}")
+                
+                // Enhanced Learning & Reflection System Integration (API Failure)
                 if (config.intelligenceUpgrades.reflectionEnabled) {
                     val trace = traceManager.getTrace(traceId)
-                    if (trace != null) reflector.reflectAndLearn(trace)
+                    if (trace != null) {
+                        // Old system: AI-powered trace analysis
+                        reflector.reflectAndLearn(trace)
+                        
+                        // New system: Record failure for learning
+                        try {
+                            val currentSession = executionHistoryManager.getCurrentSession()
+                            if (currentSession != null) {
+                                reflectionManager.recordFailureAndRecovery(
+                                    taskId = currentSession.sessionId,
+                                    failureReason = "API Call Failed: ${ace.message}",
+                                    recoveryStrategy = "Check API configuration, try different provider, or retry with simpler request",
+                                    tags = listOf("api_failure", "provider_issue")
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Timber.w(e, "Failed to record failure in ReflectionManager")
+                        }
+                    }
                 }
+                
+                // Task 4: Complete execution session
+                executionHistoryManager.completeSession(executionSession.sessionId, "failed")
+                
                 emit(AgentEvent.Done); return@flow
             } catch (e: Exception) {
                 Timber.e(e, "Unexpected agent error")
                 emit(AgentEvent.Error(e.message ?: "Agent loop failed"))
                 traceManager.finishTrace(traceId, false, "Agent Loop Failed: ${e.message}")
+                
+                // Enhanced Learning & Reflection System Integration (Unexpected Error)
                 if (config.intelligenceUpgrades.reflectionEnabled) {
                     val trace = traceManager.getTrace(traceId)
-                    if (trace != null) reflector.reflectAndLearn(trace)
+                    if (trace != null) {
+                        // Old system: AI-powered trace analysis
+                        reflector.reflectAndLearn(trace)
+                        
+                        // New system: Record failure for learning
+                        try {
+                            val currentSession = executionHistoryManager.getCurrentSession()
+                            if (currentSession != null) {
+                                reflectionManager.recordFailureAndRecovery(
+                                    taskId = currentSession.sessionId,
+                                    failureReason = "Unexpected Agent Error: ${e.message}",
+                                    recoveryStrategy = "Check system health, restart agent, or simplify the task",
+                                    tags = listOf("agent_error", "system_issue")
+                                )
+                            }
+                        } catch (e2: Exception) {
+                            Timber.w(e2, "Failed to record failure in ReflectionManager")
+                        }
+                    }
                 }
+                
+                // Task 4: Complete execution session
+                executionHistoryManager.completeSession(executionSession.sessionId, "failed")
+                
                 emit(AgentEvent.Done); return@flow
             }
 
@@ -437,6 +658,30 @@ Tools available ({tool_count} total): {tool_catalog}
                             currentStepNestedTraces.addAll(newTraces)
 
                             emit(AgentEvent.ToolResult(result.toolName, result.output, result.isError))
+                            
+                            // System Integration: Smart haptic feedback
+                            try {
+                                if (result.isError) {
+                                    hapticFeedbackManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.ERROR)
+                                } else {
+                                    hapticFeedbackManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.SUCCESS)
+                                }
+                            } catch (e: Exception) {
+                                Timber.w(e, "Haptic feedback failed")
+                            }
+                            
+                            // Task 4: Record execution step for learning
+                            stepNumber++
+                            executionHistoryManager.addStep(
+                                sessionId = executionSession.sessionId,
+                                stepNumber = stepNumber,
+                                action = "Tool execution: $name",
+                                tool = name,
+                                args = toolCall.function.arguments,
+                                result = result.output,
+                                success = !result.isError
+                            )
+                            
                             messages.add(ApiMessage(
                                 role = "tool", content = result.output,
                                 toolCallId = toolCall.id, name = name
@@ -466,10 +711,66 @@ Tools available ({tool_count} total): {tool_catalog}
                 try { memoryManager.logEvent("assistant", finalText) } catch (_: Exception) {}
                 streamChunks(finalText) { partial -> emit(AgentEvent.Thinking(partial)) }
                 emit(AgentEvent.Response(finalText))
+                
+                // System Integration: Completion feedback
+                try {
+                    hapticFeedbackManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.SUCCESS)
+                } catch (e: Exception) {
+                    Timber.w(e, "Haptic feedback failed")
+                }
+                
+                // Enhanced Learning & Reflection System Integration
                 if (config.intelligenceUpgrades.reflectionEnabled) {
                     val trace = traceManager.getTrace(traceId)
-                    if (trace != null) reflector.reflectAndLearn(trace)
+                    if (trace != null) {
+                        // Old system: AI-powered trace analysis
+                        reflector.reflectAndLearn(trace)
+                        
+                        // New system: Structured execution recording and pattern learning
+                        try {
+                            val currentSession = executionHistoryManager.getCurrentSession()
+                            if (currentSession != null) {
+                                val steps = currentSession.steps.map { step ->
+                                    com.forge.os.domain.agent.ExecutionStep(
+                                        stepNumber = step.stepNumber,
+                                        action = step.action,
+                                        tool = step.tool,
+                                        args = step.args,
+                                        result = step.result,
+                                        duration = 0L,
+                                        success = step.success
+                                    )
+                                }
+                                
+                                reflectionManager.recordExecution(
+                                    taskId = currentSession.sessionId,
+                                    goal = currentSession.goal,
+                                    steps = steps,
+                                    success = true,
+                                    outcome = finalText,
+                                    tags = listOf("agent_execution", "success", "completed")
+                                )
+                                
+                                // Record successful patterns for future use
+                                if (steps.isNotEmpty()) {
+                                    val toolPattern = steps.map { it.tool }.distinct().joinToString(" -> ")
+                                    reflectionManager.recordPattern(
+                                        pattern = "Successful tool sequence: $toolPattern",
+                                        description = "This tool sequence successfully completed: ${currentSession.goal}",
+                                        applicableTo = listOf(currentSession.goal.split(" ").take(3).joinToString(" ")),
+                                        tags = listOf("success_pattern", "tool_sequence")
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Timber.w(e, "Failed to record execution in ReflectionManager")
+                        }
+                    }
                 }
+                
+                // Task 4: Complete execution session
+                executionHistoryManager.completeSession(executionSession.sessionId, "completed")
+                
                 emit(AgentEvent.Done); return@flow
             }
 
@@ -517,6 +818,30 @@ Tools available ({tool_count} total): {tool_catalog}
                 currentStepNestedTraces.addAll(newTraces)
 
                 emit(AgentEvent.ToolResult(result.toolName, result.output, result.isError))
+                
+                // System Integration: Smart haptic feedback
+                try {
+                    if (result.isError) {
+                        hapticFeedbackManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.ERROR)
+                    } else {
+                        hapticFeedbackManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.SUCCESS)
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e, "Haptic feedback failed")
+                }
+                
+                // Task 4: Record execution step for learning
+                stepNumber++
+                executionHistoryManager.addStep(
+                    sessionId = executionSession.sessionId,
+                    stepNumber = stepNumber,
+                    action = "Tool execution: $name",
+                    tool = name,
+                    args = toolCall.function.arguments,
+                    result = result.output,
+                    success = !result.isError
+                )
+                
                 messages.add(ApiMessage(
                     role = "tool", content = result.output,
                     toolCallId = toolCall.id, name = name
@@ -534,6 +859,10 @@ Tools available ({tool_count} total): {tool_catalog}
                     val trace = traceManager.getTrace(traceId)
                     if (trace != null) reflector.reflectAndLearn(trace)
                 }
+                
+                // Task 4: Complete execution session
+                executionHistoryManager.completeSession(executionSession.sessionId, "completed")
+                
                 emit(AgentEvent.Done); return@flow
             }
         }
@@ -548,6 +877,9 @@ Tools available ({tool_count} total): {tool_catalog}
                 reflector.reflectAndLearn(trace)
             }
         }
+
+        // Task 4: Complete execution session
+        executionHistoryManager.completeSession(executionSession.sessionId, "max_iterations")
 
         emit(AgentEvent.Done)
     } // end flow

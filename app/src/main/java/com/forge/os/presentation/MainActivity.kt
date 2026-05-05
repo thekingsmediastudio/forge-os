@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
                         startDestination = startDest
                     ) {
                         composable("onboarding") {
-                            OnboardingScreen(
+                            com.forge.os.presentation.screens.ModernOnboardingScreen(
                                 onDone = {
                                     navController.navigate("chat") {
                                         popUpTo("onboarding") { inclusive = true }
@@ -156,7 +156,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("chat") {
-                            ChatScreen(
+                            com.forge.os.presentation.screens.chat.ModernChatScreen(
                                 onNavigateToWorkspace = { navController.navigate("workspace") },
                                 onNavigateToSettings = { navController.navigate("settings") },
                                 onNavigateToStatus = { navController.navigate("status") },
@@ -167,7 +167,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("hub") {
-                            HubScreen(
+                            com.forge.os.presentation.screens.hub.ModernHubScreen(
                                 onBack = { navController.popBackStack() },
                                 onNavigate = { route -> navController.navigate(route) },
                             )
@@ -274,7 +274,9 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable("status") {
-                            com.forge.os.presentation.screens.pulse.PulseScreen(onBack = { navController.popBackStack() })
+                            com.forge.os.presentation.screens.ModernStatusScreen(
+                                onNavigateBack = { navController.popBackStack() }
+                            )
                         }
                         composable("diagnostics") {
                             DiagnosticsScreen(onNavigateBack = { navController.popBackStack() })

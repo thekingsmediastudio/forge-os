@@ -48,6 +48,9 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
+    <!-- Voice Input: Speech recognition and TTS -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- ── AutoPhone OS integration ─────────────────────────────────────────── -->
     <!-- Defined by Forge AutoPhone; dangerous so Forge OS can bind to IAutoPhoneService. -->
     <uses-permission android:name="com.forge.autophone.permission.CONTROL" />

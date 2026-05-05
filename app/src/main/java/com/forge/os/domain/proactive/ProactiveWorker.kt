@@ -41,10 +41,17 @@ class ProactiveWorker @AssistedInject constructor(
     private val prefetchCache: PrefetchCache,
     private val configRepository: ConfigRepository,
     private val toolRegistry: ToolRegistry,
-    private val backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager
+    private val backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
+    // Integration: Connect ProactiveWorker with new learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val executionHistoryManager: com.forge.os.domain.agent.ExecutionHistoryManager,
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        // Enhanced Reflection Integration: Proactive learning tick
+        runProactiveLearningTick()
+        
         // Predictive Prefetch Tick (Feature 9)
         runPrefetchTick()
 
@@ -145,6 +152,117 @@ class ProactiveWorker @AssistedInject constructor(
                 ),
             ),
         )
+    }
+
+    /**
+     * Enhanced Reflection Integration: Proactive learning from background analysis.
+     * This integrates the existing ProactiveWorker reflection system with the new ReflectionManager.
+     */
+    private suspend fun runProactiveLearningTick() {
+        try {
+            Timber.d("ProactiveWorker: running proactive learning tick...")
+            
+            // 1. Analyze recent execution patterns and store them in ReflectionManager
+            val recentSessions = executionHistoryManager.getRecentSessions(limit = 5)
+            recentSessions.forEach { session ->
+                if (session.status == "completed" && session.steps.isNotEmpty()) {
+                    // Convert to ReflectionManager format and store successful patterns
+                    val steps = session.steps.map { step ->
+                        com.forge.os.domain.agent.ExecutionStep(
+                            stepNumber = step.stepNumber,
+                            action = step.action,
+                            tool = step.tool,
+                            args = step.args,
+                            result = step.result,
+                            duration = 0L,
+                            success = step.success
+                        )
+                    }
+                    
+                    // Record successful execution patterns
+                    reflectionManager.recordExecution(
+                        taskId = "proactive_${session.sessionId}",
+                        goal = session.goal,
+                        steps = steps,
+                        success = true,
+                        outcome = "Background analysis of successful pattern",
+                        tags = listOf("proactive_analysis", "background_learning", "pattern_discovery")
+                    )
+                    
+                    // Extract and record tool patterns
+                    val toolSequence = steps.filter { it.success }.map { it.tool }.distinct()
+                    if (toolSequence.size >= 2) {
+                        val pattern = toolSequence.joinToString(" -> ")
+                        reflectionManager.recordPattern(
+                            pattern = "Background discovered pattern: $pattern",
+                            description = "Proactive analysis found this successful tool sequence for: ${session.goal}",
+                            applicableTo = listOf(session.goal.split(" ").take(2).joinToString(" ")),
+                            tags = listOf("proactive_pattern", "tool_sequence", "background_discovery")
+                        )
+                    }
+                }
+            }
+            
+            // 2. Learn user preferences from browser history patterns
+            val recentBrowsing = history.list(limit = 10)
+            val domainPatterns = recentBrowsing.groupBy { it.url.substringAfter("://").substringBefore("/") }
+                .filter { it.value.size >= 2 }
+            
+            domainPatterns.forEach { (domain, visits) ->
+                userPreferencesManager.recordInteractionPattern("frequently_visits_$domain", visits.size)
+            }
+            
+            // 3. Analyze skill synthesis patterns for learning
+            val synthesizedSkill = synthesizer.findAndSynthesize()
+            if (synthesizedSkill != null) {
+                // Record the pattern that led to skill synthesis
+                reflectionManager.recordPattern(
+                    pattern = "Skill synthesis opportunity: ${synthesizedSkill.name}",
+                    description = "Background analysis identified reusable skill: ${synthesizedSkill.description}",
+                    applicableTo = listOf("python", "automation", "skill_creation"),
+                    tags = listOf("skill_synthesis", "automation_opportunity", "proactive_discovery")
+                )
+                
+                Timber.i("ProactiveWorker: discovered synthesizable skill → ${synthesizedSkill.name}")
+            }
+            
+            // 4. Cross-reference patterns with prediction accuracy
+            val prediction = patternAnalyzer.predictNextTool()
+            if (prediction != null) {
+                // Store prediction for later accuracy analysis
+                reflectionManager.recordPattern(
+                    pattern = "Predicted tool: ${prediction.toolName}",
+                    description = "Pattern analyzer predicted this tool based on recent activity",
+                    applicableTo = listOf("prediction", "pattern_analysis"),
+                    tags = listOf("tool_prediction", "pattern_analysis", "proactive_prediction")
+                )
+            }
+            
+            backgroundLog.addLog(
+                com.forge.os.domain.debug.BackgroundTaskLog(
+                    id = "proactive_learning_${System.currentTimeMillis()}",
+                    source = com.forge.os.domain.debug.TaskSource.PROACTIVE,
+                    label = "Proactive Learning Analysis",
+                    success = true,
+                    output = "Analyzed ${recentSessions.size} sessions, ${domainPatterns.size} browsing patterns, skill synthesis, and predictions",
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+            
+        } catch (e: Exception) {
+            Timber.e(e, "ProactiveWorker: proactive learning tick failed")
+            backgroundLog.addLog(
+                com.forge.os.domain.debug.BackgroundTaskLog(
+                    id = "proactive_learning_err_${System.currentTimeMillis()}",
+                    source = com.forge.os.domain.debug.TaskSource.PROACTIVE,
+                    label = "Proactive Learning Error",
+                    success = false,
+                    output = e.message ?: "Unknown error",
+                    error = e.message,
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
     }
 
     private suspend fun runPrefetchTick() {

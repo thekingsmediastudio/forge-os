@@ -296,7 +296,12 @@ fun SettingsScreen(
                     loading = backupLoading,
                     onBackup = {
                         viewModel.performBackup { file ->
-                            val uri = com.forge.os.data.system.BackupManager(context).getBackupUri(file)
+                            // Use androidx.core.content.FileProvider to get a shareable URI
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.provider",
+                                file
+                            )
                             val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                                 type = "application/zip"
                                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
@@ -319,6 +324,18 @@ fun SettingsScreen(
             }
 
             item { CapabilityPadlocksCard() }
+
+            item { Spacer(Modifier.height(8.dp)) }
+
+            // ── Wishlist Features ──────────────────────────────────────────
+            item {
+                Spacer(Modifier.height(8.dp))
+                Text("WISHLIST FEATURES", color = TextMuted, fontSize = 11.sp,
+                     fontFamily = FontFamily.Monospace, letterSpacing = 1.sp)
+            }
+            item {
+                WishlistFeaturesCard()
+            }
 
             item { Spacer(Modifier.height(8.dp)) }
 
@@ -1414,5 +1431,165 @@ private fun IntelToggleRow(
                 uncheckedTrackColor = Color(0xFF333333)
             )
         )
+    }
+}
+
+
+// ── Wishlist Features Card ────────────────────────────────────────────────────
+@Composable
+private fun WishlistFeaturesCard() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFF0f0f0f),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                "NEW FEATURES",
+                color = Color(0xFFfb923c),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 1.sp
+            )
+            Spacer(Modifier.height(10.dp))
+            
+            // Voice Input
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🎤", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Voice Input",
+                        color = Color(0xFFe5e5e5),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        "Hands-free control via speech",
+                        color = Color(0xFF737373),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Text(
+                    "✓",
+                    color = Color(0xFF22c55e),
+                    fontSize = 14.sp
+                )
+            }
+            
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Color(0xFF1f1f1f))
+            Spacer(Modifier.height(12.dp))
+            
+            // Multi-Device Sync
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🔄", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Multi-Device Sync",
+                        color = Color(0xFFe5e5e5),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        "Sync projects & memory across devices",
+                        color = Color(0xFF737373),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Text(
+                    "✓",
+                    color = Color(0xFF22c55e),
+                    fontSize = 14.sp
+                )
+            }
+            
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Color(0xFF1f1f1f))
+            Spacer(Modifier.height(12.dp))
+            
+            // AI Code Review
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("✨", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "AI Code Review",
+                        color = Color(0xFFe5e5e5),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        "Automated code quality & security checks",
+                        color = Color(0xFF737373),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Text(
+                    "✓",
+                    color = Color(0xFF22c55e),
+                    fontSize = 14.sp
+                )
+            }
+            
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = Color(0xFF1f1f1f))
+            Spacer(Modifier.height(12.dp))
+            
+            // Project Health Dashboard
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🏥", fontSize = 16.sp)
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Project Health Dashboard",
+                        color = Color(0xFFe5e5e5),
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        "Monitor tests, builds, & code quality",
+                        color = Color(0xFF737373),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Text(
+                    "✓",
+                    color = Color(0xFF22c55e),
+                    fontSize = 14.sp
+                )
+            }
+            
+            Spacer(Modifier.height(12.dp))
+            
+            Text(
+                "All features are accessible via agent tools. Try:\n" +
+                "• voice_start_listening\n" +
+                "• sync_export / sync_import\n" +
+                "• code_review_project\n" +
+                "• project_health",
+                color = Color(0xFF525252),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                lineHeight = 14.sp
+            )
+        }
     }
 }

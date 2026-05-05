@@ -28,6 +28,12 @@ data class Project(
     val scopedAgentId: String? = null,
     val scopedTools: List<String> = emptyList(),     // empty = all enabled tools visible
     val scopedMemoryTags: List<String> = emptyList(), // empty = full memory
+    // Phase 1 additions for AI interaction
+    val pythonVersion: String = "3.11",
+    val mainScript: String? = null,  // e.g., "main.py"
+    val requirements: List<String> = emptyList(),  // e.g., ["requests", "numpy"]
+    val tags: List<String> = emptyList(),  // e.g., ["web", "api"]
+    val readme: String? = null,  // e.g., "README.md"
 )
 
 @Singleton

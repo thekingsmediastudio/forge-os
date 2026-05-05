@@ -40,6 +40,9 @@ import javax.inject.Singleton
 @Singleton
 class ForgeBridgeManager @Inject constructor(
     @ApplicationContext private val context: Context,
+    // Enhanced Integration: Connect with other systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val doctorService: com.forge.os.domain.doctor.DoctorService,
 ) {
     companion object {
         const val ACTION_TOOL_PROVIDER = "com.forge.os.bridge.TOOL_PROVIDER"
@@ -72,6 +75,19 @@ class ForgeBridgeManager @Inject constructor(
     fun refresh() {
         val found = discoverBridgeApps()
         Timber.i("ForgeBridgeManager: discovered ${found.size} bridge app(s): ${found.joinToString()}")
+        
+        // Enhanced Integration: Learn bridge discovery patterns
+        try {
+            reflectionManager.recordPattern(
+                pattern = "Bridge discovery: ${found.size} apps found",
+                description = "Discovered bridge apps: ${found.joinToString()}",
+                applicableTo = listOf("bridge_discovery", "system_integration"),
+                tags = listOf("bridge_manager", "discovery", "integration")
+            )
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record bridge discovery patterns")
+        }
+        
         found.forEach { pkg ->
             if (!_connections.value.containsKey(pkg)) {
                 bindBridge(pkg)
@@ -86,10 +102,58 @@ class ForgeBridgeManager @Inject constructor(
     fun dispatch(toolName: String, argsJson: String): String? {
         val pkg = toolIndex[toolName] ?: return null
         val svc = services[pkg] ?: return """{"ok":false,"error":"Bridge $pkg not connected"}"""
+        
+        // Enhanced Integration: Pre-dispatch health check
+        try {
+            val healthReport = doctorService.runChecks()
+            if (healthReport.hasFailures) {
+                Timber.w("Bridge dispatch with health issues: ${healthReport.checks.filter { it.status == com.forge.os.domain.doctor.CheckStatus.FAIL }.map { it.id }}")
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Health check failed during bridge dispatch")
+        }
+        
         return try {
-            svc.dispatch(toolName, argsJson)
+            val result = svc.dispatch(toolName, argsJson)
+            
+            // Enhanced Integration: Learn from bridge tool usage
+            try {
+                val isError = result.contains("\"ok\":false") || result.contains("error")
+                reflectionManager.recordPattern(
+                    pattern = "Bridge tool execution: $toolName via $pkg",
+                    description = "Bridge $pkg executed $toolName with result: ${if (isError) "error" else "success"}",
+                    applicableTo = listOf("bridge_tool_usage", toolName, pkg),
+                    tags = listOf("bridge_execution", "tool_usage", toolName, pkg, if (isError) "error" else "success")
+                )
+                
+                if (isError) {
+                    reflectionManager.recordFailureAndRecovery(
+                        taskId = "bridge_${System.currentTimeMillis()}",
+                        failureReason = "Bridge tool execution failed: $result",
+                        recoveryStrategy = "Check bridge connection, validate tool parameters, or try alternative bridge",
+                        tags = listOf("bridge_failure", toolName, pkg)
+                    )
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record bridge execution patterns")
+            }
+            
+            result
         } catch (e: RemoteException) {
             Timber.e(e, "Bridge dispatch failed: $pkg.$toolName")
+            
+            // Enhanced Integration: Record bridge failures
+            try {
+                reflectionManager.recordFailureAndRecovery(
+                    taskId = "bridge_${System.currentTimeMillis()}",
+                    failureReason = "Bridge RPC error: ${e.message}",
+                    recoveryStrategy = "Check bridge connection, restart bridge app, or use alternative tool",
+                    tags = listOf("bridge_rpc_failure", toolName, pkg)
+                )
+            } catch (e2: Exception) {
+                Timber.w(e2, "Failed to record bridge failure patterns")
+            }
+            
             """{"ok":false,"error":"Bridge RPC error: ${e.message}"}"""
         }
     }

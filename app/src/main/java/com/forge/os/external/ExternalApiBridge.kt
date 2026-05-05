@@ -31,6 +31,10 @@ class ExternalApiBridge @Inject constructor(
     private val registry: ExternalCallerRegistry,
     private val audit: ExternalAuditLog,
     private val configRepository: ConfigRepository,
+    // Enhanced Integration: Connect with other systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val securityPolicy: com.forge.os.data.sandbox.SecurityPolicy,
+    private val doctorService: com.forge.os.domain.doctor.DoctorService,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -59,6 +63,35 @@ class ExternalApiBridge @Inject constructor(
                 target = target, outcome = "deny", message = "status=${caller.status}"))
             return Decision.Deny(403, "Not granted (status=${caller.status})")
         }
+        
+        // Enhanced Integration: Security policy validation
+        try {
+            // Check if the operation is allowed by security policy
+            val isAllowed = when (op) {
+                "listTools", "getMemory" -> securityPolicy.isReadOperationAllowed(caller.packageName)
+                "invokeTool", "invokeToolAsync", "putMemory", "runSkill" -> securityPolicy.isWriteOperationAllowed(caller.packageName)
+                "askAgent" -> securityPolicy.isAgentOperationAllowed(caller.packageName)
+                else -> false
+            }
+            
+            if (!isAllowed) {
+                audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = op,
+                    target = target, outcome = "deny", message = "security_policy_blocked"))
+                return Decision.Deny(403, "Operation blocked by security policy")
+            }
+            
+            // Record security validation patterns
+            reflectionManager.recordPattern(
+                pattern = "External API access: $op by ${caller.packageName}",
+                description = "External app ${caller.packageName} accessed $op operation",
+                applicableTo = listOf("external_api", "security", caller.packageName),
+                tags = listOf("external_access", "security_validation", op, caller.packageName)
+            )
+            
+        } catch (e: Exception) {
+            Timber.w(e, "Security policy check failed for ${caller.packageName}")
+        }
+        
         // Capability check
         val caps = caller.capabilities
         val ok = when (op) {
@@ -130,6 +163,16 @@ class ExternalApiBridge @Inject constructor(
     fun invokeToolSync(caller: ExternalCaller, toolName: String, jsonArgs: String): String {
         val started = System.currentTimeMillis()
         return try {
+            // Enhanced Integration: Pre-execution health check
+            try {
+                val healthReport = doctorService.runChecks()
+                if (healthReport.hasFailures) {
+                    Timber.w("External API tool execution with health issues: ${healthReport.checks.filter { it.status == com.forge.os.domain.doctor.CheckStatus.FAIL }.map { it.id }}")
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Health check failed during external API call")
+            }
+            
             val result = runBlocking {
                 toolRegistry.dispatch(toolName, jsonArgs.ifBlank { "{}" }, "ext_${started}")
             }
@@ -138,6 +181,28 @@ class ExternalApiBridge @Inject constructor(
                 put("output", result.output)
                 if (result.isError) put("error", result.output)
             }.toString()
+            
+            // Enhanced Integration: Learn from external API usage
+            try {
+                reflectionManager.recordPattern(
+                    pattern = "External tool execution: $toolName by ${caller.packageName}",
+                    description = "External app ${caller.packageName} executed $toolName with result: ${if (result.isError) "error" else "success"}",
+                    applicableTo = listOf("external_tool_usage", toolName, caller.packageName),
+                    tags = listOf("external_api", "tool_execution", toolName, caller.packageName, if (result.isError) "error" else "success")
+                )
+                
+                if (result.isError) {
+                    reflectionManager.recordFailureAndRecovery(
+                        taskId = "ext_${started}",
+                        failureReason = "External tool execution failed: ${result.output}",
+                        recoveryStrategy = "Check tool parameters, validate external app permissions, or try alternative approach",
+                        tags = listOf("external_api_failure", toolName, caller.packageName)
+                    )
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record external API patterns")
+            }
+            
             audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "invokeTool",
                 target = toolName, outcome = if (result.isError) "error" else "ok",
                 durationMs = System.currentTimeMillis() - started, outputBytes = payload.length))

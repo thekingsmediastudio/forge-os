@@ -414,6 +414,13 @@ private fun ChatScreenContent(
                 shape = RoundedCornerShape(8.dp)
             )
             Spacer(Modifier.width(8.dp))
+            // Voice input button
+            com.forge.os.presentation.screens.voice.VoiceInputButton(
+                onVoiceInput = { recognizedText ->
+                    inputText = recognizedText
+                }
+            )
+            Spacer(Modifier.width(8.dp))
             IconButton(
                 onClick = {
                     if (inputText.isNotBlank() && !isLoading) {

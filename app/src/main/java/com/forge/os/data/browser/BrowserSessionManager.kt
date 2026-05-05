@@ -35,7 +35,10 @@ data class JsCallbackResult(val callbackId: String, val result: String)
 
 @Singleton
 class BrowserSessionManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    // Enhanced Integration: Connect with learning systems
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) {
     private val _currentUrl = MutableStateFlow("about:blank")
     val currentUrl: StateFlow<String> = _currentUrl
@@ -72,10 +75,56 @@ class BrowserSessionManager @Inject constructor(
                        else "https://$url"
         _commands.emit(NavigationCommand.OpenUrl(resolved))
         Timber.d("Browser navigate → $resolved")
+        
+        // Enhanced Integration: Learn browsing patterns
+        try {
+            val domain = java.net.URI(resolved).host?.lowercase() ?: ""
+            if (domain.isNotBlank()) {
+                userPreferencesManager.recordInteractionPattern("visits_domain_$domain", 1)
+                
+                // Learn browsing time patterns
+                val hour = java.time.LocalDateTime.now().hour
+                userPreferencesManager.recordInteractionPattern("browses_hour_$hour", 1)
+                
+                // Record navigation pattern
+                reflectionManager.recordPattern(
+                    pattern = "Browser navigation to $domain",
+                    description = "User navigated to $domain via browser automation",
+                    applicableTo = listOf("browser", "navigation", domain),
+                    tags = listOf("browser_usage", "navigation_pattern", "web_interaction")
+                )
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to learn browsing patterns")
+        }
     }
 
     suspend fun evalJs(script: String, callbackId: String = "cb_${System.currentTimeMillis()}") {
         _commands.emit(NavigationCommand.EvalJs(script, callbackId))
+        
+        // Enhanced Integration: Learn JavaScript usage patterns
+        try {
+            userPreferencesManager.recordInteractionPattern("uses_browser_javascript", 1)
+            
+            // Learn common JS patterns
+            val scriptType = when {
+                script.contains("click") -> "dom_interaction"
+                script.contains("querySelector") -> "element_selection"
+                script.contains("fetch") || script.contains("XMLHttpRequest") -> "network_request"
+                script.contains("localStorage") || script.contains("sessionStorage") -> "storage_access"
+                else -> "custom_script"
+            }
+            userPreferencesManager.recordInteractionPattern("js_pattern_$scriptType", 1)
+            
+            reflectionManager.recordPattern(
+                pattern = "JavaScript execution: $scriptType",
+                description = "Executed JavaScript for $scriptType in browser automation",
+                applicableTo = listOf("browser", "javascript", scriptType),
+                tags = listOf("browser_automation", "javascript_usage", "web_interaction")
+            )
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to learn JavaScript patterns")
+        }
     }
 
     suspend fun getHtml() { _commands.emit(NavigationCommand.GetHtml) }

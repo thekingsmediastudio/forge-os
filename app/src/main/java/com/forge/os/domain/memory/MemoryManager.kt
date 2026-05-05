@@ -14,6 +14,9 @@ class MemoryManager @Inject constructor(
     val skill: SkillMemory,
     val semantic: SemanticFactIndex,
     val reranker: ContextReranker,
+    // Enhanced Integration: Connect with learning systems
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val index = MemoryIndex()
     private var indexBuilt = false
@@ -30,6 +33,25 @@ class MemoryManager @Inject constructor(
         indexBuilt = false
         semantic.delete(key)
         Timber.d("MemoryManager: stored fact '$key'")
+        
+        // Enhanced Integration: Learn memory storage patterns
+        try {
+            userPreferencesManager.recordInteractionPattern("stores_memories", 1)
+            
+            // Learn tag usage patterns
+            tags.forEach { tag ->
+                userPreferencesManager.recordInteractionPattern("uses_tag_$tag", 1)
+            }
+            
+            reflectionManager.recordPattern(
+                pattern = "Memory storage: $key",
+                description = "Stored memory fact with ${tags.size} tags: ${content.take(50)}",
+                applicableTo = listOf("memory_management", "knowledge_storage") + tags,
+                tags = listOf("memory_storage", "knowledge_management", "fact_storage") + tags
+            )
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record memory storage patterns")
+        }
     }
 
     fun forgetFact(key: String): Boolean {
@@ -56,6 +78,19 @@ class MemoryManager @Inject constructor(
     // ─── Recall API ──────────────────────────────────────────────────────────
 
     suspend fun recall(query: String, k: Int = RECALL_HITS): List<MemoryHit> {
+        // Enhanced Integration: Learn memory recall patterns
+        try {
+            userPreferencesManager.recordInteractionPattern("recalls_memories", 1)
+            
+            // Learn query patterns
+            val queryWords = query.lowercase().split(" ").filter { it.length > 2 }
+            queryWords.take(3).forEach { word ->
+                userPreferencesManager.recordInteractionPattern("searches_for_$word", 1)
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record memory recall patterns")
+        }
+        
         if (!indexBuilt) {
             index.build()
             indexBuilt = true
@@ -90,7 +125,30 @@ class MemoryManager @Inject constructor(
 
         // 4. Merge and Rerank
         val merged = reranker.mergeHits(keywordHits, semanticHits, importanceMap)
-        return reranker.rerank(query, merged, k)
+        val results = reranker.rerank(query, merged, k)
+        
+        // Enhanced Integration: Learn memory recall success patterns
+        try {
+            if (results.isNotEmpty()) {
+                reflectionManager.recordPattern(
+                    pattern = "Successful memory recall",
+                    description = "Found ${results.size} relevant memories for query: ${query.take(50)}",
+                    applicableTo = listOf("memory_recall", "knowledge_retrieval", "search_success"),
+                    tags = listOf("memory_success", "recall_success", "knowledge_access")
+                )
+            } else {
+                reflectionManager.recordPattern(
+                    pattern = "Empty memory recall",
+                    description = "No memories found for query: ${query.take(50)}",
+                    applicableTo = listOf("memory_recall", "knowledge_gaps", "search_failure"),
+                    tags = listOf("memory_gap", "recall_failure", "knowledge_missing")
+                )
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record memory recall success patterns")
+        }
+        
+        return results
     }
 
     fun recallByKey(key: String): FactEntry? = longterm.recall(key)

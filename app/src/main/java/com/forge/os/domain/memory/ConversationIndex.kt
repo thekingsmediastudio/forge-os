@@ -26,6 +26,9 @@ data class ConversationEntry(
 class ConversationIndex @Inject constructor(
     @ApplicationContext private val context: Context,
     private val apiManager: AiApiManager,
+    // Enhanced Integration: Connect with other systems
+    private val memoryManager: MemoryManager,
+    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) {
     @Serializable
     private data class IndexSlot(
@@ -89,6 +92,72 @@ class ConversationIndex @Inject constructor(
         }
         
         persist()
+        
+        // Enhanced Integration: Cross-system learning from conversation indexing
+        try {
+            // Store important conversations in long-term memory
+            if (entry.text.length > 100 && (entry.text.contains("remember") || entry.text.contains("important"))) {
+                memoryManager.store(
+                    key = "conversation_${entry.channel}_${System.currentTimeMillis()}",
+                    content = "${entry.sender}: ${entry.text}",
+                    tags = listOf("conversation", entry.channel, entry.sender, "indexed")
+                )
+            }
+            
+            // Learn conversation patterns
+            reflectionManager.recordPattern(
+                pattern = "Conversation indexed: ${entry.channel}",
+                description = "Indexed ${entry.sender} message in ${entry.channel}: ${entry.text.take(50)}",
+                applicableTo = listOf("conversation_indexing", entry.channel, "communication"),
+                tags = listOf("conversation_index", "communication_pattern", entry.channel, entry.sender)
+            )
+            
+            // Advanced conversation analysis and learning
+            val messageWords = entry.text.lowercase().split(" ")
+            
+            // Learn topic patterns
+            val topics = listOf("project", "code", "bug", "feature", "deploy", "test", "api", "database", "ui", "performance")
+            topics.forEach { topic ->
+                if (messageWords.contains(topic)) {
+                    reflectionManager.recordPattern(
+                        pattern = "Topic discussion: $topic in ${entry.channel}",
+                        description = "${entry.sender} discussed $topic: ${entry.text.take(100)}",
+                        applicableTo = listOf("topic_$topic", entry.channel, "discussion"),
+                        tags = listOf("topic_analysis", topic, entry.channel, entry.sender)
+                    )
+                }
+            }
+            
+            // Learn communication style patterns
+            if (entry.sender == "user") {
+                val messageLength = when {
+                    entry.text.length < 50 -> "short"
+                    entry.text.length < 200 -> "medium"
+                    else -> "long"
+                }
+                
+                reflectionManager.recordPattern(
+                    pattern = "User communication style: $messageLength messages in ${entry.channel}",
+                    description = "User prefers $messageLength messages in ${entry.channel}",
+                    applicableTo = listOf("communication_style", entry.channel, "user_preference"),
+                    tags = listOf("communication_analysis", "user_style", messageLength, entry.channel)
+                )
+            }
+            
+            // Learn question patterns
+            if (entry.text.contains("?") || entry.text.lowercase().startsWith("how") || 
+                entry.text.lowercase().startsWith("what") || entry.text.lowercase().startsWith("why")) {
+                reflectionManager.recordPattern(
+                    pattern = "Question asked in ${entry.channel}",
+                    description = "${entry.sender} asked: ${entry.text.take(100)}",
+                    applicableTo = listOf("questions", entry.channel, "help_seeking"),
+                    tags = listOf("question_pattern", entry.channel, entry.sender)
+                )
+            }
+            
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to record conversation indexing patterns")
+        }
     }
 
     suspend fun search(query: String, channels: Set<String>? = null, k: Int = 5): List<ConversationEntry> = mutex.withLock {
