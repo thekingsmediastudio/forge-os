@@ -109,7 +109,7 @@ object AppModule {
         @ApplicationContext ctx: Context,
         r: ConfigRepository,
         a: AlertManager,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager
     ) = HeartbeatMonitor(ctx, r, a, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun provideConfigMutationEngine(r: ConfigRepository) = ConfigMutationEngine(r)
@@ -163,7 +163,7 @@ object AppModule {
         aiApiManager: dagger.Lazy<AiApiManager>,
         reActAgent: dagger.Lazy<ReActAgent>,
         backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
     ) = CronManager(repo, sm, cr, mm, nh, aiApiManager, reActAgent, backgroundLog, reflectionManager, userPreferencesManager)
 
@@ -172,7 +172,7 @@ object AppModule {
         PluginRepository(ctx)
     @Provides @Singleton fun providePluginValidator(
         cr: ConfigRepository,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
     ) = PluginValidator(cr, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun providePluginExporter(
@@ -187,7 +187,7 @@ object AppModule {
         mm: MemoryManager,
         exporter: com.forge.os.domain.plugins.PluginExporter,
         headlessBrowser: com.forge.os.data.web.HeadlessBrowser,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
     ) = PluginManager(repo, v, sm, cr, mm, exporter, headlessBrowser, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun provideBuiltInPlugins(pm: PluginManager) = BuiltInPlugins(pm)
@@ -197,7 +197,7 @@ object AppModule {
         SubAgentRepository(ctx)
     @Provides @Singleton fun provideAgentNotifier(
         @ApplicationContext ctx: Context,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
     ) = AgentNotifier(ctx, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun provideDelegationManager(
@@ -209,7 +209,7 @@ object AppModule {
         aiApiManager: AiApiManager,
         ghostWorkspaceProvider: com.forge.os.domain.workspace.GhostWorkspaceProvider,
         backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         executionHistoryManager: com.forge.os.domain.agent.ExecutionHistoryManager,
     ) = DelegationManager(repo, cr, mm, agentProvider, notifier, aiApiManager, ghostWorkspaceProvider, backgroundLog, reflectionManager, executionHistoryManager)
 
@@ -225,7 +225,7 @@ object AppModule {
     @Provides @Singleton fun provideSnapshotManager(
         @ApplicationContext ctx: Context,
         workspaceLock: com.forge.os.domain.workspace.WorkspaceLock,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         backupManager: com.forge.os.domain.backup.BackupManager,
     ) = SnapshotManager(ctx, workspaceLock, reflectionManager, backupManager)
     @Provides @Singleton fun provideMcpServerRepository(@ApplicationContext ctx: Context) =
@@ -249,7 +249,7 @@ object AppModule {
         traceManager: com.forge.os.domain.debug.TraceManager,
         reflector: com.forge.os.domain.agent.Reflector,
         userInputBroker: com.forge.os.domain.agent.UserInputBroker,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         executionHistoryManager: com.forge.os.domain.agent.ExecutionHistoryManager,
         agentPersonality: com.forge.os.domain.agent.AgentPersonality,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
@@ -318,7 +318,7 @@ object AppModule {
         registry: ExternalCallerRegistry,
         audit: ExternalAuditLog,
         cr: ConfigRepository,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         securityPolicy: com.forge.os.data.sandbox.SecurityPolicy,
         doctorService: com.forge.os.domain.doctor.DoctorService,
     ) = ExternalApiBridge(tr, pm, mm, agentProvider, registry, audit, cr, reflectionManager, securityPolicy, doctorService)

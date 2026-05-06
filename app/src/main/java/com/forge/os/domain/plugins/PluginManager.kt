@@ -27,8 +27,8 @@ class PluginManager @Inject constructor(
     private val memoryManager: MemoryManager,
     private val exporter: PluginExporter,
     private val headlessBrowser: com.forge.os.data.web.HeadlessBrowser,
-    // Enhanced Integration: Connect with learning systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -284,14 +284,14 @@ class PluginManager @Inject constructor(
                     userPreferencesManager.recordInteractionPattern("uses_tool_$toolName", 1)
                     
                     if (executionResult.success) {
-                        reflectionManager.recordPattern(
+                        reflectionManager.get().recordPattern(
                             pattern = "Successful plugin execution: $toolName",
                             description = "Plugin '$pluginId' tool '$toolName' executed successfully in ${executionResult.durationMs}ms",
                             applicableTo = listOf("plugin_usage", toolName, pluginId),
                             tags = listOf("plugin_success", "tool_execution", "automation")
                         )
                     } else {
-                        reflectionManager.recordFailureAndRecovery(
+                        reflectionManager.get().recordFailureAndRecovery(
                             taskId = "plugin_${pluginId}_${toolName}_${System.currentTimeMillis()}",
                             failureReason = "Plugin execution failed: ${executionResult.error}",
                             recoveryStrategy = "Check plugin configuration, update plugin, or use alternative tool",
@@ -313,7 +313,7 @@ class PluginManager @Inject constructor(
                 
                 // Enhanced Integration: Record sandbox failures
                 try {
-                    reflectionManager.recordFailureAndRecovery(
+                    reflectionManager.get().recordFailureAndRecovery(
                         taskId = "plugin_sandbox_${pluginId}_${System.currentTimeMillis()}",
                         failureReason = "Plugin sandbox error: ${e.message}",
                         recoveryStrategy = "Check sandbox configuration, restart sandbox, or use alternative execution method",

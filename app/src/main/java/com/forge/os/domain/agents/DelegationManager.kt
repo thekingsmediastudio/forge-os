@@ -43,8 +43,8 @@ class DelegationManager @Inject constructor(
     private val aiApiManager: com.forge.os.data.api.AiApiManager,
     private val ghostWorkspaceProvider: com.forge.os.domain.workspace.GhostWorkspaceProvider,
     private val backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
-    // Enhanced Integration: Connect with learning systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val executionHistoryManager: com.forge.os.domain.agent.ExecutionHistoryManager,
 ) {
     private val supervisorScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -299,7 +299,7 @@ class DelegationManager @Inject constructor(
         
         // Enhanced Integration: Record delegation patterns for learning
         try {
-            reflectionManager.recordPattern(
+            reflectionManager.get().recordPattern(
                 pattern = "Sub-agent delegation: ${record.goal.take(50)}",
                 description = "Delegated task '${record.goal}' to sub-agent at depth ${record.depth}",
                 applicableTo = listOf("delegation", "sub_agent", "task_breakdown"),
@@ -346,7 +346,7 @@ class DelegationManager @Inject constructor(
                 )
             )
             
-            reflectionManager.recordExecution(
+            reflectionManager.get().recordExecution(
                 taskId = "delegation_${record.id}",
                 goal = "Delegate task: ${record.goal}",
                 steps = steps,
@@ -357,14 +357,14 @@ class DelegationManager @Inject constructor(
             
             // Record delegation success/failure patterns
             if (record.status == SubAgentStatus.COMPLETED) {
-                reflectionManager.recordPattern(
+                reflectionManager.get().recordPattern(
                     pattern = "Successful delegation pattern",
                     description = "Successfully delegated '${record.goal.take(50)}' with ${record.toolCallCount} tool calls in ${record.durationMs}ms",
                     applicableTo = listOf("delegation", "task_breakdown", "sub_agent_success"),
                     tags = listOf("delegation_success", "efficiency_pattern", "task_management")
                 )
             } else if (record.status == SubAgentStatus.FAILED) {
-                reflectionManager.recordFailureAndRecovery(
+                reflectionManager.get().recordFailureAndRecovery(
                     taskId = "delegation_${record.id}",
                     failureReason = "Sub-agent delegation failed: ${record.error}",
                     recoveryStrategy = "Consider breaking down the task further, providing more context, or handling the task directly",

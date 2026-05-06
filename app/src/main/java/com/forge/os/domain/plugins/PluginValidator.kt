@@ -30,8 +30,8 @@ sealed class ValidationResult {
 @Singleton
 class PluginValidator @Inject constructor(
     private val configRepository: ConfigRepository,
-    // Enhanced Integration: Connect with learning systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -161,7 +161,7 @@ class PluginValidator @Inject constructor(
                 
                 when (result) {
                     is ValidationResult.Ok -> {
-                        reflectionManager.recordPattern(
+                        reflectionManager.get().recordPattern(
                             pattern = "Plugin validation success",
                             description = "Successfully validated plugin '${manifest.id}' v${manifest.version} with ${manifest.tools.size} tools in ${duration}ms",
                             applicableTo = listOf("plugin_validation", "security", manifest.source),
@@ -169,7 +169,7 @@ class PluginValidator @Inject constructor(
                         )
                     }
                     is ValidationResult.Warn -> {
-                        reflectionManager.recordPattern(
+                        reflectionManager.get().recordPattern(
                             pattern = "Plugin validation warning",
                             description = "Plugin '${manifest.id}' validated with warning: ${result.reason}",
                             applicableTo = listOf("plugin_validation", "security_warning", manifest.source),
@@ -177,7 +177,7 @@ class PluginValidator @Inject constructor(
                         )
                     }
                     is ValidationResult.Rejected -> {
-                        reflectionManager.recordFailureAndRecovery(
+                        reflectionManager.get().recordFailureAndRecovery(
                             taskId = "plugin_validation_${manifest.id}_${System.currentTimeMillis()}",
                             failureReason = "Plugin validation failed: ${result.reason}",
                             recoveryStrategy = "Fix plugin code, manifest, or configuration to meet security requirements",

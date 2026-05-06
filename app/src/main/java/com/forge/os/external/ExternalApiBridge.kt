@@ -35,8 +35,8 @@ class ExternalApiBridge @Inject constructor(
     private val registry: ExternalCallerRegistry,
     private val audit: ExternalAuditLog,
     private val configRepository: ConfigRepository,
-    // Enhanced Integration: Connect with other systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with other systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val securityPolicy: com.forge.os.data.sandbox.SecurityPolicy,
     private val doctorService: com.forge.os.domain.doctor.DoctorService,
 ) {
@@ -84,7 +84,7 @@ class ExternalApiBridge @Inject constructor(
             // Record security validation patterns
             scope.launch {
                 try {
-                    reflectionManager.recordPattern(
+                    reflectionManager.get().recordPattern(
                         pattern = "External API access: $op by ${caller.packageName}",
                         description = "External app ${caller.packageName} accessed $op operation",
                         applicableTo = listOf("external_api", "security", caller.packageName),
@@ -192,7 +192,7 @@ class ExternalApiBridge @Inject constructor(
             // Enhanced Integration: Learn from external API usage
             scope.launch {
                 try {
-                    reflectionManager.recordPattern(
+                    reflectionManager.get().recordPattern(
                         pattern = "External tool execution: $toolName by ${caller.packageName}",
                         description = "External app ${caller.packageName} executed $toolName with result: ${if (result.isError) "error" else "success"}",
                         applicableTo = listOf("external_tool_usage", toolName, caller.packageName),
@@ -200,7 +200,7 @@ class ExternalApiBridge @Inject constructor(
                     )
                     
                     if (result.isError) {
-                        reflectionManager.recordFailureAndRecovery(
+                        reflectionManager.get().recordFailureAndRecovery(
                             taskId = "ext_${started}",
                             failureReason = "External tool execution failed: ${result.output}",
                             recoveryStrategy = "Check tool parameters, validate external app permissions, or try alternative approach",

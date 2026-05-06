@@ -34,8 +34,8 @@ class CronManager @Inject constructor(
     // job is actually run.
     private val reActAgent: Lazy<ReActAgent>,
     private val backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
-    // Enhanced Integration: Connect with learning systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
+    private val reflectionManager: Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
 
@@ -176,7 +176,7 @@ class CronManager @Inject constructor(
                 )
             )
             
-            reflectionManager.recordExecution(
+            reflectionManager.get().recordExecution(
                 taskId = "cron_${job.id}_${started}",
                 goal = "Execute scheduled job: ${job.name}",
                 steps = steps,
@@ -186,14 +186,14 @@ class CronManager @Inject constructor(
             )
             
             if (success) {
-                reflectionManager.recordPattern(
+                reflectionManager.get().recordPattern(
                     pattern = "Successful cron execution: ${job.taskType}",
                     description = "Cron job '${job.name}' executed successfully in ${finished - started}ms",
                     applicableTo = listOf("cron", "scheduling", job.taskType.name.lowercase()),
                     tags = listOf("cron_success", "scheduling_pattern", "automation")
                 )
             } else {
-                reflectionManager.recordFailureAndRecovery(
+                reflectionManager.get().recordFailureAndRecovery(
                     taskId = "cron_${job.id}_${started}",
                     failureReason = "Cron job failed: $error",
                     recoveryStrategy = "Check job configuration, validate payload, or adjust schedule",

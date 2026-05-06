@@ -43,8 +43,8 @@ class ReActAgent @Inject constructor(
     private val traceManager: com.forge.os.domain.debug.TraceManager,
     private val reflector: Reflector,
     private val userInputBroker: UserInputBroker,
-    // Task 4: Agent Learning & Personalization
-    private val reflectionManager: ReflectionManager,
+    // Task 4: Agent Learning & Personalization (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<ReflectionManager>,
     private val executionHistoryManager: ExecutionHistoryManager,
     private val agentPersonality: AgentPersonality,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
@@ -284,7 +284,7 @@ Tools available ({tool_count} total): {tool_catalog}
             
             // Enhanced reflection context from ReflectionManager with safety
             val reflectionContext = try {
-                val reflectionPrompt = reflectionManager.createReflectionPrompt(userMessage)
+                val reflectionPrompt = reflectionManager.get().createReflectionPrompt(userMessage)
                 if (reflectionPrompt.isNotBlank()) {
                     "\n\nREFLECTION CONTEXT:\n" + reflectionPrompt
                 } else ""
@@ -337,7 +337,7 @@ Tools available ({tool_count} total): {tool_catalog}
             
             // Additional learned context from other systems with safety
             val systemContext = try {
-                val recentPatterns = reflectionManager.getRelevantPatterns(userMessage).take(3)
+                val recentPatterns = reflectionManager.get().getRelevantPatterns(userMessage).take(3)
                 if (recentPatterns.isNotEmpty()) {
                     "\n\nLEARNED PATTERNS:\n" + 
                     recentPatterns.joinToString("\n") { "• ${it.pattern}: ${it.description}" }
@@ -542,7 +542,7 @@ Tools available ({tool_count} total): {tool_catalog}
                         try {
                             val currentSession = executionHistoryManager.getCurrentSession()
                             if (currentSession != null) {
-                                reflectionManager.recordFailureAndRecovery(
+                                reflectionManager.get().recordFailureAndRecovery(
                                     taskId = currentSession.sessionId,
                                     failureReason = "API Call Failed: ${ace.message}",
                                     recoveryStrategy = "Check API configuration, try different provider, or retry with simpler request",
@@ -575,7 +575,7 @@ Tools available ({tool_count} total): {tool_catalog}
                         try {
                             val currentSession = executionHistoryManager.getCurrentSession()
                             if (currentSession != null) {
-                                reflectionManager.recordFailureAndRecovery(
+                                reflectionManager.get().recordFailureAndRecovery(
                                     taskId = currentSession.sessionId,
                                     failureReason = "Unexpected Agent Error: ${e.message}",
                                     recoveryStrategy = "Check system health, restart agent, or simplify the task",
@@ -742,7 +742,7 @@ Tools available ({tool_count} total): {tool_catalog}
                                     )
                                 }
                                 
-                                reflectionManager.recordExecution(
+                                reflectionManager.get().recordExecution(
                                     taskId = currentSession.sessionId,
                                     goal = currentSession.goal,
                                     steps = steps,
@@ -754,7 +754,7 @@ Tools available ({tool_count} total): {tool_catalog}
                                 // Record successful patterns for future use
                                 if (steps.isNotEmpty()) {
                                     val toolPattern = steps.map { it.tool }.distinct().joinToString(" -> ")
-                                    reflectionManager.recordPattern(
+                                    reflectionManager.get().recordPattern(
                                         pattern = "Successful tool sequence: $toolPattern",
                                         description = "This tool sequence successfully completed: ${currentSession.goal}",
                                         applicableTo = listOf(currentSession.goal.split(" ").take(3).joinToString(" ")),

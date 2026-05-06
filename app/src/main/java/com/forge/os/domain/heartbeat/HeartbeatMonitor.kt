@@ -44,8 +44,8 @@ class HeartbeatMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val configRepository: ConfigRepository,
     private val alertManager: AlertManager,
-    // Enhanced Integration: Connect with learning systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -152,7 +152,7 @@ class HeartbeatMonitor @Inject constructor(
             // Learn system health trends
             when (overallHealth) {
                 HealthLevel.HEALTHY -> {
-                    reflectionManager.recordPattern(
+                    reflectionManager.get().recordPattern(
                         pattern = "System health stable",
                         description = "Heartbeat monitor reports all systems healthy: ${components.keys.joinToString()}",
                         applicableTo = listOf("system_health", "monitoring", "stability"),
@@ -160,7 +160,7 @@ class HeartbeatMonitor @Inject constructor(
                     )
                 }
                 HealthLevel.WARNING -> {
-                    reflectionManager.recordPattern(
+                    reflectionManager.get().recordPattern(
                         pattern = "System health warning detected",
                         description = "Heartbeat monitor detected warnings: ${alerts.joinToString { it.message }}",
                         applicableTo = listOf("system_health", "monitoring", "early_warning"),
@@ -168,7 +168,7 @@ class HeartbeatMonitor @Inject constructor(
                     )
                 }
                 HealthLevel.CRITICAL -> {
-                    reflectionManager.recordFailureAndRecovery(
+                    reflectionManager.get().recordFailureAndRecovery(
                         taskId = "heartbeat_critical_${System.currentTimeMillis()}",
                         failureReason = "Critical system health issues detected: ${alerts.joinToString { it.message }}",
                         recoveryStrategy = "Immediate attention required: ${recommendations.joinToString("; ")}",
@@ -176,7 +176,7 @@ class HeartbeatMonitor @Inject constructor(
                     )
                 }
                 HealthLevel.DOWN -> {
-                    reflectionManager.recordFailureAndRecovery(
+                    reflectionManager.get().recordFailureAndRecovery(
                         taskId = "heartbeat_down_${System.currentTimeMillis()}",
                         failureReason = "System components are down: ${alerts.joinToString { it.message }}",
                         recoveryStrategy = "System restart or emergency maintenance required",

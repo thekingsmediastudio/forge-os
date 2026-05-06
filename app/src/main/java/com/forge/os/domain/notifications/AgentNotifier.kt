@@ -27,8 +27,8 @@ import javax.inject.Singleton
 @Singleton
 class AgentNotifier @Inject constructor(
     @ApplicationContext private val context: Context,
-    // Enhanced Integration: Connect with learning systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -64,7 +64,7 @@ class AgentNotifier @Inject constructor(
             try {
                 userPreferencesManager.recordInteractionPattern("receives_agent_notifications", 1)
                 
-                reflectionManager.recordPattern(
+                reflectionManager.get().recordPattern(
                     pattern = "Agent notification sent: started",
                     description = "Notified user about sub-agent start: ${goal.take(50)}",
                     applicableTo = listOf("notifications", "agent_activity", "user_awareness"),
@@ -92,14 +92,14 @@ class AgentNotifier @Inject constructor(
                 userPreferencesManager.recordInteractionPattern("receives_completion_notifications", 1)
                 
                 if (success) {
-                    reflectionManager.recordPattern(
+                    reflectionManager.get().recordPattern(
                         pattern = "Agent notification sent: success",
                         description = "Notified user about successful sub-agent completion in ${durationMs}ms: ${summary.take(50)}",
                         applicableTo = listOf("notifications", "agent_success", "user_feedback"),
                         tags = listOf("notification_sent", "agent_success", "completion_feedback")
                     )
                 } else {
-                    reflectionManager.recordPattern(
+                    reflectionManager.get().recordPattern(
                         pattern = "Agent notification sent: failure",
                         description = "Notified user about sub-agent failure: ${summary.take(50)}",
                         applicableTo = listOf("notifications", "agent_failure", "error_reporting"),

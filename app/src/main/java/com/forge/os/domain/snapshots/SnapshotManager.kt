@@ -48,8 +48,8 @@ data class SnapshotInfo(
 class SnapshotManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val workspaceLock: com.forge.os.domain.workspace.WorkspaceLock,
-    // Enhanced Integration: Connect with other systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with other systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val backupManager: com.forge.os.domain.backup.BackupManager,
 ) {
     private val workspace = File(context.filesDir, "workspace").apply { mkdirs() }
@@ -104,7 +104,7 @@ class SnapshotManager @Inject constructor(
                 
                 // Enhanced Integration: Learn snapshot creation patterns
                 try {
-                    reflectionManager.recordPattern(
+                    reflectionManager.get().recordPattern(
                         pattern = "Snapshot creation: $commitMessage",
                         description = "Created workspace snapshot with label: $commitMessage",
                         applicableTo = listOf("snapshot_management", "workspace_backup", "version_control"),
@@ -114,7 +114,7 @@ class SnapshotManager @Inject constructor(
                     // Cross-reference with backup system
                     val backups = backupManager.listBackups()
                     if (backups.isNotEmpty()) {
-                        reflectionManager.recordPattern(
+                        reflectionManager.get().recordPattern(
                             pattern = "Snapshot with existing backups",
                             description = "Created snapshot while ${backups.size} backups exist - good backup hygiene",
                             applicableTo = listOf("backup_strategy", "data_protection"),
@@ -192,7 +192,7 @@ class SnapshotManager @Inject constructor(
                     
                     // Enhanced Integration: Learn snapshot restoration patterns
                     try {
-                        reflectionManager.recordPattern(
+                        reflectionManager.get().recordPattern(
                             pattern = "Snapshot restoration: ${info.label}",
                             description = "Restored workspace from snapshot: ${info.label}",
                             applicableTo = listOf("snapshot_restoration", "workspace_recovery", "version_control"),
@@ -200,7 +200,7 @@ class SnapshotManager @Inject constructor(
                         )
                         
                         // Record recovery strategy
-                        reflectionManager.recordFailureAndRecovery(
+                        reflectionManager.get().recordFailureAndRecovery(
                             taskId = "snapshot_restore_$id",
                             failureReason = "Workspace restoration requested",
                             recoveryStrategy = "Successfully restored workspace from snapshot: ${info.label}",
