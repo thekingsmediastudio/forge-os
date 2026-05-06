@@ -20,7 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.graphicsLayer
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,7 +35,7 @@ import com.forge.os.presentation.components.ForgeLogo
 import com.forge.os.presentation.screens.ChatViewModel
 import com.forge.os.presentation.theme.LocalForgePalette
 import com.forge.os.presentation.theme.forgePalette
-import com.forge.os.data.conversations.Message
+import com.forge.os.presentation.screens.ChatMessage
 import kotlinx.coroutines.launch
 
 // Modern color palette - now using theme system
@@ -120,13 +120,7 @@ fun ModernChatScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(messages, key = { it.id }) { msg ->
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = fadeIn() + slideInVertically { it / 4 },
-                                exit = fadeOut()
-                            ) {
-                                ModernMessageBubble(msg)
-                            }
+                            ModernMessageBubble(msg)
                         }
                         
                         // Loading indicator
@@ -381,7 +375,7 @@ private fun QuickActionChip(
 }
 
 @Composable
-private fun ModernMessageBubble(message: Message) {
+private fun ModernMessageBubble(message: ChatMessage) {
     val isUser = message.role == "user"
     
     Row(

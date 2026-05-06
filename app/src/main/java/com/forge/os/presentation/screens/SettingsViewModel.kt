@@ -358,7 +358,7 @@ class SettingsViewModel @Inject constructor(
             try {
                 val result = backupManager.createBackup()
                 if (result.success && result.file != null) {
-                    onReady(result.file!!)
+                    onReady(result.file!!)  // Use result.file!! directly
                 } else {
                     _saveMessage.value = "❌ Backup failed: ${result.error ?: "Unknown error"}"
                 }

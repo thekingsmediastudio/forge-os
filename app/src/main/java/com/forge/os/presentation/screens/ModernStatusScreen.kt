@@ -131,12 +131,7 @@ fun ModernStatusScreen(
 
 @Composable
 private fun HealthStatusBadge(health: HealthLevel) {
-    val (color, text) = when (health) {
-        HealthLevel.HEALTHY -> ModernSuccess to "Healthy"
-        HealthLevel.WARNING -> ModernWarning to "Warning"
-        HealthLevel.CRITICAL -> ModernError to "Critical"
-        HealthLevel.DOWN -> ModernTextSecondary to "Down"
-    }
+    val (color, text) = getHealthColorAndText(health)
     
     // Animated pulse for non-healthy states
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -172,6 +167,16 @@ private fun HealthStatusBadge(health: HealthLevel) {
                 fontWeight = FontWeight.SemiBold
             )
         }
+    }
+}
+
+@Composable
+private fun getHealthColorAndText(health: HealthLevel): Pair<Color, String> {
+    return when (health) {
+        HealthLevel.HEALTHY -> ModernSuccess to "Healthy"
+        HealthLevel.WARNING -> ModernWarning to "Warning"
+        HealthLevel.CRITICAL -> ModernError to "Critical"
+        HealthLevel.DOWN -> ModernTextSecondary to "Down"
     }
 }
 
