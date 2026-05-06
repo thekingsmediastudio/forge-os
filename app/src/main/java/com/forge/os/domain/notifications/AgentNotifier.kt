@@ -8,6 +8,11 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
+import timber.log.Timber
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +31,7 @@ class AgentNotifier @Inject constructor(
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val nm: NotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -54,17 +60,19 @@ class AgentNotifier @Inject constructor(
         )
         
         // Enhanced Integration: Learn notification patterns
-        try {
-            userPreferencesManager.recordInteractionPattern("receives_agent_notifications", 1)
-            
-            reflectionManager.recordPattern(
-                pattern = "Agent notification sent: started",
-                description = "Notified user about sub-agent start: ${goal.take(50)}",
-                applicableTo = listOf("notifications", "agent_activity", "user_awareness"),
-                tags = listOf("notification_sent", "agent_start", "user_engagement")
-            )
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record notification patterns")
+        scope.launch {
+            try {
+                userPreferencesManager.recordInteractionPattern("receives_agent_notifications", 1)
+                
+                reflectionManager.recordPattern(
+                    pattern = "Agent notification sent: started",
+                    description = "Notified user about sub-agent start: ${goal.take(50)}",
+                    applicableTo = listOf("notifications", "agent_activity", "user_awareness"),
+                    tags = listOf("notification_sent", "agent_start", "user_engagement")
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record notification patterns")
+            }
         }
     }
 
@@ -79,26 +87,28 @@ class AgentNotifier @Inject constructor(
         )
         
         // Enhanced Integration: Learn notification completion patterns
-        try {
-            userPreferencesManager.recordInteractionPattern("receives_completion_notifications", 1)
-            
-            if (success) {
-                reflectionManager.recordPattern(
-                    pattern = "Agent notification sent: success",
-                    description = "Notified user about successful sub-agent completion in ${durationMs}ms: ${summary.take(50)}",
-                    applicableTo = listOf("notifications", "agent_success", "user_feedback"),
-                    tags = listOf("notification_sent", "agent_success", "completion_feedback")
-                )
-            } else {
-                reflectionManager.recordPattern(
-                    pattern = "Agent notification sent: failure",
-                    description = "Notified user about sub-agent failure: ${summary.take(50)}",
-                    applicableTo = listOf("notifications", "agent_failure", "error_reporting"),
-                    tags = listOf("notification_sent", "agent_failure", "error_feedback")
-                )
+        scope.launch {
+            try {
+                userPreferencesManager.recordInteractionPattern("receives_completion_notifications", 1)
+                
+                if (success) {
+                    reflectionManager.recordPattern(
+                        pattern = "Agent notification sent: success",
+                        description = "Notified user about successful sub-agent completion in ${durationMs}ms: ${summary.take(50)}",
+                        applicableTo = listOf("notifications", "agent_success", "user_feedback"),
+                        tags = listOf("notification_sent", "agent_success", "completion_feedback")
+                    )
+                } else {
+                    reflectionManager.recordPattern(
+                        pattern = "Agent notification sent: failure",
+                        description = "Notified user about sub-agent failure: ${summary.take(50)}",
+                        applicableTo = listOf("notifications", "agent_failure", "error_reporting"),
+                        tags = listOf("notification_sent", "agent_failure", "error_feedback")
+                    )
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record notification completion patterns")
             }
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record notification completion patterns")
         }
     }
 

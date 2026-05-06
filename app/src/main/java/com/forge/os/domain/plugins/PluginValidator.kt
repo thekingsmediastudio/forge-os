@@ -1,6 +1,11 @@
 package com.forge.os.domain.plugins
 
 import com.forge.os.domain.config.ConfigRepository
+import timber.log.Timber
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -29,6 +34,7 @@ class PluginValidator @Inject constructor(
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val idPattern = Regex("^[a-z][a-z0-9_]{2,63}$")
     private val versionPattern = Regex("^\\d+\\.\\d+(\\.\\d+)?(-[a-z0-9]+)?$")
 
@@ -149,37 +155,39 @@ class PluginValidator @Inject constructor(
     }
     
     private fun recordValidationResult(manifest: PluginManifest, result: ValidationResult, startTime: Long) {
-        try {
-            val duration = System.currentTimeMillis() - startTime
-            
-            when (result) {
-                is ValidationResult.Ok -> {
-                    reflectionManager.recordPattern(
-                        pattern = "Plugin validation success",
-                        description = "Successfully validated plugin '${manifest.id}' v${manifest.version} with ${manifest.tools.size} tools in ${duration}ms",
-                        applicableTo = listOf("plugin_validation", "security", manifest.source),
-                        tags = listOf("validation_success", "plugin_security", "code_review")
-                    )
+        scope.launch {
+            try {
+                val duration = System.currentTimeMillis() - startTime
+                
+                when (result) {
+                    is ValidationResult.Ok -> {
+                        reflectionManager.recordPattern(
+                            pattern = "Plugin validation success",
+                            description = "Successfully validated plugin '${manifest.id}' v${manifest.version} with ${manifest.tools.size} tools in ${duration}ms",
+                            applicableTo = listOf("plugin_validation", "security", manifest.source),
+                            tags = listOf("validation_success", "plugin_security", "code_review")
+                        )
+                    }
+                    is ValidationResult.Warn -> {
+                        reflectionManager.recordPattern(
+                            pattern = "Plugin validation warning",
+                            description = "Plugin '${manifest.id}' validated with warning: ${result.reason}",
+                            applicableTo = listOf("plugin_validation", "security_warning", manifest.source),
+                            tags = listOf("validation_warning", "plugin_security", "code_review")
+                        )
+                    }
+                    is ValidationResult.Rejected -> {
+                        reflectionManager.recordFailureAndRecovery(
+                            taskId = "plugin_validation_${manifest.id}_${System.currentTimeMillis()}",
+                            failureReason = "Plugin validation failed: ${result.reason}",
+                            recoveryStrategy = "Fix plugin code, manifest, or configuration to meet security requirements",
+                            tags = listOf("validation_failure", "plugin_security", "code_review", manifest.source)
+                        )
+                    }
                 }
-                is ValidationResult.Warn -> {
-                    reflectionManager.recordPattern(
-                        pattern = "Plugin validation warning",
-                        description = "Plugin '${manifest.id}' validated with warning: ${result.reason}",
-                        applicableTo = listOf("plugin_validation", "security_warning", manifest.source),
-                        tags = listOf("validation_warning", "plugin_security", "code_review")
-                    )
-                }
-                is ValidationResult.Rejected -> {
-                    reflectionManager.recordFailureAndRecovery(
-                        taskId = "plugin_validation_${manifest.id}_${System.currentTimeMillis()}",
-                        failureReason = "Plugin validation failed: ${result.reason}",
-                        recoveryStrategy = "Fix plugin code, manifest, or configuration to meet security requirements",
-                        tags = listOf("validation_failure", "plugin_security", "code_review", manifest.source)
-                    )
-                }
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record plugin validation result")
             }
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record plugin validation result")
         }
     }
 
