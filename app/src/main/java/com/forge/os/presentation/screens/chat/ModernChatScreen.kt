@@ -301,7 +301,9 @@ private fun ModernHeader(
                 DropdownMenu(
                     expanded = showModelMenu,
                     onDismissRequest = { showModelMenu = false },
-                    modifier = Modifier.background(ModernSurface)
+                    modifier = Modifier
+                        .background(ModernSurface)
+                        .widthIn(max = 250.dp)
                 ) {
                     // Auto-route option
                     DropdownMenuItem(
@@ -337,7 +339,8 @@ private fun ModernHeader(
                                         spec.displayLabel,
                                         color = ModernTextPrimary,
                                         fontSize = 13.sp,
-                                        fontFamily = FontFamily.Monospace
+                                        fontFamily = FontFamily.Monospace,
+                                        maxLines = 1
                                     )
                                 },
                                 onClick = {
@@ -594,32 +597,41 @@ private fun ModernInputBar(
     enabled: Boolean
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .wrapContentHeight(),
         color = ModernSurface,
         shadowElevation = 8.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.Bottom,
+                .padding(16.dp)
+                .wrapContentHeight(),
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Input field
             Surface(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .wrapContentHeight(),
                 color = ModernBg,
                 shape = RoundedCornerShape(24.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, ModernBorder)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .wrapContentHeight()
                 ) {
                     TextField(
                         value = value,
                         onValueChange = onValueChange,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .wrapContentHeight(),
                         placeholder = {
                             Text(
                                 "Message Forge...",
@@ -639,7 +651,7 @@ private fun ModernInputBar(
                             cursorColor = ModernAccent
                         ),
                         textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
-                        maxLines = 4,
+                        maxLines = 3,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if (enabled) onSend() })
                     )

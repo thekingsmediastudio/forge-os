@@ -104,26 +104,11 @@ private fun SplashContent(onTimeout: () -> Unit) {
                 label = "logo_rotation"
             )
             
-            // Glow effect behind logo
+            // Logo without glow
             Box(
                 modifier = Modifier.size(180.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Animated glow
-                Box(
-                    modifier = Modifier
-                        .size(200.dp)
-                        .scale(1f + gradientOffset * 0.1f)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    ModernAccent.copy(alpha = 0.3f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                )
-                
                 // Actual logo image
                 Image(
                     painter = painterResource(id = R.drawable.splash_logo),

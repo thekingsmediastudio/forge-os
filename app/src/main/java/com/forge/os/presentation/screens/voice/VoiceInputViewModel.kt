@@ -22,18 +22,19 @@ class VoiceInputViewModel @Inject constructor(
     val isListening: StateFlow<Boolean> = voiceInputManager.isListening
     val lastRecognizedText: StateFlow<String> = voiceInputManager.lastRecognizedText
     
-    private val _isAvailable = MutableStateFlow(false)
+    private val _isAvailable = MutableStateFlow(true) // Default to true, let user try
     val isAvailable: StateFlow<Boolean> = _isAvailable.asStateFlow()
     
     init {
-        checkAvailability()
-    }
-    
-    /**
-     * Check if voice input is available on this device.
-     */
-    private fun checkAvailability() {
-        _isAvailable.value = voiceInputManager.isSTTAvailable()
+        // Check availability asynchronously to avoid blocking
+        viewModelScope.launch {
+            try {
+                _isAvailable.value = voiceInputManager.isSTTAvailable()
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to check voice availability")
+                _isAvailable.value = false
+            }
+        }
     }
     
     /**
