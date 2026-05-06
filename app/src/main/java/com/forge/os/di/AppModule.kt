@@ -105,8 +105,10 @@ object AppModule {
     @Provides @Singleton fun providePermissionManager(r: ConfigRepository) = PermissionManager(r)
     @Provides @Singleton fun provideAlertManager() = AlertManager()
     @Provides @Singleton fun provideHeartbeatMonitor(
-        @ApplicationContext ctx: Context, r: ConfigRepository, a: AlertManager
-    ) = HeartbeatMonitor(ctx, r, a)
+        @ApplicationContext ctx: Context, r: ConfigRepository, a: AlertManager,
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager
+    ) = HeartbeatMonitor(ctx, r, a, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun provideConfigMutationEngine(r: ConfigRepository) = ConfigMutationEngine(r)
     @Provides @Singleton fun provideWorkManager(@ApplicationContext ctx: Context): WorkManager =
         WorkManager.getInstance(ctx)
@@ -214,7 +216,17 @@ object AppModule {
         traceManager: com.forge.os.domain.debug.TraceManager,
         reflector: com.forge.os.domain.agent.Reflector,
         userInputBroker: com.forge.os.domain.agent.UserInputBroker,
-    ) = ReActAgent(api, tr, cr, mm, pm, conversationIndex, executionPlanner, traceManager, reflector, userInputBroker)
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        executionHistoryManager: com.forge.os.domain.agent.ExecutionHistoryManager,
+        agentPersonality: com.forge.os.domain.agent.AgentPersonality,
+        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+        doctorService: com.forge.os.domain.doctor.DoctorService,
+        permissionManager: com.forge.os.domain.security.PermissionManager,
+        hapticFeedbackManager: com.forge.os.domain.haptic.HapticFeedbackManager,
+        alertManager: com.forge.os.domain.heartbeat.AlertManager,
+    ) = ReActAgent(api, tr, cr, mm, pm, conversationIndex, executionPlanner, traceManager, reflector, userInputBroker,
+        reflectionManager, executionHistoryManager, agentPersonality, userPreferencesManager,
+        doctorService, permissionManager, hapticFeedbackManager, alertManager)
 
     // Phase H/I — Companion (Friend Mode)
     @Provides @Singleton fun providePersonaManager(@ApplicationContext ctx: Context) =
