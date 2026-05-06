@@ -27,19 +27,31 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forge.os.R
+import com.forge.os.presentation.theme.forgePalette
 
-// Modern color palette
-val ModernBg = Color(0xFF0F0F0F)
-val ModernSurface = Color(0xFF1A1A1A)
-val ModernSurfaceHover = Color(0xFF252525)
-val ModernAccent = Color(0xFF6366F1)
-val ModernAccentHover = Color(0xFF818CF8)
-val ModernTextPrimary = Color(0xFFE5E5E5)
-val ModernTextSecondary = Color(0xFF9CA3AF)
-val ModernBorder = Color(0xFF2A2A2A)
-val ModernSuccess = Color(0xFF22C55E)
-val ModernWarning = Color(0xFFF59E0B)
-val ModernError = Color(0xFFEF4444)
+// Modern color palette - now using theme system
+val ModernBg: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.bg
+val ModernSurface: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.surface
+val ModernSurfaceHover: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.surface2
+val ModernAccent: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.orange
+val ModernAccentHover: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.orange.copy(alpha = 0.8f)
+val ModernTextPrimary: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.textPrimary
+val ModernTextSecondary: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.textMuted
+val ModernBorder: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.border
+val ModernSuccess: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.success
+val ModernWarning: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.thinking
+val ModernError: Color
+    @Composable @ReadOnlyComposable get() = forgePalette.danger
 
 /**
  * Forge OS Logo Component

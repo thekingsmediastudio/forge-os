@@ -394,7 +394,7 @@ class CodeReviewService @Inject constructor(
             )
             
             // Parse the response into CodeIssue objects
-            parseAIReviewResponse(response.content)
+            parseAIReviewResponse(response.content ?: "")
         } catch (e: Exception) {
             Timber.w(e, "AI review failed, falling back to static analysis")
             emptyList()

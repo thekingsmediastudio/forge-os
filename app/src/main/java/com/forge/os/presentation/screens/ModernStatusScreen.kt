@@ -176,7 +176,7 @@ private fun HealthStatusBadge(health: HealthLevel) {
 }
 
 @Composable
-private fun AlertsSection(alerts: List<com.forge.os.domain.heartbeat.ForgeAlert>) {
+private fun AlertsSection(alerts: List<com.forge.os.domain.heartbeat.AlertInfo>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         alerts.forEach { alert ->
             Surface(

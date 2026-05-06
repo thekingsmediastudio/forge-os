@@ -2,7 +2,6 @@ package com.forge.os.presentation.screens.chat
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -35,25 +34,27 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.forge.os.presentation.components.ForgeLogo
 import com.forge.os.presentation.screens.ChatViewModel
 import com.forge.os.presentation.theme.LocalForgePalette
+import com.forge.os.presentation.theme.forgePalette
+import com.forge.os.data.conversations.Message
 import kotlinx.coroutines.launch
 
-// Modern color palette
+// Modern color palette - now using theme system
 private val ModernBg: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF0F0F0F)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.bg
 private val ModernSurface: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF1A1A1A)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.surface
 private val ModernSurfaceHover: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF252525)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.surface2
 private val ModernAccent: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF6366F1)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.orange
 private val ModernAccentHover: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF818CF8)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.orange.copy(alpha = 0.8f)
 private val ModernTextPrimary: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFFE5E5E5)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.textPrimary
 private val ModernTextSecondary: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF9CA3AF)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.textMuted
 private val ModernBorder: Color
-    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = Color(0xFF2A2A2A)
+    @Composable @androidx.compose.runtime.ReadOnlyComposable get() = forgePalette.border
 
 /**
  * Modern chat screen with ChatGPT/Claude-inspired design.
@@ -380,7 +381,7 @@ private fun QuickActionChip(
 }
 
 @Composable
-private fun ModernMessageBubble(message: com.forge.os.data.conversations.Message) {
+private fun ModernMessageBubble(message: Message) {
     val isUser = message.role == "user"
     
     Row(

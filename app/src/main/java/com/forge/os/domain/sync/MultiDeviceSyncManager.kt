@@ -216,7 +216,7 @@ class MultiDeviceSyncManager @Inject constructor(
     private fun captureMemory(): MemorySnapshot {
         // Note: This captures metadata only, not full memory content
         // Full memory sync would be too large
-        val facts = try {
+        val facts: List<Any> = try {
             // Memory manager doesn't have recallFacts method
             // Using recall instead
             emptyList()
@@ -224,7 +224,7 @@ class MultiDeviceSyncManager @Inject constructor(
             emptyList()
         }
         
-        val skills = try {
+        val skills: List<Any> = try {
             // Memory manager doesn't have listSkills method
             emptyList()
         } catch (e: Exception) {

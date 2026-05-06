@@ -51,7 +51,7 @@ class ReflectionManager @Inject constructor(
         memoryManager.store(
             key = key,
             content = content,
-            tags = (listOf("execution", "reflection") + tags).toTypedArray()
+            tags = listOf("execution", "reflection") + tags
         )
 
         Timber.i("Recorded execution trace: $taskId (success=$success)")
@@ -112,7 +112,7 @@ class ReflectionManager @Inject constructor(
         memoryManager.store(
             key = key,
             content = content,
-            tags = (listOf("failure", "recovery") + tags).toTypedArray()
+            tags = listOf("failure", "recovery") + tags
         )
 
         Timber.i("Recorded failure recovery: $taskId")
@@ -155,7 +155,7 @@ class ReflectionManager @Inject constructor(
         memoryManager.store(
             key = key,
             content = content,
-            tags = (listOf("pattern", "learned") + tags).toTypedArray()
+            tags = listOf("pattern", "learned") + tags
         )
 
         Timber.i("Recorded learned pattern: $pattern")

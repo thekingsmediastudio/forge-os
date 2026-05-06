@@ -337,7 +337,7 @@ class ProjectHealthMonitor @Inject constructor(
             projectPythonRunner.isPackageAvailable(packageName)
         }
         
-        DependenciesStatus(
+        return DependenciesStatus(
             totalDependencies = requirements.size,
             availableDependencies = available,
             missingDependencies = requirements.size - available,
@@ -363,7 +363,7 @@ class ProjectHealthMonitor @Inject constructor(
             .filter { it.isFile }
             .count()
         
-        MemoryUsageStatus(
+        return MemoryUsageStatus(
             diskUsageBytes = totalSize,
             fileCount = fileCount
         )
