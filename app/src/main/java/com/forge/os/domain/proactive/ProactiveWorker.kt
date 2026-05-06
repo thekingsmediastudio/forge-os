@@ -163,7 +163,7 @@ class ProactiveWorker @AssistedInject constructor(
             Timber.d("ProactiveWorker: running proactive learning tick...")
             
             // 1. Analyze recent execution patterns and store them in ReflectionManager
-            val recentSessions = executionHistoryManager.getRecentSessions(limit = 5)
+            val recentSessions = executionHistoryManager.getAllSessions().take(5)
             recentSessions.forEach { session ->
                 if (session.status == "completed" && session.steps.isNotEmpty()) {
                     // Convert to ReflectionManager format and store successful patterns

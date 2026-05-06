@@ -3,6 +3,11 @@ package com.forge.os.data.sandbox
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+import timber.log.Timber
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Phase 0 hardcoded SecurityPolicy, refactored in Phase Q so that each guard
@@ -21,6 +26,7 @@ class SecurityPolicy @Inject constructor(
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     interface Flags {
         fun shellBlocklistEnabled(): Boolean
@@ -91,17 +97,19 @@ class SecurityPolicy @Inject constructor(
         for (pattern in blockedShellPatterns) {
             if (pattern.containsMatchIn(command)) {
                 // Enhanced Integration: Record security violations
-                try {
-                    reflectionManager.recordFailureAndRecovery(
-                        taskId = "security_violation_shell_${System.currentTimeMillis()}",
-                        failureReason = "Blocked dangerous shell command: ${command.take(100)}",
-                        recoveryStrategy = "Use safer alternatives or modify command to avoid blocked patterns",
-                        tags = listOf("security_violation", "shell_command", "blocked_pattern", "safety")
-                    )
-                    
-                    userPreferencesManager.recordInteractionPattern("triggers_security_blocks", 1)
-                } catch (e: Exception) {
-                    Timber.w(e, "Failed to record security violation")
+                scope.launch {
+                    try {
+                        reflectionManager.recordFailureAndRecovery(
+                            taskId = "security_violation_shell_${System.currentTimeMillis()}",
+                            failureReason = "Blocked dangerous shell command: ${command.take(100)}",
+                            recoveryStrategy = "Use safer alternatives or modify command to avoid blocked patterns",
+                            tags = listOf("security_violation", "shell_command", "blocked_pattern", "safety")
+                        )
+                        
+                        userPreferencesManager.recordInteractionPattern("triggers_security_blocks", 1)
+                    } catch (e: Exception) {
+                        Timber.w(e, "Failed to record security violation")
+                    }
                 }
                 
                 throw SecurityException("Blocked command pattern detected in: $command")
@@ -109,15 +117,17 @@ class SecurityPolicy @Inject constructor(
         }
         
         // Enhanced Integration: Record safe shell command usage
-        try {
-            reflectionManager.recordPattern(
-                pattern = "Safe shell command executed",
-                description = "Shell command passed security validation: ${command.take(50)}",
-                applicableTo = listOf("shell_security", "command_validation", "safe_execution"),
-                tags = listOf("security_success", "shell_command", "safe_execution")
-            )
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record safe shell command pattern")
+        scope.launch {
+            try {
+                reflectionManager.recordPattern(
+                    pattern = "Safe shell command executed",
+                    description = "Shell command passed security validation: ${command.take(50)}",
+                    applicableTo = listOf("shell_security", "command_validation", "safe_execution"),
+                    tags = listOf("security_success", "shell_command", "safe_execution")
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record safe shell command pattern")
+            }
         }
     }
 
@@ -140,15 +150,17 @@ class SecurityPolicy @Inject constructor(
         
         val uri = try { java.net.URI(url) } catch (e: Exception) { 
             // Enhanced Integration: Record URL validation failures
-            try {
-                reflectionManager.recordFailureAndRecovery(
-                    taskId = "url_validation_${System.currentTimeMillis()}",
-                    failureReason = "Invalid URL format: $url",
-                    recoveryStrategy = "Provide a valid URL with proper protocol and format",
-                    tags = listOf("url_validation", "format_error", "security")
-                )
-            } catch (e2: Exception) {
-                Timber.w(e2, "Failed to record URL validation failure")
+            scope.launch {
+                try {
+                    reflectionManager.recordFailureAndRecovery(
+                        taskId = "url_validation_${System.currentTimeMillis()}",
+                        failureReason = "Invalid URL format: $url",
+                        recoveryStrategy = "Provide a valid URL with proper protocol and format",
+                        tags = listOf("url_validation", "format_error", "security")
+                    )
+                } catch (e2: Exception) {
+                    Timber.w(e2, "Failed to record URL validation failure")
+                }
             }
             throw SecurityException("Invalid URL: $url") 
         }
@@ -157,17 +169,19 @@ class SecurityPolicy @Inject constructor(
         // 1. Block known local API port if host is local
         if ((host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2") && uri.port == 8789) {
             // Enhanced Integration: Record local API access attempts
-            try {
-                reflectionManager.recordFailureAndRecovery(
-                    taskId = "local_api_block_${System.currentTimeMillis()}",
-                    failureReason = "Blocked access to local API server: $url",
-                    recoveryStrategy = "Use external APIs or configure proper authentication",
-                    tags = listOf("security_violation", "local_api_access", "blocked_access")
-                )
-                
-                userPreferencesManager.recordInteractionPattern("attempts_local_api_access", 1)
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to record local API access attempt")
+            scope.launch {
+                try {
+                    reflectionManager.recordFailureAndRecovery(
+                        taskId = "local_api_block_${System.currentTimeMillis()}",
+                        failureReason = "Blocked access to local API server: $url",
+                        recoveryStrategy = "Use external APIs or configure proper authentication",
+                        tags = listOf("security_violation", "local_api_access", "blocked_access")
+                    )
+                    
+                    userPreferencesManager.recordInteractionPattern("attempts_local_api_access", 1)
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record local API access attempt")
+                }
             }
             
             throw SecurityException("Access to local API server is prohibited via tools")
@@ -176,32 +190,36 @@ class SecurityPolicy @Inject constructor(
         // 2. Block private IP ranges (basic check, could be improved with proper IP parsing)
         if (blockedIpRanges.any { host.startsWith(it) }) {
             // Enhanced Integration: Record private network access attempts
-            try {
-                reflectionManager.recordFailureAndRecovery(
-                    taskId = "private_network_block_${System.currentTimeMillis()}",
-                    failureReason = "Blocked access to private network: $host",
-                    recoveryStrategy = "Use public endpoints or configure proper network access",
-                    tags = listOf("security_violation", "private_network_access", "blocked_access")
-                )
-                
-                userPreferencesManager.recordInteractionPattern("attempts_private_network_access", 1)
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to record private network access attempt")
+            scope.launch {
+                try {
+                    reflectionManager.recordFailureAndRecovery(
+                        taskId = "private_network_block_${System.currentTimeMillis()}",
+                        failureReason = "Blocked access to private network: $host",
+                        recoveryStrategy = "Use public endpoints or configure proper network access",
+                        tags = listOf("security_violation", "private_network_access", "blocked_access")
+                    )
+                    
+                    userPreferencesManager.recordInteractionPattern("attempts_private_network_access", 1)
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record private network access attempt")
+                }
             }
             
             throw SecurityException("Access to private/local network addresses is prohibited: $host")
         }
         
         // Enhanced Integration: Record safe URL access
-        try {
-            reflectionManager.recordPattern(
-                pattern = "Safe URL access validated",
-                description = "URL passed security validation: $host",
-                applicableTo = listOf("url_security", "network_access", "safe_browsing"),
-                tags = listOf("security_success", "url_validation", "safe_access")
-            )
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record safe URL access pattern")
+        scope.launch {
+            try {
+                reflectionManager.recordPattern(
+                    pattern = "Safe URL access validated",
+                    description = "URL passed security validation: $host",
+                    applicableTo = listOf("url_security", "network_access", "safe_browsing"),
+                    tags = listOf("security_success", "url_validation", "safe_access")
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record safe URL access pattern")
+            }
         }
     }
 

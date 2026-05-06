@@ -66,7 +66,7 @@ class PatternAnalyzer @Inject constructor(
 
         // Get recent execution history for better context
         val recentSessions = try {
-            executionHistoryManager.getRecentSessions(limit = 3)
+            executionHistoryManager.getAllSessions().take(3)
         } catch (e: Exception) {
             Timber.w(e, "Failed to get recent sessions")
             emptyList()

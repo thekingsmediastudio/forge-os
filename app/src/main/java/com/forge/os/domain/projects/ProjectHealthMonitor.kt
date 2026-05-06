@@ -142,7 +142,7 @@ class ProjectHealthMonitor @Inject constructor(
         // Try to run tests
         val testResult = runTests(projectSlug)
         
-        TestStatus(
+        return TestStatus(
             hasTests = true,
             totalTests = testFiles.size,
             passingTests = if (testResult.success) testFiles.size else 0,
