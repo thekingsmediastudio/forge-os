@@ -3,6 +3,8 @@ package com.forge.os.domain.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -35,6 +37,7 @@ class VoiceInputManager @Inject constructor(
     private var speechRecognizer: SpeechRecognizer? = null
     private var textToSpeech: TextToSpeech? = null
     private var ttsInitialized = false
+    private var speechRecognizerInitialized = false
     
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
@@ -48,9 +51,12 @@ class VoiceInputManager @Inject constructor(
     // Channel for voice commands
     private val voiceCommandChannel = Channel<VoiceCommand>(Channel.BUFFERED)
     
+    // Main thread handler for initializing SpeechRecognizer
+    private val mainHandler = Handler(Looper.getMainLooper())
+    
     init {
         initializeTTS()
-        initializeSpeechRecognizer()
+        // Don't initialize SpeechRecognizer here - it will be lazily initialized on main thread when needed
     }
     
     /**
@@ -88,15 +94,29 @@ class VoiceInputManager @Inject constructor(
     }
     
     /**
-     * Initialize Speech Recognizer.
+     * Initialize Speech Recognizer on main thread.
+     * This must be called on the main thread as required by Android.
      */
     private fun initializeSpeechRecognizer() {
+        if (speechRecognizerInitialized) {
+            return // Already initialized
+        }
+        
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             Timber.w("Speech recognition not available on this device")
             return
         }
         
+        // Ensure we're on the main thread
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Timber.w("initializeSpeechRecognizer called from background thread, posting to main thread")
+            mainHandler.post { initializeSpeechRecognizer() }
+            return
+        }
+        
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+        speechRecognizerInitialized = true
+        
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 _isListening.value = true
@@ -158,6 +178,8 @@ class VoiceInputManager @Inject constructor(
                 // Reserved for future events
             }
         })
+        
+        Timber.i("SpeechRecognizer initialized successfully on main thread")
     }
     
     /**
@@ -167,6 +189,11 @@ class VoiceInputManager @Inject constructor(
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             Timber.w("Speech recognition not available")
             return
+        }
+        
+        // Ensure SpeechRecognizer is initialized on main thread
+        if (!speechRecognizerInitialized) {
+            initializeSpeechRecognizer()
         }
         
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
