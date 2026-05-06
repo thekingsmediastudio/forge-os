@@ -80,7 +80,7 @@ class MultiDeviceSyncManager @Inject constructor(
         val timestamp = System.currentTimeMillis()
         val deviceId = _syncState.value.deviceId
         
-        val package = SyncPackage(
+        val syncPackage = SyncPackage(
             deviceId = deviceId,
             deviceName = _syncState.value.deviceName,
             timestamp = timestamp,
@@ -93,21 +93,21 @@ class MultiDeviceSyncManager @Inject constructor(
         )
         
         // Calculate checksum
-        val checksumData = json.encodeToString(package)
+        val checksumData = json.encodeToString(syncPackage)
         val checksum = calculateChecksum(checksumData)
         
-        package.copy(checksum = checksum)
+        syncPackage.copy(checksum = checksum)
     }
     
     /**
      * Export sync package to file.
      */
     suspend fun exportSyncPackage(options: SyncOptions = SyncOptions()): File = withContext(Dispatchers.IO) {
-        val package = createSyncPackage(options)
+        val syncPackage = createSyncPackage(options)
         val timestamp = System.currentTimeMillis()
         val exportFile = syncDir.resolve("sync_export_$timestamp.json")
         
-        exportFile.writeText(json.encodeToString(package))
+        exportFile.writeText(json.encodeToString(syncPackage))
         Timber.i("Sync package exported to: ${exportFile.absolutePath}")
         
         _lastSyncTime.value = timestamp
@@ -124,20 +124,20 @@ class MultiDeviceSyncManager @Inject constructor(
             }
             
             val content = file.readText()
-            val package = json.decodeFromString<SyncPackage>(content)
+            val syncPackage = json.decodeFromString<SyncPackage>(content)
             
             // Verify checksum
-            val packageWithoutChecksum = package.copy(checksum = "")
+            val packageWithoutChecksum = syncPackage.copy(checksum = "")
             val expectedChecksum = calculateChecksum(json.encodeToString(packageWithoutChecksum))
-            if (package.checksum != expectedChecksum) {
+            if (syncPackage.checksum != expectedChecksum) {
                 return@withContext SyncResult(false, "Checksum mismatch - package may be corrupted")
             }
             
             // Apply sync package
-            applySyncPackage(package, options)
+            applySyncPackage(syncPackage, options)
             
             _lastSyncTime.value = System.currentTimeMillis()
-            SyncResult(true, "Sync completed successfully from ${package.deviceName}")
+            SyncResult(true, "Sync completed successfully from ${syncPackage.deviceName}")
         } catch (e: Exception) {
             Timber.e(e, "Failed to import sync package")
             SyncResult(false, "Import failed: ${e.message}")
@@ -253,28 +253,28 @@ class MultiDeviceSyncManager @Inject constructor(
     /**
      * Apply sync package to current device.
      */
-    private suspend fun applySyncPackage(package: SyncPackage, options: SyncOptions) {
+    private suspend fun applySyncPackage(syncPackage: SyncPackage, options: SyncOptions) {
         // Apply config
-        if (options.syncConfig && package.config != null) {
-            applyConfigSnapshot(package.config)
+        if (options.syncConfig && syncPackage.config != null) {
+            applyConfigSnapshot(syncPackage.config)
         }
         
         // Apply projects (metadata only - files need separate sync)
-        if (options.syncProjects && package.projects != null) {
-            applyProjectsSnapshot(package.projects)
+        if (options.syncProjects && syncPackage.projects != null) {
+            applyProjectsSnapshot(syncPackage.projects)
         }
         
         // Apply memory (metadata only)
-        if (options.syncMemory && package.memory != null) {
-            applyMemorySnapshot(package.memory)
+        if (options.syncMemory && syncPackage.memory != null) {
+            applyMemorySnapshot(syncPackage.memory)
         }
         
         // Apply preferences
-        if (options.syncPreferences && package.preferences != null) {
-            applyPreferencesSnapshot(package.preferences)
+        if (options.syncPreferences && syncPackage.preferences != null) {
+            applyPreferencesSnapshot(syncPackage.preferences)
         }
         
-        Timber.i("Applied sync package from ${package.deviceName}")
+        Timber.i("Applied sync package from ${syncPackage.deviceName}")
     }
     
     private fun applyConfigSnapshot(snapshot: ConfigSnapshot) {
