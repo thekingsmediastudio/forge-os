@@ -140,10 +140,14 @@ object AppModule {
         @ApplicationContext ctx: Context, api: AiApiManager,
     ) = com.forge.os.domain.memory.SemanticFactIndex(ctx, api)
     @Provides @Singleton fun provideMemoryManager(
-        daily: DailyMemory, longterm: LongtermMemory, skill: SkillMemory,
+        daily: DailyMemory,
+        longterm: LongtermMemory,
+        skill: SkillMemory,
         sem: com.forge.os.domain.memory.SemanticFactIndex,
         reranker: com.forge.os.domain.memory.ContextReranker,
-    ) = MemoryManager(daily, longterm, skill, sem, reranker)
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    ) = MemoryManager(daily, longterm, skill, sem, reranker, reflectionManager, userPreferencesManager)
 
     // Phase 4 — Cron + Notifications
     @Provides @Singleton fun provideNotificationHelper(@ApplicationContext ctx: Context) =
@@ -166,8 +170,11 @@ object AppModule {
     // Phase 5 — Plugins
     @Provides @Singleton fun providePluginRepository(@ApplicationContext ctx: Context) =
         PluginRepository(ctx)
-    @Provides @Singleton fun providePluginValidator(cr: ConfigRepository) =
-        PluginValidator(cr)
+    @Provides @Singleton fun providePluginValidator(
+        cr: ConfigRepository,
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    ) = PluginValidator(cr, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun providePluginExporter(
         @ApplicationContext ctx: Context,
         plane: com.forge.os.domain.control.AgentControlPlane,
@@ -188,8 +195,11 @@ object AppModule {
     // Phase 6 — Sub-Agent Delegation
     @Provides @Singleton fun provideSubAgentRepository(@ApplicationContext ctx: Context) =
         SubAgentRepository(ctx)
-    @Provides @Singleton fun provideAgentNotifier(@ApplicationContext ctx: Context) =
-        AgentNotifier(ctx)
+    @Provides @Singleton fun provideAgentNotifier(
+        @ApplicationContext ctx: Context,
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    ) = AgentNotifier(ctx, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun provideDelegationManager(
         repo: SubAgentRepository,
         cr: ConfigRepository,
@@ -214,8 +224,10 @@ object AppModule {
     // Phase F — Snapshots + MCP
     @Provides @Singleton fun provideSnapshotManager(
         @ApplicationContext ctx: Context,
-        workspaceLock: com.forge.os.domain.workspace.WorkspaceLock
-    ) = SnapshotManager(ctx, workspaceLock)
+        workspaceLock: com.forge.os.domain.workspace.WorkspaceLock,
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        backupManager: com.forge.os.domain.backup.BackupManager,
+    ) = SnapshotManager(ctx, workspaceLock, reflectionManager, backupManager)
     @Provides @Singleton fun provideMcpServerRepository(@ApplicationContext ctx: Context) =
         McpServerRepository(ctx)
     @Provides @Singleton fun provideMcpClient(repo: McpServerRepository) = McpClient(repo)
