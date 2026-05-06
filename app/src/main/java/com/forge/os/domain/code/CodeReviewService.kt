@@ -1,7 +1,8 @@
 package com.forge.os.domain.code
 
 import android.content.Context
-import com.forge.os.data.api.ApiClient
+import com.forge.os.data.api.AiApiManager
+import com.forge.os.data.api.ApiMessage
 import com.forge.os.data.sandbox.SandboxManager
 import com.forge.os.domain.config.ConfigRepository
 import com.forge.os.domain.projects.ProjectsRepository
@@ -32,7 +33,7 @@ import javax.inject.Singleton
 @Singleton
 class CodeReviewService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val apiClient: ApiClient,
+    private val aiApiManager: AiApiManager,
     private val configRepository: ConfigRepository,
     private val projectsRepository: ProjectsRepository,
     private val sandboxManager: SandboxManager
@@ -382,17 +383,14 @@ class CodeReviewService @Inject constructor(
             }
             
             val config = configRepository.get()
-            val response = apiClient.chat(
+            val response = aiApiManager.chat(
                 messages = listOf(
-                    com.forge.os.data.api.Message(
+                    ApiMessage(
                         role = "user",
                         content = prompt
                     )
                 ),
-                provider = config.modelProvider,
-                model = config.modelName,
-                temperature = 0.3,
-                maxTokens = 2000
+                systemPrompt = "You are a code review assistant. Analyze code and identify issues."
             )
             
             // Parse the response into CodeIssue objects

@@ -57,7 +57,7 @@ import com.forge.os.presentation.screens.cost.CostStatsScreen
 import com.forge.os.presentation.screens.cron.CronScreen
 import com.forge.os.presentation.screens.cron.CronSessionScreen
 import com.forge.os.presentation.screens.external.ExternalApiScreen
-import com.forge.os.presentation.screens.hub.HubScreen
+import com.forge.os.presentation.screens.hub.ModernHubScreen
 import com.forge.os.presentation.screens.mcp.McpServersScreen
 import com.forge.os.presentation.screens.memory.MemoryScreen
 import com.forge.os.presentation.screens.plugins.PluginsScreen

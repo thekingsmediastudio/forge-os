@@ -98,7 +98,7 @@ private fun BrowserTabItem(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
+    Row(
         modifier = modifier
             .height(40.dp)
             .width(200.dp)
@@ -111,7 +111,7 @@ private fun BrowserTabItem(
             )
             .clickable(onClick = onSelect)
             .padding(horizontal = 12.dp, vertical = 4.dp),
-        contentAlignment = Alignment.CenterStart
+        verticalAlignment = Alignment.CenterVertically
     ) {
         // Tab title
         Text(

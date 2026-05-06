@@ -144,6 +144,8 @@ class ToolRegistry @Inject constructor(
     private val multiDeviceSyncManager: com.forge.os.domain.sync.MultiDeviceSyncManager,
     private val codeReviewService: com.forge.os.domain.code.CodeReviewService,
     private val projectHealthMonitor: com.forge.os.domain.projects.ProjectHealthMonitor,
+    // API Manager for model catalog
+    private val aiApiManager: com.forge.os.data.api.AiApiManager,
 ) {
     private val httpServer: ForgeHttpServer get() = httpServerLazy.get()
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -723,8 +725,7 @@ class ToolRegistry @Inject constructor(
                 // ─── Task 4: Agent Learning & Personalization ──────────────────────
                 "reflection_get_context" -> {
                     val goal = args["goal"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: goal required", isError = true)
-                    val limit = args["limit"]?.toString()?.toIntOrNull() ?: 5
-                    val context = reflectionManager.createReflectionPrompt(goal, limit = limit)
+                    val context = reflectionManager.createReflectionPrompt(goal)
                     context
                 }
                 "history_show" -> {

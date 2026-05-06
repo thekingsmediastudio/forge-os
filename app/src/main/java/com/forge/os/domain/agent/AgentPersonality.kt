@@ -152,7 +152,7 @@ class AgentPersonality @Inject constructor(
             appendLine("Description: ${personality.description}")
             appendLine()
             appendLine("Traits:")
-            personality.traits.forEach { appendLine("  • $trait") }
+            personality.traits.forEach { trait -> appendLine("  • $trait") }
             appendLine()
             appendLine("Communication Style:")
             appendLine(personality.communicationStyle)

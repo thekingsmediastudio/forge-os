@@ -195,7 +195,7 @@ class CodeReviewManager @Inject constructor(
                 appendLine("Provide specific, actionable suggestions with examples.")
             }
 
-            val response = aiApiManager.chatCompletion(
+            val response = aiApiManager.chat(
                 messages = listOf(
                     com.forge.os.data.api.ApiMessage("system", "You are an expert code reviewer. Provide concise, actionable feedback."),
                     com.forge.os.data.api.ApiMessage("user", prompt)
@@ -301,7 +301,7 @@ class CodeReviewManager @Inject constructor(
                 appendLine("Provide specific issues with line numbers and actionable suggestions.")
             }
 
-            val response = aiApiManager.chatCompletion(
+            val response = aiApiManager.chat(
                 messages = listOf(
                     com.forge.os.data.api.ApiMessage("system", "You are an expert code reviewer with deep knowledge of security, performance, and best practices."),
                     com.forge.os.data.api.ApiMessage("user", prompt)

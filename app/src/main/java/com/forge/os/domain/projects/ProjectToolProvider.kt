@@ -145,7 +145,7 @@ class ProjectToolProvider @Inject constructor(
         val slug = args["slug"]?.toString() ?: return "Error: slug required"
         val path = args["path"]?.toString() ?: return "Error: path required"
         
-        if (!repository.get(slug)?.let { true } == true) return "❌ Project not found: $slug"
+        if (repository.get(slug) == null) return "❌ Project not found: $slug"
         
         val projectPath = "projects/$slug/$path"
         return sandboxManager.readFile(projectPath).fold(
@@ -159,7 +159,7 @@ class ProjectToolProvider @Inject constructor(
         val path = args["path"]?.toString() ?: return "Error: path required"
         val content = args["content"]?.toString() ?: return "Error: content required"
         
-        if (!repository.get(slug)?.let { true } == true) return "❌ Project not found: $slug"
+        if (repository.get(slug) == null) return "❌ Project not found: $slug"
         
         val projectPath = "projects/$slug/$path"
         val result = sandboxManager.writeFile(projectPath, content).fold(
@@ -238,7 +238,7 @@ class ProjectToolProvider @Inject constructor(
         val slug = args["slug"]?.toString() ?: return "Error: slug required"
         val path = args["path"]?.toString() ?: "."
         
-        if (!repository.get(slug)?.let { true } == true) return "❌ Project not found: $slug"
+        if (repository.get(slug) == null) return "❌ Project not found: $slug"
         
         val projectPath = if (path == ".") "projects/$slug" else "projects/$slug/$path"
         return sandboxManager.listFiles(projectPath).fold(

@@ -176,7 +176,7 @@ private fun HealthStatusBadge(health: HealthLevel) {
 }
 
 @Composable
-private fun AlertsSection(alerts: List<com.forge.os.domain.heartbeat.SystemAlert>) {
+private fun AlertsSection(alerts: List<com.forge.os.domain.heartbeat.ForgeAlert>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         alerts.forEach { alert ->
             Surface(
@@ -438,7 +438,7 @@ private fun getComponentIcon(name: String): Pair<ImageVector, Color> {
         "workspace" -> Icons.Outlined.Folder to Color(0xFF10B981)
         "config" -> Icons.Outlined.Settings to Color(0xFFF59E0B)
         "cron" -> Icons.Outlined.Schedule to Color(0xFF06B6D4)
-        "database" -> Icons.Outlined.Database to Color(0xFF8B5CF6)
+        "database" -> Icons.Outlined.Storage to Color(0xFF8B5CF6)
         "network" -> Icons.Outlined.Wifi to Color(0xFF3B82F6)
         "security" -> Icons.Outlined.Security to Color(0xFFEF4444)
         else -> Icons.Outlined.Build to ModernAccent

@@ -248,24 +248,31 @@ class ProjectHealthMonitor @Inject constructor(
         
         try {
             // Get recent commits
-            val logResult = gitRunner.execute(projectDir, listOf("log", "--oneline", "-5"))
-            val commits = if (logResult.success) {
-                logResult.output.lines().filter { it.isNotBlank() }
+            val logOutput = gitRunner.log(projectSlug, 5)
+            val commits = if (!logOutput.startsWith("❌") && !logOutput.contains("no commits yet")) {
+                logOutput.lines().filter { it.isNotBlank() }
             } else emptyList()
             
             // Get status
-            val statusResult = gitRunner.execute(projectDir, listOf("status", "--short"))
-            val uncommittedChanges = if (statusResult.success) {
-                statusResult.output.lines().filter { it.isNotBlank() }.size
+            val statusOutput = gitRunner.status(projectSlug)
+            val uncommittedChanges = if (!statusOutput.startsWith("❌")) {
+                statusOutput.lines().count { line ->
+                    line.trim().startsWith("added:") ||
+                    line.trim().startsWith("changed:") ||
+                    line.trim().startsWith("removed:") ||
+                    line.trim().startsWith("untracked:") ||
+                    line.trim().startsWith("modified:")
+                }
             } else 0
             
             // Get current branch
-            val branchResult = gitRunner.execute(projectDir, listOf("branch", "--show-current"))
-            val currentBranch = if (branchResult.success) {
-                branchResult.output.trim()
+            val branchOutput = gitRunner.branch(projectSlug)
+            val currentBranch = if (!branchOutput.startsWith("❌")) {
+                branchOutput.lines().firstOrNull { it.startsWith("current:") }
+                    ?.removePrefix("current:")?.trim() ?: "unknown"
             } else "unknown"
             
-            GitStatus(
+            return GitStatus(
                 isGitRepo = true,
                 currentBranch = currentBranch,
                 recentCommits = commits,
@@ -273,7 +280,7 @@ class ProjectHealthMonitor @Inject constructor(
                 lastCommit = if (commits.isNotEmpty()) commits.first() else null
             )
         } catch (e: Exception) {
-            GitStatus(
+            return GitStatus(
                 isGitRepo = true,
                 message = "Git status check failed: ${e.message}"
             )

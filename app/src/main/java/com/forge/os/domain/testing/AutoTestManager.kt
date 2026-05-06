@@ -10,6 +10,9 @@ import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// Import FileInfo from SandboxManager
+import com.forge.os.data.sandbox.SandboxManager.FileInfo
+
 /**
  * Automatically generates and runs tests for Python/JS projects before commits.
  * 
@@ -203,7 +206,7 @@ class AutoTestManager @Inject constructor(
         }
     }
 
-    private suspend fun findTestDirectory(projectPath: String, files: List<com.forge.os.data.sandbox.FileInfo>): String {
+    private suspend fun findTestDirectory(projectPath: String, files: List<FileInfo>): String {
         // Look for existing test directories
         val testDirs = listOf("tests", "test", "__tests__", "spec")
         for (dir in testDirs) {
@@ -229,7 +232,7 @@ class AutoTestManager @Inject constructor(
 
     private suspend fun findTestableFiles(
         projectPath: String, 
-        files: List<com.forge.os.data.sandbox.FileInfo>, 
+        files: List<FileInfo>, 
         projectType: ProjectType
     ): List<String> {
         val testableFiles = mutableListOf<String>()
@@ -302,11 +305,11 @@ class AutoTestManager @Inject constructor(
 
     private suspend fun runPythonTests(projectPath: String, framework: TestFramework?): TestResult {
         val command = when (framework) {
-            TestFramework.PYTEST -> "python -m pytest tests/ -v"
-            else -> "python -m unittest discover tests -v"
+            TestFramework.PYTEST -> "cd $projectPath && python -m pytest tests/ -v"
+            else -> "cd $projectPath && python -m unittest discover tests -v"
         }
 
-        return sandboxManager.executeShell(command, workingDir = projectPath).fold(
+        return sandboxManager.executeShell(command).fold(
             onSuccess = { output -> parsePythonTestOutput(output, framework) },
             onFailure = { TestResult(false, 0, 0, 0, null, it.message ?: "Test execution failed") }
         )
@@ -314,13 +317,13 @@ class AutoTestManager @Inject constructor(
 
     private suspend fun runJavaScriptTests(projectPath: String, framework: TestFramework?): TestResult {
         val command = when (framework) {
-            TestFramework.JEST -> "npm test"
-            TestFramework.VITEST -> "npx vitest run"
-            TestFramework.MOCHA -> "npx mocha tests/"
-            else -> "npm test"
+            TestFramework.JEST -> "cd $projectPath && npm test"
+            TestFramework.VITEST -> "cd $projectPath && npx vitest run"
+            TestFramework.MOCHA -> "cd $projectPath && npx mocha tests/"
+            else -> "cd $projectPath && npm test"
         }
 
-        return sandboxManager.executeShell(command, workingDir = projectPath).fold(
+        return sandboxManager.executeShell(command).fold(
             onSuccess = { output -> parseJavaScriptTestOutput(output, framework) },
             onFailure = { TestResult(false, 0, 0, 0, null, it.message ?: "Test execution failed") }
         )

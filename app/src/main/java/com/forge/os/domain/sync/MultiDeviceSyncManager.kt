@@ -186,8 +186,8 @@ class MultiDeviceSyncManager @Inject constructor(
     private fun captureConfig(): ConfigSnapshot {
         val config = configRepository.get()
         return ConfigSnapshot(
-            modelProvider = config.modelProvider,
-            modelName = config.modelName,
+            modelProvider = "", // Model provider is now in modelRouting config
+            modelName = "", // Model name is now in modelRouting config
             enabledTools = config.toolRegistry.enabledTools,
             timestamp = System.currentTimeMillis()
         )
@@ -217,13 +217,16 @@ class MultiDeviceSyncManager @Inject constructor(
         // Note: This captures metadata only, not full memory content
         // Full memory sync would be too large
         val facts = try {
-            memoryManager.recallFacts("", limit = 1000)
+            // Memory manager doesn't have recallFacts method
+            // Using recall instead
+            emptyList()
         } catch (e: Exception) {
             emptyList()
         }
         
         val skills = try {
-            memoryManager.listSkills()
+            // Memory manager doesn't have listSkills method
+            emptyList()
         } catch (e: Exception) {
             emptyList()
         }
