@@ -207,6 +207,9 @@ class ProjectToolProvider @Inject constructor(
                             Timber.w(e, "Failed to record project file operation patterns")
                         }
                     }
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record project file operations")
+                }
                 
                 "✅ Written to $path" 
             },

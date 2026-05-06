@@ -1,4 +1,4 @@
-package com.forge.os.domain/workspace/GhostWorkspaceProvider.kt
+package com.forge.os.domain.workspace
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
