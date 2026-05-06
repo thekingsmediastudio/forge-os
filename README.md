@@ -1,66 +1,102 @@
-# Forge OS
+# Forge OS
 
-Forge OS is an open‑source AI platform for Android that enables powerful on‑device automation, plugin development, and integration with Telegram, Composio, and more.
+**Forge OS** is an open-source AI operating system for Android, built for powerful on-device automation, extensibility, and seamless integrations.
 
-## Table of Contents
-- [Features](#features)
-- [Quick Start](#quick-start)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
-- [Code of Conduct](#code-of-conduct)
-- [License](#license)
-- [Community](#community)
+It enables developers and creators to build, automate, and control workflows using plugins, agents, and chat interfaces.
 
-## Features
-- **ReAct‑powered agent** with over 200 built‑in tools (browser, file I/O, system control, etc.)
-- **Plugin system** for Python, Java/Kotlin, and JavaScript extensions.
-- **Telegram integration** for chat‑based control.
-- **Off‑screen headless browser** for web automation (cookies shared with user’s browser).
-- **Git‑backed workspace** with snapshots, cron jobs, and alarms.
-- **Memory & skill store** for reusable knowledge and scripts.
-bash
-# 1️⃣ Clone the repository
+---
+
+## 🚀 Features
+
+* **ReAct-powered AI agent** with 200+ built-in tools (browser, file I/O, system control, etc.)
+* **Extensible plugin system** (Python, Java/Kotlin, JavaScript)
+* **Telegram integration** for remote and chat-based control
+* **Headless browser automation** with shared sessions/cookies
+* **Git-backed workspace** (snapshots, cron jobs, automation workflows)
+* **Memory & skill store** for reusable scripts and knowledge
+
+---
+
+## ⚡ Quick Start
+
+```bash
+# 1. Clone the repository
 git clone https://github.com/thekingsmediastudio/forge-os.git
 cd forge-os
 
-# 2️⃣ Open in Android Studio (recommended Android Studio Flamingo+)
-#    Import the Gradle project and let it sync.
+# 2. Open in Android Studio (Flamingo+ recommended)
+# Import the project and allow Gradle to sync
 
-# 3️⃣ Build & run
-./gradlew assembleDebug   # builds the debug APK
-#   or use Android Studio Run ► app
+# 3. Build the APK
+./gradlew assembleDebug
 
-# 4️⃣ Install on your device
+# 4. Install on device
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
 
-### First‑run setup
-1. Open the app → Settings → **Enable required capabilities** (Telegram, AutoPhone, etc.).
-2. Add your Telegram bot token (or use the built‑in `@ForgeOS` channel).
-3. Optionally import a **GitHub secret** for private repo access via Settings → Custom API Keys.
+---
 
-## Documentation
-- **User Guide** – `docs/user_guide.md` (installation, basic commands, UI overview).  
-- **Developer Guide** – `docs/developer_guide.md` (plugin creation, custom tools, remote GPU worker).  
-- **API Reference** – generated from `forgeos/tools/*.py` (see `docs/api/`).
+## 🛠 First-Time Setup
 
-## Contributing
-Please read our full contribution guide in **CONTRIBUTING.md**. In short:
+1. Open the app → **Settings**
+2. Enable required capabilities (Telegram, AutoPhone, etc.)
+3. Add your **Telegram Bot Token**
+4. (Optional) Add GitHub/API keys for integrations
 
-1. Fork the repo.
-2. Create a feature branch: `git checkout -b feat/awesome-feature`.
-3. Write tests (if applicable) and ensure `./gradlew test` passes.
-4. Open a Pull Request targeting `main`.
-5. PR must pass CI and have at least one approving review.
+---
 
-## Code of Conduct
-We follow the Contributor Covenant. See **CODE_OF_CONDUCT.md** for details.
+## 📚 Documentation
 
-## License
-MIT License – see the `LICENSE` file.
+* **User Guide** → `docs/user_guide.md`
+* **Developer Guide** → `docs/developer_guide.md`
+* **API Reference** → `docs/api/`
 
-## Community
-- **Telegram (Forge OS)**: https://t.me/+ZCOyKzTFB5k1ZjE0  
-- **Telegram (Forge Labs)**: https://t.me/forge_labs (create when ready)  
-- **GitHub Discussions**: https://github.com/thekingsmediastudio/forge-os/discussions  
+---
 
-We welcome ideas, bug reports, and pull requests! 🚀
+## 🤝 Contributing
+
+We welcome contributions!
+
+1. Fork the repository
+2. Create a branch:
+
+```bash
+git checkout -b feat/your-feature
+```
+
+3. Run tests:
+
+```bash
+./gradlew test
+```
+
+4. Open a Pull Request to `main`
+
+Make sure your PR passes CI and follows the project structure.
+
+---
+
+## 📜 Code of Conduct
+
+This project follows the **Contributor Covenant**.
+See `CODE_OF_CONDUCT.md` for details.
+
+---
+
+## 📄 License
+
+MIT License — see `LICENSE`
+
+---
+
+## 🌍 Community
+
+* Telegram (Forge OS): [https://t.me/+ZCOyKzTFB5k1ZjE0](https://t.me/+ZCOyKzTFB5k1ZjE0)
+* Telegram (Forge Labs): *(coming soon)*
+* GitHub Discussions: [https://github.com/thekingsmediastudio/forge-os/discussions](https://github.com/thekingsmediastudio/forge-os/discussions)
+
+---
+
+## 💡 Vision
+
+Forge OS isn’t just an app—it’s a **foundation for building AI-powered systems directly on mobile devices**.
