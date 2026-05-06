@@ -2390,7 +2390,9 @@ To use Composio:
      */
     fun getActiveProject(): com.forge.os.domain.projects.Project? {
         return try {
-            projectToolProvider.dispatch("project_get_active", emptyMap())?.let { result ->
+            kotlinx.coroutines.runBlocking {
+                projectToolProvider.dispatch("project_get_active", emptyMap())
+            }?.let { result ->
                 if (result.contains("No active project")) null
                 else {
                     // Extract project slug from the result and get full project details

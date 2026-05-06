@@ -5,7 +5,11 @@ import com.forge.os.data.api.ToolDefinition
 import com.forge.os.domain.agent.ToolProvider
 import com.forge.os.domain.agent.params
 import com.forge.os.domain.agent.tool
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -22,6 +26,8 @@ class ProjectToolProvider @Inject constructor(
     private val memoryManager: com.forge.os.domain.memory.MemoryManager,
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) : ToolProvider {
+
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     override fun getTools(): List<ToolDefinition> = listOf(
         tool("project_list",
@@ -170,49 +176,53 @@ class ProjectToolProvider @Inject constructor(
                     }
                     
                     // Record file operation patterns
-                    val fileType = path.substringAfterLast('.', "unknown")
-                    reflectionManager.recordPattern(
-                        pattern = "Project file write: $fileType in $slug",
-                        description = "Wrote $fileType file $path in project $slug (${content.length} chars)",
-                        applicableTo = listOf("project_file_operations", fileType, slug),
-                        tags = listOf("file_write", "project_operation", fileType, slug)
-                    )
-                    
-                    // Learn coding patterns from file content
-                    if (fileType in listOf("py", "js", "ts", "kt", "java")) {
-                        val codePatterns = mutableListOf<String>()
-                        if (content.contains("class ")) codePatterns.add("class_definition")
-                        if (content.contains("function ") || content.contains("def ")) codePatterns.add("function_definition")
-                        if (content.contains("import ") || content.contains("from ")) codePatterns.add("imports")
-                        if (content.contains("test") || content.contains("Test")) codePatterns.add("testing")
-                        
-                        codePatterns.forEach { pattern ->
+                    scope.launch {
+                        try {
+                            val fileType = path.substringAfterLast('.', "unknown")
                             reflectionManager.recordPattern(
-                                pattern = "Code pattern: $pattern in $fileType",
-                                description = "Found $pattern in $fileType file $path",
-                                applicableTo = listOf("coding_patterns", pattern, fileType),
-                                tags = listOf("code_analysis", pattern, fileType, "project_code")
+                                pattern = "Project file write: $fileType in $slug",
+                                description = "Wrote $fileType file $path in project $slug (${content.length} chars)",
+                                applicableTo = listOf("project_file_operations", fileType, slug),
+                                tags = listOf("file_write", "project_operation", fileType, slug)
                             )
+                            
+                            // Learn coding patterns from file content
+                            if (fileType in listOf("py", "js", "ts", "kt", "java")) {
+                                val codePatterns = mutableListOf<String>()
+                                if (content.contains("class ")) codePatterns.add("class_definition")
+                                if (content.contains("function ") || content.contains("def ")) codePatterns.add("function_definition")
+                                if (content.contains("import ") || content.contains("from ")) codePatterns.add("imports")
+                                if (content.contains("test") || content.contains("Test")) codePatterns.add("testing")
+                                
+                                codePatterns.forEach { pattern ->
+                                    reflectionManager.recordPattern(
+                                        pattern = "Code pattern: $pattern in $fileType",
+                                        description = "Found $pattern in $fileType file $path",
+                                        applicableTo = listOf("coding_patterns", pattern, fileType),
+                                        tags = listOf("code_analysis", pattern, fileType, "project_code")
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Timber.w(e, "Failed to record project file operation patterns")
                         }
                     }
-                    
-                } catch (e: Exception) {
-                    Timber.w(e, "Failed to record project file operation patterns")
-                }
                 
                 "✅ Written to $path" 
             },
             onFailure = { 
                 // Enhanced Integration: Record file operation failures
-                try {
-                    reflectionManager.recordFailureAndRecovery(
-                        taskId = "project_write_${System.currentTimeMillis()}",
-                        failureReason = "Failed to write file $path in project $slug: ${it.message}",
-                        recoveryStrategy = "Check file permissions, validate path, or ensure project exists",
-                        tags = listOf("file_write_failure", slug, path)
-                    )
-                } catch (e: Exception) {
-                    Timber.w(e, "Failed to record file write failure")
+                scope.launch {
+                    try {
+                        reflectionManager.recordFailureAndRecovery(
+                            taskId = "project_write_${System.currentTimeMillis()}",
+                            failureReason = "Failed to write file $path in project $slug: ${it.message}",
+                            recoveryStrategy = "Check file permissions, validate path, or ensure project exists",
+                            tags = listOf("file_write_failure", slug, path)
+                        )
+                    } catch (e: Exception) {
+                        Timber.w(e, "Failed to record file write failure")
+                    }
                 }
                 
                 "❌ Failed to write file: ${it.message}" 
@@ -247,40 +257,42 @@ class ProjectToolProvider @Inject constructor(
         Timber.i("Activated project: ${project.slug}")
         
         // Enhanced Integration: Learn project activation patterns and store in memory
-        try {
-            // Store project activation in memory for context
-            memoryManager.store(
-                key = "active_project_${System.currentTimeMillis()}",
-                content = "Activated project: ${project.name} (${project.slug}) - ${project.description}",
-                tags = listOf("project_activation", "active_project", project.slug, "context")
-            )
-            
-            // Record project activation patterns
-            reflectionManager.recordPattern(
-                pattern = "Project activation: ${project.slug}",
-                description = "Activated project ${project.name} with ${repository.fileCount(project.slug)} files",
-                applicableTo = listOf("project_management", "project_activation", project.slug),
-                tags = listOf("project_activation", "project_scope", project.slug, "workflow")
-            )
-            
-            // Learn project type patterns
-            val projectType = when {
-                project.tags.contains("python") || project.pythonVersion.isNotBlank() -> "python"
-                project.tags.contains("web") || project.tags.contains("html") -> "web"
-                project.tags.contains("api") || project.tags.contains("backend") -> "api"
-                project.tags.contains("mobile") || project.tags.contains("android") -> "mobile"
-                else -> "general"
+        scope.launch {
+            try {
+                // Store project activation in memory for context
+                memoryManager.store(
+                    key = "active_project_${System.currentTimeMillis()}",
+                    content = "Activated project: ${project.name} (${project.slug}) - ${project.description}",
+                    tags = listOf("project_activation", "active_project", project.slug, "context")
+                )
+                
+                // Record project activation patterns
+                reflectionManager.recordPattern(
+                    pattern = "Project activation: ${project.slug}",
+                    description = "Activated project ${project.name} with ${repository.fileCount(project.slug)} files",
+                    applicableTo = listOf("project_management", "project_activation", project.slug),
+                    tags = listOf("project_activation", "project_scope", project.slug, "workflow")
+                )
+                
+                // Learn project type patterns
+                val projectType = when {
+                    project.tags.contains("python") || project.pythonVersion.isNotBlank() -> "python"
+                    project.tags.contains("web") || project.tags.contains("html") -> "web"
+                    project.tags.contains("api") || project.tags.contains("backend") -> "api"
+                    project.tags.contains("mobile") || project.tags.contains("android") -> "mobile"
+                    else -> "general"
+                }
+                
+                reflectionManager.recordPattern(
+                    pattern = "Project type activation: $projectType",
+                    description = "Activated $projectType project: ${project.name}",
+                    applicableTo = listOf("project_types", projectType, "activation"),
+                    tags = listOf("project_type", projectType, "activation_pattern")
+                )
+                
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record project activation patterns")
             }
-            
-            reflectionManager.recordPattern(
-                pattern = "Project type activation: $projectType",
-                description = "Activated $projectType project: ${project.name}",
-                applicableTo = listOf("project_types", projectType, "activation"),
-                tags = listOf("project_type", projectType, "activation_pattern")
-            )
-            
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record project activation patterns")
         }
         
         return "✅ Activated project: ${project.name}"

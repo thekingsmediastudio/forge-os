@@ -1,7 +1,11 @@
-package com.forge.os.domain.workspace
+package com.forge.os.domain/workspace/GhostWorkspaceProvider.kt
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import java.util.UUID
@@ -14,6 +18,7 @@ class GhostWorkspaceProvider @Inject constructor(
     // Enhanced Integration: Connect with other systems
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) {
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val ghostsBaseDir = File(context.filesDir, "workspace/temp/ghosts")
 
     init {
@@ -37,15 +42,17 @@ class GhostWorkspaceProvider @Inject constructor(
         Timber.d("Created ghost sandbox: ${sandboxDir.absolutePath}")
         
         // Enhanced Integration: Learn ghost workspace creation patterns
-        try {
-            reflectionManager.recordPattern(
-                pattern = "Ghost workspace creation: $sandboxId",
-                description = "Created ephemeral workspace for ghost agent with ID $sandboxId",
-                applicableTo = listOf("ghost_workspace", "delegation", "sandbox_management"),
-                tags = listOf("ghost_workspace", "sandbox_creation", "delegation", sandboxId)
-            )
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record ghost workspace creation patterns")
+        scope.launch {
+            try {
+                reflectionManager.recordPattern(
+                    pattern = "Ghost workspace creation: $sandboxId",
+                    description = "Created ephemeral workspace for ghost agent with ID $sandboxId",
+                    applicableTo = listOf("ghost_workspace", "delegation", "sandbox_management"),
+                    tags = listOf("ghost_workspace", "sandbox_creation", "delegation", sandboxId)
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record ghost workspace creation patterns")
+            }
         }
         
         return sandboxDir
@@ -61,15 +68,17 @@ class GhostWorkspaceProvider @Inject constructor(
             Timber.d("Destroyed ghost sandbox: ${sandboxDir.absolutePath}")
             
             // Enhanced Integration: Learn ghost workspace cleanup patterns
-            try {
-                reflectionManager.recordPattern(
-                    pattern = "Ghost workspace cleanup: $sandboxId",
-                    description = "Cleaned up ephemeral workspace for ghost agent with ID $sandboxId",
-                    applicableTo = listOf("ghost_workspace", "cleanup", "sandbox_management"),
-                    tags = listOf("ghost_workspace", "sandbox_cleanup", "delegation", sandboxId)
-                )
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to record ghost workspace cleanup patterns")
+            scope.launch {
+                try {
+                    reflectionManager.recordPattern(
+                        pattern = "Ghost workspace cleanup: $sandboxId",
+                        description = "Cleaned up ephemeral workspace for ghost agent with ID $sandboxId",
+                        applicableTo = listOf("ghost_workspace", "cleanup", "sandbox_management"),
+                        tags = listOf("ghost_workspace", "sandbox_cleanup", "delegation", sandboxId)
+                    )
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record ghost workspace cleanup patterns")
+                }
             }
         } else {
             Timber.w("Refusing to destroy non-sandbox dir: ${sandboxDir.absolutePath}")

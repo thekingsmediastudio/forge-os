@@ -1,5 +1,9 @@
 package com.forge.os.domain.memory
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,6 +22,7 @@ class MemoryManager @Inject constructor(
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val index = MemoryIndex()
     private var indexBuilt = false
 
@@ -35,22 +40,24 @@ class MemoryManager @Inject constructor(
         Timber.d("MemoryManager: stored fact '$key'")
         
         // Enhanced Integration: Learn memory storage patterns
-        try {
-            userPreferencesManager.recordInteractionPattern("stores_memories", 1)
-            
-            // Learn tag usage patterns
-            tags.forEach { tag ->
-                userPreferencesManager.recordInteractionPattern("uses_tag_$tag", 1)
+        scope.launch {
+            try {
+                userPreferencesManager.recordInteractionPattern("stores_memories", 1)
+                
+                // Learn tag usage patterns
+                tags.forEach { tag ->
+                    userPreferencesManager.recordInteractionPattern("uses_tag_$tag", 1)
+                }
+                
+                reflectionManager.recordPattern(
+                    pattern = "Memory storage: $key",
+                    description = "Stored memory fact with ${tags.size} tags: ${content.take(50)}",
+                    applicableTo = listOf("memory_management", "knowledge_storage") + tags,
+                    tags = listOf("memory_storage", "knowledge_management", "fact_storage") + tags
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to record memory storage patterns")
             }
-            
-            reflectionManager.recordPattern(
-                pattern = "Memory storage: $key",
-                description = "Stored memory fact with ${tags.size} tags: ${content.take(50)}",
-                applicableTo = listOf("memory_management", "knowledge_storage") + tags,
-                tags = listOf("memory_storage", "knowledge_management", "fact_storage") + tags
-            )
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record memory storage patterns")
         }
     }
 

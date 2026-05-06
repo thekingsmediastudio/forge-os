@@ -66,7 +66,8 @@ object AppModule {
         return Python.getInstance()
     }
 
-    @Provides @Singleton fun provideSecurityPolicy(): SecurityPolicy = SecurityPolicy()
+    // SecurityPolicy is auto-provided via @Inject constructor - no manual @Provides needed
+    // @Provides @Singleton fun provideSecurityPolicy(): SecurityPolicy = SecurityPolicy()
 
     // Phase Q — Agent control plane and consent ledger. The control plane is
     // wired into SecurityPolicy via setFlagsProvider so existing security
@@ -105,7 +106,9 @@ object AppModule {
     @Provides @Singleton fun providePermissionManager(r: ConfigRepository) = PermissionManager(r)
     @Provides @Singleton fun provideAlertManager() = AlertManager()
     @Provides @Singleton fun provideHeartbeatMonitor(
-        @ApplicationContext ctx: Context, r: ConfigRepository, a: AlertManager,
+        @ApplicationContext ctx: Context,
+        r: ConfigRepository,
+        a: AlertManager,
         reflectionManager: com.forge.os.domain.agent.ReflectionManager,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager
     ) = HeartbeatMonitor(ctx, r, a, reflectionManager, userPreferencesManager)
@@ -148,12 +151,17 @@ object AppModule {
     @Provides @Singleton fun provideCronRepository(@ApplicationContext ctx: Context) =
         CronRepository(ctx)
     @Provides @Singleton fun provideCronManager(
-        repo: CronRepository, sm: SandboxManager, cr: ConfigRepository,
-        mm: MemoryManager, nh: NotificationHelper,
+        repo: CronRepository,
+        sm: SandboxManager,
+        cr: ConfigRepository,
+        mm: MemoryManager,
+        nh: NotificationHelper,
         aiApiManager: dagger.Lazy<AiApiManager>,
         reActAgent: dagger.Lazy<ReActAgent>,
         backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
-    ) = CronManager(repo, sm, cr, mm, nh, aiApiManager, reActAgent, backgroundLog)
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    ) = CronManager(repo, sm, cr, mm, nh, aiApiManager, reActAgent, backgroundLog, reflectionManager, userPreferencesManager)
 
     // Phase 5 — Plugins
     @Provides @Singleton fun providePluginRepository(@ApplicationContext ctx: Context) =
@@ -165,11 +173,16 @@ object AppModule {
         plane: com.forge.os.domain.control.AgentControlPlane,
     ) = com.forge.os.domain.plugins.PluginExporter(ctx, plane)
     @Provides @Singleton fun providePluginManager(
-        repo: PluginRepository, v: PluginValidator, sm: SandboxManager,
-        cr: ConfigRepository, mm: MemoryManager,
+        repo: PluginRepository,
+        v: PluginValidator,
+        sm: SandboxManager,
+        cr: ConfigRepository,
+        mm: MemoryManager,
         exporter: com.forge.os.domain.plugins.PluginExporter,
         headlessBrowser: com.forge.os.data.web.HeadlessBrowser,
-    ) = PluginManager(repo, v, sm, cr, mm, exporter, headlessBrowser)
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    ) = PluginManager(repo, v, sm, cr, mm, exporter, headlessBrowser, reflectionManager, userPreferencesManager)
     @Provides @Singleton fun provideBuiltInPlugins(pm: PluginManager) = BuiltInPlugins(pm)
 
     // Phase 6 — Sub-Agent Delegation
@@ -178,12 +191,17 @@ object AppModule {
     @Provides @Singleton fun provideAgentNotifier(@ApplicationContext ctx: Context) =
         AgentNotifier(ctx)
     @Provides @Singleton fun provideDelegationManager(
-        repo: SubAgentRepository, cr: ConfigRepository, mm: MemoryManager,
-        agentProvider: javax.inject.Provider<ReActAgent>, notifier: AgentNotifier,
+        repo: SubAgentRepository,
+        cr: ConfigRepository,
+        mm: MemoryManager,
+        agentProvider: javax.inject.Provider<ReActAgent>,
+        notifier: AgentNotifier,
         aiApiManager: AiApiManager,
         ghostWorkspaceProvider: com.forge.os.domain.workspace.GhostWorkspaceProvider,
         backgroundLog: com.forge.os.domain.debug.BackgroundTaskLogManager,
-    ) = DelegationManager(repo, cr, mm, agentProvider, notifier, aiApiManager, ghostWorkspaceProvider, backgroundLog)
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        executionHistoryManager: com.forge.os.domain.agent.ExecutionHistoryManager,
+    ) = DelegationManager(repo, cr, mm, agentProvider, notifier, aiApiManager, ghostWorkspaceProvider, backgroundLog, reflectionManager, executionHistoryManager)
 
     // Phase D — Module UI shared services
     @Provides @Singleton fun provideToolAuditLog(@ApplicationContext ctx: Context) = ToolAuditLog(ctx)
@@ -209,7 +227,10 @@ object AppModule {
     // the graph without a manual @Provides here.
 
     @Provides @Singleton fun provideReActAgent(
-        api: AiApiManager, tr: ToolRegistry, cr: ConfigRepository, mm: MemoryManager,
+        api: AiApiManager,
+        tr: ToolRegistry,
+        cr: ConfigRepository,
+        mm: MemoryManager,
         pm: com.forge.os.domain.companion.PersonaManager,
         conversationIndex: com.forge.os.domain.memory.ConversationIndex,
         executionPlanner: com.forge.os.domain.agent.ExecutionPlanner,
@@ -278,8 +299,15 @@ object AppModule {
     @Provides @Singleton fun provideExternalAuditLog(@ApplicationContext ctx: Context) =
         ExternalAuditLog(ctx)
     @Provides @Singleton fun provideExternalApiBridge(
-        tr: ToolRegistry, pm: PluginManager, mm: MemoryManager,
+        tr: ToolRegistry,
+        pm: PluginManager,
+        mm: MemoryManager,
         agentProvider: javax.inject.Provider<ReActAgent>,
-        registry: ExternalCallerRegistry, audit: ExternalAuditLog, cr: ConfigRepository,
-    ) = ExternalApiBridge(tr, pm, mm, agentProvider, registry, audit, cr)
+        registry: ExternalCallerRegistry,
+        audit: ExternalAuditLog,
+        cr: ConfigRepository,
+        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        securityPolicy: com.forge.os.data.sandbox.SecurityPolicy,
+        doctorService: com.forge.os.domain.doctor.DoctorService,
+    ) = ExternalApiBridge(tr, pm, mm, agentProvider, registry, audit, cr, reflectionManager, securityPolicy, doctorService)
 }

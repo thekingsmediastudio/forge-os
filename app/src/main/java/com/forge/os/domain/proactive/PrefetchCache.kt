@@ -1,6 +1,10 @@
 package com.forge.os.domain.proactive
 
 import com.forge.os.domain.agent.ToolResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -27,6 +31,8 @@ class PrefetchCache @Inject constructor(
         /** How long a prefetched result stays valid. */
         const val TTL_MS: Long = 60 * 60 * 1000L // 1 hour
     }
+
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     private data class Entry(
         val result: ToolResult,
@@ -66,15 +72,17 @@ class PrefetchCache @Inject constructor(
             Timber.d("PrefetchCache: HIT for $toolName (age=${age}ms)")
             
             // Enhanced Integration: Record successful prefetch hit for learning
-            try {
-                reflectionManager.recordPattern(
-                    pattern = "Successful prefetch hit: $toolName",
-                    description = "Prefetch cache successfully predicted and cached result for $toolName (age=${age}ms)",
-                    applicableTo = listOf("prefetch", "prediction_accuracy", toolName),
-                    tags = listOf("prefetch_hit", "prediction_success", "cache_efficiency", "proactive_success")
-                )
-            } catch (e: Exception) {
-                Timber.w(e, "Failed to record prefetch hit pattern")
+            scope.launch {
+                try {
+                    reflectionManager.recordPattern(
+                        pattern = "Successful prefetch hit: $toolName",
+                        description = "Prefetch cache successfully predicted and cached result for $toolName (age=${age}ms)",
+                        applicableTo = listOf("prefetch", "prediction_accuracy", toolName),
+                        tags = listOf("prefetch_hit", "prediction_success", "cache_efficiency", "proactive_success")
+                    )
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to record prefetch hit pattern")
+                }
             }
             
             return entry.result
