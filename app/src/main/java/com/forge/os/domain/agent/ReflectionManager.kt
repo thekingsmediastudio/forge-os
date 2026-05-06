@@ -66,7 +66,7 @@ class ReflectionManager @Inject constructor(
     ): List<ExecutionTrace> {
         val results = memoryManager.recall(goal, k = limit)
         return results
-            .filter { it.tags.contains("execution") }
+            .filter { it.key.startsWith("execution_") }
             .mapNotNull { entry ->
                 runCatching {
                     json.decodeFromString<ExecutionTrace>(entry.content)
@@ -124,7 +124,7 @@ class ReflectionManager @Inject constructor(
     suspend fun getRecoveryStrategies(failureType: String): List<FailureRecovery> {
         val results = memoryManager.recall(failureType, k = 5)
         return results
-            .filter { it.tags.contains("recovery") }
+            .filter { it.key.startsWith("recovery_") }
             .mapNotNull { entry ->
                 runCatching {
                     json.decodeFromString<FailureRecovery>(entry.content)
@@ -167,7 +167,7 @@ class ReflectionManager @Inject constructor(
     suspend fun getRelevantPatterns(taskType: String): List<LearnedPattern> {
         val results = memoryManager.recall(taskType, k = 10)
         return results
-            .filter { it.tags.contains("pattern") }
+            .filter { it.key.startsWith("pattern_") }
             .mapNotNull { entry ->
                 runCatching {
                     json.decodeFromString<LearnedPattern>(entry.content)

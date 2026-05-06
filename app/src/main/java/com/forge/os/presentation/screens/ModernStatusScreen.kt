@@ -435,6 +435,7 @@ private fun RecommendationsCard(recommendations: List<String>) {
     }
 }
 
+@Composable
 private fun getComponentIcon(name: String): Pair<ImageVector, Color> {
     return when (name.lowercase()) {
         "storage" -> Icons.Outlined.Storage to Color(0xFF8B5CF6)
