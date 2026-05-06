@@ -196,8 +196,7 @@ class HeartbeatMonitor @Inject constructor(
             Timber.w(e, "Failed to record heartbeat monitoring patterns")
         }
         
-        return status
-    }
+        return@withContext status
     }
 
     private fun checkStorage(): ComponentStatus {

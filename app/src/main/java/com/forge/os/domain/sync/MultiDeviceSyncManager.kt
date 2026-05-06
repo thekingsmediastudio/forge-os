@@ -1,6 +1,7 @@
 package com.forge.os.domain.sync
 
 import android.content.Context
+import java.util.UUID
 import com.forge.os.domain.backup.BackupManager
 import com.forge.os.domain.config.ConfigRepository
 import com.forge.os.domain.memory.MemoryManager
@@ -482,6 +483,3 @@ enum class CloudProvider {
     ONEDRIVE,
     CUSTOM
 }
-
-// Add missing import
-import java.util.UUID
