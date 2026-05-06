@@ -1,5 +1,6 @@
 package com.forge.os.domain.memory
 
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.ln
 import kotlin.math.sqrt
 
@@ -9,6 +10,9 @@ import kotlin.math.sqrt
  *
  * Builds a bag-of-words TF-IDF model over all indexed documents,
  * then scores queries using cosine similarity.
+ *
+ * Thread-safe: Uses CopyOnWriteArrayList to prevent ConcurrentModificationException
+ * when multiple threads access the index simultaneously.
  */
 class MemoryIndex {
 
@@ -19,9 +23,10 @@ class MemoryIndex {
         val timestamp: Long
     )
 
-    private val documents = mutableListOf<Document>()
+    // Thread-safe list to prevent ConcurrentModificationException
+    private val documents = CopyOnWriteArrayList<Document>()
     private val idf = mutableMapOf<String, Double>()
-    private var built = false
+    @Volatile private var built = false
 
     fun add(id: String, text: String, tier: MemoryTier, timestamp: Long) {
         documents.removeIf { it.id == id }
@@ -40,7 +45,9 @@ class MemoryIndex {
         built = false
     }
 
-    /** Rebuild IDF table from current document set. O(D*T) where D=docs, T=terms. */
+    /** Rebuild IDF table from current document set. O(D*T) where D=docs, T=terms. 
+     * Synchronized to prevent concurrent builds. */
+    @Synchronized
     fun build() {
         if (documents.isEmpty()) { built = true; return }
         val n = documents.size.toDouble()
