@@ -145,7 +145,7 @@ object AppModule {
         skill: SkillMemory,
         sem: com.forge.os.domain.memory.SemanticFactIndex,
         reranker: com.forge.os.domain.memory.ContextReranker,
-        reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
     ) = MemoryManager(daily, longterm, skill, sem, reranker, reflectionManager, userPreferencesManager)
 

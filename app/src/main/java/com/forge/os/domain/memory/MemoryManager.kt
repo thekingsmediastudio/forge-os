@@ -18,8 +18,8 @@ class MemoryManager @Inject constructor(
     val skill: SkillMemory,
     val semantic: SemanticFactIndex,
     val reranker: ContextReranker,
-    // Enhanced Integration: Connect with learning systems
-    private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
+    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
+    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -49,7 +49,7 @@ class MemoryManager @Inject constructor(
                     userPreferencesManager.recordInteractionPattern("uses_tag_$tag", 1)
                 }
                 
-                reflectionManager.recordPattern(
+                reflectionManager.get().recordPattern(
                     pattern = "Memory storage: $key",
                     description = "Stored memory fact with ${tags.size} tags: ${content.take(50)}",
                     applicableTo = listOf("memory_management", "knowledge_storage") + tags,
@@ -137,14 +137,14 @@ class MemoryManager @Inject constructor(
         // Enhanced Integration: Learn memory recall success patterns
         try {
             if (results.isNotEmpty()) {
-                reflectionManager.recordPattern(
+                reflectionManager.get().recordPattern(
                     pattern = "Successful memory recall",
                     description = "Found ${results.size} relevant memories for query: ${query.take(50)}",
                     applicableTo = listOf("memory_recall", "knowledge_retrieval", "search_success"),
                     tags = listOf("memory_success", "recall_success", "knowledge_access")
                 )
             } else {
-                reflectionManager.recordPattern(
+                reflectionManager.get().recordPattern(
                     pattern = "Empty memory recall",
                     description = "No memories found for query: ${query.take(50)}",
                     applicableTo = listOf("memory_recall", "knowledge_gaps", "search_failure"),
