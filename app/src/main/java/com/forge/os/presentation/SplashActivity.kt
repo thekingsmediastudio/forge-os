@@ -126,7 +126,7 @@ private fun SplashContent(onTimeout: () -> Unit) {
                 
                 // Actual logo image
                 Image(
-                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                    painter = painterResource(id = R.drawable.splash_logo),
                     contentDescription = "Forge OS Logo",
                     modifier = Modifier
                         .size(140.dp)

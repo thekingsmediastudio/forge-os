@@ -80,6 +80,8 @@ fun ModernChatScreen(
     val messages by viewModel.messages.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val inputRequest by viewModel.pendingInputRequest.collectAsState()
+    val availableSpecs by viewModel.availableSpecs.collectAsState()
+    val selectedSpec by viewModel.selectedSpec.collectAsState()
     
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -105,7 +107,10 @@ fun ModernChatScreen(
             ModernHeader(
                 onMenuClick = { showMenu = true },
                 onSettingsClick = onNavigateToSettings,
-                isLoading = isLoading
+                isLoading = isLoading,
+                selectedSpec = selectedSpec,
+                availableSpecs = availableSpecs,
+                onSelectSpec = { viewModel.selectSpec(it) }
             )
             
             // Messages Area
@@ -205,8 +210,13 @@ fun ModernChatScreen(
 private fun ModernHeader(
     onMenuClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    isLoading: Boolean
+    isLoading: Boolean,
+    selectedSpec: com.forge.os.domain.security.ProviderSpec?,
+    availableSpecs: List<com.forge.os.domain.security.ProviderSpec>,
+    onSelectSpec: (com.forge.os.domain.security.ProviderSpec) -> Unit
 ) {
+    var showModelMenu by remember { mutableStateOf(false) }
+    
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = ModernSurface,
@@ -258,6 +268,102 @@ private fun ModernHeader(
                     }
                 }
             }
+            
+            // Model selector
+            Box {
+                Surface(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { showModelMenu = true },
+                    color = ModernSurface,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = selectedSpec?.displayLabel ?: "Auto",
+                            color = ModernTextPrimary,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = ModernTextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                
+                DropdownMenu(
+                    expanded = showModelMenu,
+                    onDismissRequest = { showModelMenu = false },
+                    modifier = Modifier.background(ModernSurface)
+                ) {
+                    // Auto-route option
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Outlined.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = ModernAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Auto-route",
+                                    color = ModernTextPrimary,
+                                    fontSize = 13.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        },
+                        onClick = {
+                            // Auto-route logic handled by viewModel
+                            showModelMenu = false
+                        }
+                    )
+                    
+                    if (availableSpecs.isNotEmpty()) {
+                        HorizontalDivider(color = ModernBorder)
+                        availableSpecs.forEach { spec ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        spec.displayLabel,
+                                        color = ModernTextPrimary,
+                                        fontSize = 13.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                },
+                                onClick = {
+                                    onSelectSpec(spec)
+                                    showModelMenu = false
+                                }
+                            )
+                        }
+                    } else {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "No keys configured",
+                                    color = ModernTextSecondary,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            },
+                            onClick = { showModelMenu = false },
+                            enabled = false
+                        )
+                    }
+                }
+            }
+            
+            Spacer(Modifier.width(8.dp))
             
             // Settings button
             IconButton(
