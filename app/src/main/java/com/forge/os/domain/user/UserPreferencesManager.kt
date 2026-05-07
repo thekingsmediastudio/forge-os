@@ -2,6 +2,15 @@ package com.forge.os.domain.user
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -27,23 +36,62 @@ class UserPreferencesManager @Inject constructor(
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     private val preferencesFile: File get() = context.filesDir.resolve("workspace/system/user_preferences.json")
 
+    // All I/O runs on IO dispatcher; mutex prevents concurrent writes
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val mutex = Mutex()
+
+    // In-memory cache so reads never hit disk on the main thread
+    @Volatile private var cachedPreferences: UserPreferences? = null
+
+    // Debounce: coalesce rapid writes into a single flush after 500 ms
+    private var pendingFlushJob: Job? = null
+
     init {
         preferencesFile.parentFile?.mkdirs()
+        // Pre-load cache on a background thread at startup
+        scope.launch { ensureCacheLoaded() }
     }
 
     /**
-     * Get all user preferences.
+     * Get all user preferences. Returns cached copy — never blocks the caller.
      */
     fun getPreferences(): UserPreferences {
-        return loadPreferences() ?: createDefaultPreferences()
+        return cachedPreferences ?: createDefaultPreferences()
     }
 
     /**
-     * Update user preferences.
+     * Update user preferences. Writes are debounced (500 ms) and run on IO dispatcher.
+     * Safe to call from any thread including the main thread.
      */
     fun updatePreferences(preferences: UserPreferences) {
+        cachedPreferences = preferences
+        scheduleDebouncedFlush()
+    }
+
+    /** Ensure the cache is populated (called once at startup on IO thread). */
+    private suspend fun ensureCacheLoaded() {
+        if (cachedPreferences != null) return
+        mutex.withLock {
+            if (cachedPreferences != null) return
+            cachedPreferences = loadPreferencesFromDisk() ?: createDefaultPreferences()
+        }
+    }
+
+    /** Debounce: cancel any pending flush and schedule a new one 500 ms out. */
+    private fun scheduleDebouncedFlush() {
+        pendingFlushJob?.cancel()
+        pendingFlushJob = scope.launch {
+            delay(500)
+            flushToDisk()
+        }
+    }
+
+    private suspend fun flushToDisk() = mutex.withLock {
+        val prefs = cachedPreferences ?: return
         try {
-            preferencesFile.writeText(json.encodeToString(preferences))
+            withContext(Dispatchers.IO) {
+                preferencesFile.writeText(json.encodeToString(prefs))
+            }
             Timber.i("Updated user preferences")
         } catch (e: Exception) {
             Timber.e(e, "Failed to update preferences")
@@ -189,9 +237,9 @@ class UserPreferencesManager @Inject constructor(
     }
 
     /**
-     * Load preferences from disk.
+     * Load preferences from disk (blocking — only call from IO dispatcher).
      */
-    private fun loadPreferences(): UserPreferences? {
+    private fun loadPreferencesFromDisk(): UserPreferences? {
         return runCatching {
             if (!preferencesFile.exists()) return null
             val content = preferencesFile.readText()

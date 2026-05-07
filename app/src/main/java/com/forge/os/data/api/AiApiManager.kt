@@ -209,7 +209,11 @@ class AiApiManager @Inject constructor(
         val provider = runCatching { ApiKeyProvider.valueOf(providerName) }.getOrNull()
         if (provider != null && secureKeyStore.hasKey(provider) &&
             provider.schema == ProviderSchema.OPENAI) {
-            return ProviderSpec.Builtin(provider, model)
+            // Use a provider-appropriate default embedding model if the configured
+            // model is an OpenAI-specific one (e.g. text-embedding-3-small) but
+            // the resolved provider is not OpenAI.
+            val effectiveModel = resolveEmbeddingModelForProvider(provider, model)
+            return ProviderSpec.Builtin(provider, effectiveModel)
         }
         // 2) preferred custom endpoint by name (rule.provider may match a
         //    custom endpoint name/id rather than a built-in enum)
@@ -225,12 +229,30 @@ class AiApiManager @Inject constructor(
         val anyBuiltin = ApiKeyProvider.entries.firstOrNull {
             it.schema == ProviderSchema.OPENAI && secureKeyStore.hasKey(it)
         }
-        if (anyBuiltin != null) return ProviderSpec.Builtin(anyBuiltin, model)
+        if (anyBuiltin != null) return ProviderSpec.Builtin(anyBuiltin, resolveEmbeddingModelForProvider(anyBuiltin, model))
         // 4) fallback: any OpenAI-schema custom endpoint with a key
         val anyCustom = customEndpoints.list().firstOrNull {
             it.schema == ProviderSchema.OPENAI && secureKeyStore.hasCustomKey(it.id)
         } ?: return null
         return ProviderSpec.Custom(anyCustom, model)
+    }
+
+    /**
+     * Returns the appropriate embedding model for the given provider.
+     * Prevents sending OpenAI-specific model IDs (e.g. text-embedding-3-small)
+     * to providers that don't support them (e.g. Mistral → mistral-embed).
+     */
+    private fun resolveEmbeddingModelForProvider(provider: ApiKeyProvider, configuredModel: String): String {
+        // If the user explicitly configured a non-OpenAI-default model, respect it
+        if (configuredModel != "text-embedding-3-small" && configuredModel != "text-embedding-ada-002") {
+            return configuredModel
+        }
+        return when (provider) {
+            ApiKeyProvider.MISTRAL   -> "mistral-embed"
+            ApiKeyProvider.TOGETHER  -> "togethercomputer/m2-bert-80M-8k-retrieval"
+            ApiKeyProvider.OPENAI    -> configuredModel
+            else                     -> configuredModel  // groq/deepseek/etc. don't have embedding models; will fall back to local
+        }
     }
 
     private fun resolveVisionSpec(): ProviderSpec? {

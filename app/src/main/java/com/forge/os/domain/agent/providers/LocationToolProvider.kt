@@ -8,6 +8,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import androidx.annotation.RequiresApi
 import com.forge.os.data.api.FunctionDefinition
 import com.forge.os.data.api.FunctionParameters
 import com.forge.os.data.api.ParameterProperty
@@ -169,13 +170,7 @@ class LocationToolProvider @Inject constructor(
         if (!Geocoder.isPresent()) return err("Geocoder not available on this device.")
 
         val addresses: List<Address>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val latch = CountDownLatch(1)
-            var result: List<Address>? = null
-            Geocoder(context, Locale.getDefault()).getFromLocation(finalLat, finalLng, 1) { addrs ->
-                result = addrs; latch.countDown()
-            }
-            latch.await(5, TimeUnit.SECONDS)
-            result
+            geocodeWithListenerApi(finalLat, finalLng)
         } else {
             @Suppress("DEPRECATION")
             Geocoder(context, Locale.getDefault()).getFromLocation(finalLat, finalLng, 1)
@@ -251,6 +246,23 @@ class LocationToolProvider @Inject constructor(
     }.getOrElse { err("Could not open Location Settings: ${it.message}") }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /**
+     * Uses the Android 13+ GeocodeListener API. Kept in its own method so the
+     * lambda reference is only resolved at call time, not at class-load time.
+     * This prevents NoClassDefFoundError on Android < 13.
+     */
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun geocodeWithListenerApi(lat: Double, lng: Double): List<Address>? {
+        val latch = CountDownLatch(1)
+        var result: List<Address>? = null
+        Geocoder(context, Locale.getDefault()).getFromLocation(lat, lng, 1) { addrs ->
+            result = addrs
+            latch.countDown()
+        }
+        latch.await(5, TimeUnit.SECONDS)
+        return result
+    }
 
     private fun bestLastKnown(): Location? {
         val providers = listOf(
