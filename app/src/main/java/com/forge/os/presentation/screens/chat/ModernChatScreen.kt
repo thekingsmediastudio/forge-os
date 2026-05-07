@@ -507,60 +507,230 @@ private fun QuickActionChip(
 
 @Composable
 private fun ModernMessageBubble(message: ChatMessage) {
-    val isUser = message.role == "user"
-    
+    when (message.role) {
+        "user"          -> ModernUserBubble(message.content)
+        "assistant"     -> if (message.isError) ModernErrorBubble(message)
+                           else ModernAssistantBubble(message.content, message.isStreaming)
+        "tool_call"     -> ModernToolCallChip(message.toolName ?: "tool", message.content)
+        "tool_result"   -> ModernToolResultBubble(message.toolName ?: "tool", message.content, message.isError)
+        "system"        -> ModernSystemBubble(message.content)
+        "input_request" -> ModernInputRequestBubble(message.content)
+        else            -> ModernAssistantBubble(message.content, message.isStreaming)
+    }
+}
+
+@Composable
+private fun ModernUserBubble(text: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        horizontalArrangement = Arrangement.End
     ) {
-        if (!isUser) {
-            // Agent avatar with actual logo
-            ForgeLogo(size = 32.dp)
-            
-            Spacer(Modifier.width(12.dp))
+        Surface(
+            modifier = Modifier.widthIn(max = 560.dp),
+            color = ModernAccent.copy(alpha = 0.15f),
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+        ) {
+            Text(
+                text,
+                color = ModernTextPrimary,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
         }
-        
+        Spacer(Modifier.width(12.dp))
+        Box(
+            modifier = Modifier.size(32.dp).background(ModernSurface, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Outlined.Person, "User", tint = ModernTextPrimary, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun ModernAssistantBubble(text: String, isStreaming: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        ForgeLogo(size = 32.dp)
+        Spacer(Modifier.width(12.dp))
         Surface(
             modifier = Modifier.widthIn(max = 600.dp),
-            color = if (isUser) ModernAccent.copy(alpha = 0.15f) else ModernSurface,
-            shape = RoundedCornerShape(
-                topStart = if (isUser) 16.dp else 4.dp,
-                topEnd = if (isUser) 4.dp else 16.dp,
-                bottomStart = 16.dp,
-                bottomEnd = 16.dp
-            )
+            color = ModernSurface,
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
+            val displayText = text + if (isStreaming) "▋" else ""
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                if (displayText.contains("**") || displayText.contains("`") ||
+                    displayText.contains("```") || displayText.contains("# ") ||
+                    displayText.contains("- ") || displayText.contains("> ")) {
+                    com.forge.os.presentation.screens.MarkdownText(
+                        text = displayText,
+                        baseColor = ModernTextPrimary,
+                        baseFontSize = 14f
+                    )
+                } else {
+                    Text(
+                        displayText,
+                        color = ModernTextPrimary,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModernErrorBubble(msg: ChatMessage) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        ForgeLogo(size = 32.dp)
+        Spacer(Modifier.width(12.dp))
+        Surface(
+            modifier = Modifier.widthIn(max = 560.dp),
+            color = Color(0xFF1a0a0a),
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(msg.content, color = Color(0xFFef4444), fontSize = 13.sp, lineHeight = 18.sp)
+                msg.errorDetail?.let { err ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        buildString {
+                            append("provider=${err.provider} model=${err.model}")
+                            if (err.httpCode > 0) append(" http=${err.httpCode}")
+                            err.providerCode?.let { append(" code=$it") }
+                        },
+                        color = Color(0xFF7f1d1d), fontSize = 10.sp, fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Compact chip shown while a tool is being called — gear icon + tool name + args preview. */
+@Composable
+private fun ModernToolCallChip(toolName: String, args: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 44.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Spinning gear while tool runs
+        val infiniteTransition = rememberInfiniteTransition(label = "gear_spin")
+        val rotation by infiniteTransition.animateFloat(
+            initialValue = 0f, targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing)),
+            label = "gear_rotation"
+        )
+        Icon(
+            Icons.Filled.Settings, "Running",
+            tint = ModernAccent,
+            modifier = Modifier.size(14.dp).graphicsLayer { rotationZ = rotation }
+        )
+        Spacer(Modifier.width(8.dp))
+        Surface(
+            color = ModernAccent.copy(alpha = 0.08f),
+            shape = RoundedCornerShape(8.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, ModernAccent.copy(alpha = 0.25f))
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(
-                    message.content,
-                    color = ModernTextPrimary,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontFamily = if (message.content.contains("```")) FontFamily.Monospace else FontFamily.Default
+                    "⚙ $toolName",
+                    color = ModernAccent,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold
                 )
+                if (args.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        args.take(120).let { if (args.length > 120) "$it…" else it },
+                        color = ModernTextSecondary,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
         }
-        
-        if (isUser) {
-            Spacer(Modifier.width(12.dp))
-            
-            // User avatar
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .background(ModernSurface, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Outlined.Person,
-                    "User",
-                    tint = ModernTextPrimary,
-                    modifier = Modifier.size(18.dp)
+    }
+}
+
+/** Result bubble shown after a tool completes — tick/cross + tool name + output preview. */
+@Composable
+private fun ModernToolResultBubble(toolName: String, result: String, isError: Boolean) {
+    val accentColor = if (isError) Color(0xFFef4444) else Color(0xFF22c55e)
+    val bgColor = if (isError) Color(0xFF1a0a0a) else Color(0xFF0a1a0a)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 44.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(
+            if (isError) Icons.Filled.Close else Icons.Filled.Check,
+            if (isError) "Error" else "Done",
+            tint = accentColor,
+            modifier = Modifier.size(14.dp).padding(top = 2.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Surface(
+            color = bgColor,
+            shape = RoundedCornerShape(8.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, accentColor.copy(alpha = 0.25f)),
+            modifier = Modifier.widthIn(max = 520.dp)
+        ) {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Text(
+                    toolName,
+                    color = accentColor,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold
                 )
+                if (result.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        result.take(300).let { if (result.length > 300) "$it…" else it },
+                        color = ModernTextPrimary,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 16.sp
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun ModernSystemBubble(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0f172a), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text(text, color = Color(0xFF94a3b8), fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 16.sp)
+    }
+}
+
+@Composable
+private fun ModernInputRequestBubble(question: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0c1a0a), RoundedCornerShape(8.dp))
+            .padding(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text("❓", fontSize = 14.sp)
+        Spacer(Modifier.width(8.dp))
+        Text(question, color = Color(0xFF86efac), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 17.sp)
     }
 }
 
