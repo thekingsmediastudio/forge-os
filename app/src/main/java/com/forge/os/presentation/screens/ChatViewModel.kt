@@ -502,6 +502,15 @@ BROWSER: tap 🌐 in the header to open the in-app browser.
 SETTINGS: tap ⚙ to add API keys & custom endpoints.
     """.trimIndent()
 
+    fun retryLast() {
+        // Find the last user message and re-send it
+        val lastUser = _messages.value.lastOrNull { it.role == "user" }?.content ?: return
+        // Remove the last assistant/error response so it gets replaced
+        val trimmed = _messages.value.dropLastWhile { it.role == "assistant" || it.role == "tool_call" || it.role == "tool_result" }
+        _messages.value = trimmed
+        send(lastUser)
+    }
+
     private fun addMsg(msg: ChatMessage) { _messages.value = _messages.value + msg }
 
     private fun upsertMsg(msg: ChatMessage) {

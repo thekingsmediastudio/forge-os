@@ -2,8 +2,10 @@ package com.forge.os.presentation.screens.chat
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -82,6 +85,7 @@ fun ModernChatScreen(
     val inputRequest by viewModel.pendingInputRequest.collectAsState()
     val availableSpecs by viewModel.availableSpecs.collectAsState()
     val selectedSpec by viewModel.selectedSpec.collectAsState()
+    val voiceVm: com.forge.os.presentation.screens.voice.VoiceInputViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -127,7 +131,11 @@ fun ModernChatScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(messages, key = { it.id }) { msg ->
-                            ModernMessageBubble(msg)
+                            ModernMessageBubble(
+                                message = msg,
+                                onRetry = { viewModel.retryLast() },
+                                onSpeak = { text -> voiceVm.speak(text) },
+                            )
                         }
                         
                         // Loading indicator
@@ -529,37 +537,67 @@ private fun QuickActionChip(
 }
 
 @Composable
-private fun ModernMessageBubble(message: ChatMessage) {
+private fun ModernMessageBubble(message: ChatMessage, onRetry: () -> Unit, onSpeak: (String) -> Unit) {
     when (message.role) {
         "user"          -> ModernUserBubble(message.content)
-        "assistant"     -> if (message.isError) ModernErrorBubble(message)
-                           else ModernAssistantBubble(message.content, message.isStreaming)
+        "assistant"     -> if (message.isError) ModernErrorBubble(message, onRetry)
+                           else ModernAssistantBubble(message.content, message.isStreaming, onSpeak)
         "tool_call"     -> ModernToolCallChip(message.toolName ?: "tool", message.content)
         "tool_result"   -> ModernToolResultBubble(message.toolName ?: "tool", message.content, message.isError)
         "system"        -> ModernSystemBubble(message.content)
         "input_request" -> ModernInputRequestBubble(message.content)
-        else            -> ModernAssistantBubble(message.content, message.isStreaming)
+        else            -> ModernAssistantBubble(message.content, message.isStreaming, onSpeak)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ModernUserBubble(text: String) {
+    var showActions by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (showActions) 0.97f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "user_bubble_scale"
+    )
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
-        Surface(
-            modifier = Modifier.widthIn(max = 560.dp),
-            color = ModernAccent.copy(alpha = 0.15f),
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
-        ) {
-            Text(
-                text,
-                color = ModernTextPrimary,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            )
+        Column(horizontalAlignment = Alignment.End) {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = 560.dp)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .combinedClickable(
+                        onClick = { showActions = false },
+                        onLongClick = { showActions = !showActions },
+                    ),
+                color = ModernAccent.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text,
+                        color = ModernTextPrimary,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            }
+            AnimatedVisibility(visible = showActions) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp, end = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    BubbleActionButton("Copy") {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                        showActions = false
+                    }
+                }
+            }
         }
         Spacer(Modifier.width(12.dp))
         Box(
@@ -571,67 +609,127 @@ private fun ModernUserBubble(text: String) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ModernAssistantBubble(text: String, isStreaming: Boolean) {
+private fun ModernAssistantBubble(text: String, isStreaming: Boolean, onSpeak: (String) -> Unit) {
+    var showActions by remember { mutableStateOf(false) }
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val scale by animateFloatAsState(
+        targetValue = if (showActions) 0.97f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "assistant_bubble_scale"
+    )
+
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Top,
     ) {
         ForgeLogo(size = 32.dp)
         Spacer(Modifier.width(12.dp))
-        Surface(
-            modifier = Modifier.widthIn(max = 600.dp),
-            color = ModernSurface,
-            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
-        ) {
-            val displayText = text + if (isStreaming) "▋" else ""
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                if (displayText.contains("**") || displayText.contains("`") ||
-                    displayText.contains("```") || displayText.contains("# ") ||
-                    displayText.contains("- ") || displayText.contains("> ")) {
-                    com.forge.os.presentation.screens.MarkdownText(
-                        text = displayText,
-                        baseColor = ModernTextPrimary,
-                        baseFontSize = 14f
-                    )
-                } else {
-                    Text(
-                        displayText,
-                        color = ModernTextPrimary,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
+        Column {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = 600.dp)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
+                    .combinedClickable(
+                        onClick = { showActions = false },
+                        onLongClick = { showActions = !showActions },
+                    ),
+                color = ModernSurface,
+                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+            ) {
+                val displayText = text + if (isStreaming) "▋" else ""
+                SelectionContainer {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        com.forge.os.presentation.screens.MarkdownText(
+                            text = displayText,
+                            baseColor = ModernTextPrimary,
+                            baseFontSize = 14f
+                        )
+                    }
+                }
+            }
+
+            // Action row — copy, speak, retry
+            AnimatedVisibility(
+                visible = showActions && !isStreaming,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    BubbleActionButton("Copy") {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                        showActions = false
+                    }
+                    BubbleActionButton("🔊 Speak") {
+                        onSpeak(text)
+                        showActions = false
+                    }
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ModernErrorBubble(msg: ChatMessage) {
+private fun ModernErrorBubble(msg: ChatMessage, onRetry: () -> Unit) {
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var showActions by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Top,
     ) {
         ForgeLogo(size = 32.dp)
         Spacer(Modifier.width(12.dp))
-        Surface(
-            modifier = Modifier.widthIn(max = 560.dp),
-            color = Color(0xFF1a0a0a),
-            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(msg.content, color = Color(0xFFef4444), fontSize = 13.sp, lineHeight = 18.sp)
-                msg.errorDetail?.let { err ->
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        buildString {
-                            append("provider=${err.provider} model=${err.model}")
-                            if (err.httpCode > 0) append(" http=${err.httpCode}")
-                            err.providerCode?.let { append(" code=$it") }
-                        },
-                        color = Color(0xFF7f1d1d), fontSize = 10.sp, fontFamily = FontFamily.Monospace
-                    )
+        Column {
+            Surface(
+                modifier = Modifier
+                    .widthIn(max = 560.dp)
+                    .combinedClickable(
+                        onClick = { showActions = false },
+                        onLongClick = { showActions = !showActions },
+                    ),
+                color = Color(0xFF1a0a0a),
+                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+            ) {
+                SelectionContainer {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(msg.content, color = Color(0xFFef4444), fontSize = 13.sp, lineHeight = 18.sp)
+                        msg.errorDetail?.let { err ->
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                buildString {
+                                    append("provider=${err.provider} model=${err.model}")
+                                    if (err.httpCode > 0) append(" http=${err.httpCode}")
+                                    err.providerCode?.let { append(" code=$it") }
+                                },
+                                color = Color(0xFF7f1d1d), fontSize = 10.sp, fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visible = showActions,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    BubbleActionButton("↺ Retry") { onRetry(); showActions = false }
+                    BubbleActionButton("Copy") {
+                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(msg.content))
+                        showActions = false
+                    }
                 }
             }
         }
@@ -757,6 +855,25 @@ private fun ModernInputRequestBubble(question: String) {
     }
 }
 
+/** Small pill button shown in the long-press action row under a bubble. */
+@Composable
+private fun BubbleActionButton(label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        color = ModernSurface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, ModernBorder),
+    ) {
+        Text(
+            label,
+            color = ModernTextSecondary,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+        )
+    }
+}
+
 @Composable
 private fun TypingIndicator() {
     Row(
@@ -812,38 +929,34 @@ private fun ModernInputBar(
     enabled: Boolean
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(80.dp),
+        modifier = Modifier.fillMaxWidth(),
         color = ModernSurface,
         shadowElevation = 8.dp
     ) {
         Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Input field
+            // Input field — grows with content, capped at ~5 lines
             Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(48.dp),
+                modifier = Modifier.weight(1f),
                 color = ModernBg,
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(20.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, ModernBorder)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     TextField(
                         value = value,
                         onValueChange = onValueChange,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp, max = 160.dp),
                         placeholder = {
                             Text(
                                 "Message Forge...",
@@ -862,37 +975,35 @@ private fun ModernInputBar(
                             unfocusedTextColor = ModernTextPrimary,
                             cursorColor = ModernAccent
                         ),
-                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(onSend = { if (enabled) onSend() })
+                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                        maxLines = 6,
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Default,   // allow newlines
+                            capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                        ),
                     )
-                    
+
                     // Voice input button
                     com.forge.os.presentation.screens.voice.VoiceInputButton(
-                        onVoiceInput = { recognizedText ->
-                            onValueChange(recognizedText)
-                        },
-                        modifier = Modifier.size(32.dp)
+                        onVoiceInput = { recognizedText -> onValueChange(recognizedText) },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .padding(bottom = 2.dp)
                     )
                 }
             }
-            
+
             // Send button
             FloatingActionButton(
                 onClick = onSend,
-                containerColor = if (value.isNotBlank() && enabled) {
-                    ModernAccent
-                } else {
-                    ModernSurface
-                },
+                containerColor = if (value.isNotBlank() && enabled) ModernAccent else ModernSurface,
                 contentColor = Color.White,
-                modifier = Modifier.size(56.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     if (value.isNotBlank()) Icons.Filled.Send else Icons.Outlined.Send,
                     "Send",
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }

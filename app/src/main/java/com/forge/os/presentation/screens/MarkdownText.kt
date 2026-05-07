@@ -1,21 +1,26 @@
 package com.forge.os.presentation.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -90,34 +95,54 @@ fun MarkdownText(
                     )
                 }
                 is MdSegment.BulletItem -> {
+                    val context = LocalContext.current
+                    val annotated = buildInlineAnnotated(seg.content, baseFontSize, baseColor)
                     Row {
-                        Text(
-                            "• ",
-                            color = Orange,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = baseFontSize.sp
-                        )
-                        Text(
-                            buildInlineAnnotated(seg.content, baseFontSize, baseColor),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = baseFontSize.sp,
-                            lineHeight = (baseFontSize + 5).sp
+                        Text("• ", color = Orange, fontFamily = FontFamily.Monospace, fontSize = baseFontSize.sp)
+                        ClickableText(
+                            text = annotated,
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = baseFontSize.sp,
+                                lineHeight = (baseFontSize + 5).sp,
+                            ),
+                            onClick = { offset ->
+                                annotated.getStringAnnotations("URL", offset, offset)
+                                    .firstOrNull()?.let { ann ->
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse(ann.item))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        }
+                                    }
+                            }
                         )
                     }
                 }
                 is MdSegment.NumberedItem -> {
+                    val context = LocalContext.current
+                    val annotated = buildInlineAnnotated(seg.content, baseFontSize, baseColor)
                     Row {
-                        Text(
-                            "${seg.number}. ",
-                            color = Orange,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = baseFontSize.sp
-                        )
-                        Text(
-                            buildInlineAnnotated(seg.content, baseFontSize, baseColor),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = baseFontSize.sp,
-                            lineHeight = (baseFontSize + 5).sp
+                        Text("${seg.number}. ", color = Orange, fontFamily = FontFamily.Monospace, fontSize = baseFontSize.sp)
+                        ClickableText(
+                            text = annotated,
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = baseFontSize.sp,
+                                lineHeight = (baseFontSize + 5).sp,
+                            ),
+                            onClick = { offset ->
+                                annotated.getStringAnnotations("URL", offset, offset)
+                                    .firstOrNull()?.let { ann ->
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse(ann.item))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        }
+                                    }
+                            }
                         )
                     }
                 }
@@ -129,11 +154,26 @@ fun MarkdownText(
                 }
                 is MdSegment.Paragraph -> {
                     if (seg.content.isNotBlank()) {
-                        Text(
-                            buildInlineAnnotated(seg.content, baseFontSize, baseColor),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = baseFontSize.sp,
-                            lineHeight = (baseFontSize + 5).sp
+                        val context = LocalContext.current
+                        val annotated = buildInlineAnnotated(seg.content, baseFontSize, baseColor)
+                        ClickableText(
+                            text = annotated,
+                            style = androidx.compose.ui.text.TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = baseFontSize.sp,
+                                lineHeight = (baseFontSize + 5).sp,
+                            ),
+                            onClick = { offset ->
+                                annotated.getStringAnnotations("URL", offset, offset)
+                                    .firstOrNull()?.let { ann ->
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse(ann.item))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        }
+                                    }
+                            }
                         )
                     }
                 }
@@ -217,6 +257,11 @@ fun buildInlineAnnotated(text: String, baseFontSize: Float, baseColor: Color): A
     return buildAnnotatedString {
         var remaining = text
         while (remaining.isNotEmpty()) {
+            // Markdown link [label](url)
+            val mdLinkMatch = Regex("\\[([^]]+)]\\(([^)]+)\\)").find(remaining)
+            // Raw URL https?://...
+            val urlMatch = Regex("https?://[^\\s,)>\"']+").find(remaining)
+
             // Bold+italic ***text***
             val boldItalicIdx = remaining.indexOf("***")
             // Bold **text**
@@ -230,42 +275,77 @@ fun buildInlineAnnotated(text: String, baseFontSize: Float, baseColor: Color): A
             // Strikethrough ~~text~~
             val strikeIdx = remaining.indexOf("~~")
 
-            val firstIdx = listOfNotNull(
-                if (boldItalicIdx >= 0) boldItalicIdx to "***" else null,
-                if (boldIdx >= 0 && (boldItalicIdx < 0 || boldIdx < boldItalicIdx)) boldIdx to "**" else null,
-                if (italicIdx >= 0) italicIdx to "*" else null,
-                if (codeIdx >= 0) codeIdx to "`" else null,
-                if (strikeIdx >= 0) strikeIdx to "~~" else null
-            ).minByOrNull { it.first }
+            // Collect all candidates with their start positions
+            val candidates = mutableListOf<Pair<Int, String>>()
+            if (boldItalicIdx >= 0) candidates += boldItalicIdx to "***"
+            if (boldIdx >= 0 && (boldItalicIdx < 0 || boldIdx < boldItalicIdx)) candidates += boldIdx to "**"
+            if (italicIdx >= 0) candidates += italicIdx to "*"
+            if (codeIdx >= 0) candidates += codeIdx to "`"
+            if (strikeIdx >= 0) candidates += strikeIdx to "~~"
+            if (mdLinkMatch != null) candidates += mdLinkMatch.range.first to "mdlink"
+            if (urlMatch != null) candidates += urlMatch.range.first to "url"
+
+            val firstIdx = candidates.minByOrNull { it.first }
 
             if (firstIdx == null) {
                 withStyle(SpanStyle(color = baseColor)) { append(remaining) }
                 break
             }
+
             val (markerStart, marker) = firstIdx
+
+            // Append plain text before the marker
             if (markerStart > 0) {
                 withStyle(SpanStyle(color = baseColor)) { append(remaining.substring(0, markerStart)) }
             }
-            val afterMarker = remaining.substring(markerStart + marker.length)
-            val endIdx = afterMarker.indexOf(marker)
-            if (endIdx < 0) {
-                withStyle(SpanStyle(color = baseColor)) { append(remaining.substring(markerStart)) }
-                break
-            }
-            val inner = afterMarker.substring(0, endIdx)
+
             when (marker) {
-                "***" -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic, color = baseColor)) { append(inner) }
-                "**" -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = baseColor)) { append(inner) }
-                "*" -> withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = baseColor)) { append(inner) }
-                "`" -> withStyle(SpanStyle(
-                    fontFamily = FontFamily.Monospace,
-                    background = Color(0xFF1e1e2e),
-                    color = Color(0xFF89dceb),
-                    fontSize = (baseFontSize - 1).sp
-                )) { append(inner) }
-                "~~" -> withStyle(SpanStyle(color = Color(0xFF666666))) { append(inner) }
+                "mdlink" -> {
+                    val m = mdLinkMatch!!
+                    val label = m.groupValues[1]
+                    val url   = m.groupValues[2]
+                    pushStringAnnotation("URL", url)
+                    withStyle(SpanStyle(
+                        color = Color(0xFF60A5FA),
+                        textDecoration = TextDecoration.Underline,
+                    )) { append(label) }
+                    pop()
+                    remaining = remaining.substring(m.range.last + 1)
+                }
+                "url" -> {
+                    val m = urlMatch!!
+                    val url = m.value
+                    pushStringAnnotation("URL", url)
+                    withStyle(SpanStyle(
+                        color = Color(0xFF60A5FA),
+                        textDecoration = TextDecoration.Underline,
+                    )) { append(url) }
+                    pop()
+                    remaining = remaining.substring(m.range.last + 1)
+                }
+                else -> {
+                    val afterMarker = remaining.substring(markerStart + marker.length)
+                    val endIdx = afterMarker.indexOf(marker)
+                    if (endIdx < 0) {
+                        withStyle(SpanStyle(color = baseColor)) { append(remaining.substring(markerStart)) }
+                        break
+                    }
+                    val inner = afterMarker.substring(0, endIdx)
+                    when (marker) {
+                        "***" -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic, color = baseColor)) { append(inner) }
+                        "**"  -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = baseColor)) { append(inner) }
+                        "*"   -> withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = baseColor)) { append(inner) }
+                        "`"   -> withStyle(SpanStyle(
+                            fontFamily = FontFamily.Monospace,
+                            background = Color(0xFF1e1e2e),
+                            color = Color(0xFF89dceb),
+                            fontSize = (baseFontSize - 1).sp,
+                        )) { append(inner) }
+                        "~~"  -> withStyle(SpanStyle(color = Color(0xFF666666), textDecoration = TextDecoration.LineThrough)) { append(inner) }
+                    }
+                    remaining = afterMarker.substring(endIdx + marker.length)
+                }
             }
-            remaining = afterMarker.substring(endIdx + marker.length)
         }
     }
 }
