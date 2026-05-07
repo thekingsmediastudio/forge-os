@@ -44,9 +44,7 @@ class HeartbeatMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
     private val configRepository: ConfigRepository,
     private val alertManager: AlertManager,
-    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
     private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
-    private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var monitorJob: Job? = null
@@ -144,54 +142,25 @@ class HeartbeatMonitor @Inject constructor(
             recommendations = recommendations
         )
         
-        // Enhanced Integration: Learn heartbeat monitoring patterns
+        // Only record critical/down health events — not every healthy tick
         try {
-            // Record monitoring frequency patterns
-            userPreferencesManager.recordInteractionPattern("heartbeat_monitoring_active", 1)
-            
-            // Learn system health trends
             when (overallHealth) {
-                HealthLevel.HEALTHY -> {
-                    reflectionManager.get().recordPattern(
-                        pattern = "System health stable",
-                        description = "Heartbeat monitor reports all systems healthy: ${components.keys.joinToString()}",
-                        applicableTo = listOf("system_health", "monitoring", "stability"),
-                        tags = listOf("health_stable", "monitoring_success", "system_reliability")
-                    )
-                }
-                HealthLevel.WARNING -> {
-                    reflectionManager.get().recordPattern(
-                        pattern = "System health warning detected",
-                        description = "Heartbeat monitor detected warnings: ${alerts.joinToString { it.message }}",
-                        applicableTo = listOf("system_health", "monitoring", "early_warning"),
-                        tags = listOf("health_warning", "monitoring_alert", "preventive_maintenance")
-                    )
-                }
                 HealthLevel.CRITICAL -> {
                     reflectionManager.get().recordFailureAndRecovery(
                         taskId = "heartbeat_critical_${System.currentTimeMillis()}",
-                        failureReason = "Critical system health issues detected: ${alerts.joinToString { it.message }}",
-                        recoveryStrategy = "Immediate attention required: ${recommendations.joinToString("; ")}",
-                        tags = listOf("health_critical", "system_failure", "urgent_maintenance")
+                        failureReason = "Critical system health: ${alerts.joinToString { it.message }}",
+                        recoveryStrategy = recommendations.joinToString("; "),
                     )
                 }
                 HealthLevel.DOWN -> {
                     reflectionManager.get().recordFailureAndRecovery(
                         taskId = "heartbeat_down_${System.currentTimeMillis()}",
-                        failureReason = "System components are down: ${alerts.joinToString { it.message }}",
+                        failureReason = "System components down: ${alerts.joinToString { it.message }}",
                         recoveryStrategy = "System restart or emergency maintenance required",
-                        tags = listOf("health_down", "system_outage", "emergency_maintenance")
                     )
                 }
+                else -> { /* HEALTHY / WARNING — not worth recording every tick */ }
             }
-            
-            // Learn component-specific patterns
-            components.forEach { (component, status) ->
-                if (status.health != HealthLevel.HEALTHY.name) {
-                    userPreferencesManager.recordInteractionPattern("${component}_health_issues", 1)
-                }
-            }
-            
         } catch (e: Exception) {
             Timber.w(e, "Failed to record heartbeat monitoring patterns")
         }

@@ -5,12 +5,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val MAX_CONTEXT_CHARS = 1500
 private const val RECALL_HITS = 6
+
+// Tags that belong to internal system operations — don't record these as user preferences
+private val NOISE_TAGS = setOf(
+    "memory_storage", "knowledge_management", "fact_storage",
+    "memory_success", "recall_success", "knowledge_access",
+    "memory_gap", "recall_failure", "knowledge_missing",
+    "execution", "reflection", "pattern", "learned",
+    "failure", "recovery",
+)
 
 @Singleton
 class MemoryManager @Inject constructor(
@@ -19,15 +27,11 @@ class MemoryManager @Inject constructor(
     val skill: SkillMemory,
     val semantic: SemanticFactIndex,
     val reranker: ContextReranker,
-    // Enhanced Integration: Connect with learning systems (Lazy to break circular dependency)
-    private val reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val index = MemoryIndex()
     private var indexBuilt = false
-    // Guard flag to prevent recursive reflection calls (store → recordPattern → store → ...)
-    private val isStoringReflection = AtomicBoolean(false)
 
     init {
         rebuildIndex()
@@ -42,28 +46,21 @@ class MemoryManager @Inject constructor(
         semantic.delete(key)
         Timber.d("MemoryManager: stored fact '$key'")
         
-        // Enhanced Integration: Learn memory storage patterns
-        // Guard against recursive calls: store() → recordPattern() → store() → ...
-        if (isStoringReflection.compareAndSet(false, true)) {
+        // Only record interaction pattern for actual user facts, not internal system keys
+        val isSystemKey = key.startsWith("pattern_") ||
+            key.startsWith("execution_") ||
+            key.startsWith("recovery_")
+        if (!isSystemKey) {
             scope.launch {
                 try {
                     userPreferencesManager.recordInteractionPattern("stores_memories", 1)
-                    
-                    // Learn tag usage patterns (limit to avoid excessive writes)
-                    tags.take(3).forEach { tag ->
-                        userPreferencesManager.recordInteractionPattern("uses_tag_$tag", 1)
+                    tags.take(2).forEach { tag ->
+                        if (tag !in NOISE_TAGS) {
+                            userPreferencesManager.recordInteractionPattern("uses_tag_$tag", 1)
+                        }
                     }
-                    
-                    reflectionManager.get().recordPattern(
-                        pattern = "Memory storage: $key",
-                        description = "Stored memory fact with ${tags.size} tags: ${content.take(50)}",
-                        applicableTo = listOf("memory_management", "knowledge_storage") + tags,
-                        tags = listOf("memory_storage", "knowledge_management", "fact_storage") + tags
-                    )
                 } catch (e: Exception) {
                     Timber.w(e, "Failed to record memory storage patterns")
-                } finally {
-                    isStoringReflection.set(false)
                 }
             }
         }
@@ -93,19 +90,6 @@ class MemoryManager @Inject constructor(
     // ─── Recall API ──────────────────────────────────────────────────────────
 
     suspend fun recall(query: String, k: Int = RECALL_HITS): List<MemoryHit> {
-        // Enhanced Integration: Learn memory recall patterns
-        try {
-            userPreferencesManager.recordInteractionPattern("recalls_memories", 1)
-            
-            // Learn query patterns
-            val queryWords = query.lowercase().split(" ").filter { it.length > 2 }
-            queryWords.take(3).forEach { word ->
-                userPreferencesManager.recordInteractionPattern("searches_for_$word", 1)
-            }
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record memory recall patterns")
-        }
-        
         if (!indexBuilt) {
             index.build()
             indexBuilt = true
@@ -141,27 +125,6 @@ class MemoryManager @Inject constructor(
         // 4. Merge and Rerank
         val merged = reranker.mergeHits(keywordHits, semanticHits, importanceMap)
         val results = reranker.rerank(query, merged, k)
-        
-        // Enhanced Integration: Learn memory recall success patterns
-        try {
-            if (results.isNotEmpty()) {
-                reflectionManager.get().recordPattern(
-                    pattern = "Successful memory recall",
-                    description = "Found ${results.size} relevant memories for query: ${query.take(50)}",
-                    applicableTo = listOf("memory_recall", "knowledge_retrieval", "search_success"),
-                    tags = listOf("memory_success", "recall_success", "knowledge_access")
-                )
-            } else {
-                reflectionManager.get().recordPattern(
-                    pattern = "Empty memory recall",
-                    description = "No memories found for query: ${query.take(50)}",
-                    applicableTo = listOf("memory_recall", "knowledge_gaps", "search_failure"),
-                    tags = listOf("memory_gap", "recall_failure", "knowledge_missing")
-                )
-            }
-        } catch (e: Exception) {
-            Timber.w(e, "Failed to record memory recall success patterns")
-        }
         
         return results
     }

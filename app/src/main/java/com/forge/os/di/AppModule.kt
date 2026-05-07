@@ -110,8 +110,7 @@ object AppModule {
         r: ConfigRepository,
         a: AlertManager,
         reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
-        userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager
-    ) = HeartbeatMonitor(ctx, r, a, reflectionManager, userPreferencesManager)
+    ) = HeartbeatMonitor(ctx, r, a, reflectionManager)
     @Provides @Singleton fun provideConfigMutationEngine(r: ConfigRepository) = ConfigMutationEngine(r)
     @Provides @Singleton fun provideWorkManager(@ApplicationContext ctx: Context): WorkManager =
         WorkManager.getInstance(ctx)
@@ -145,9 +144,8 @@ object AppModule {
         skill: SkillMemory,
         sem: com.forge.os.domain.memory.SemanticFactIndex,
         reranker: com.forge.os.domain.memory.ContextReranker,
-        reflectionManager: dagger.Lazy<com.forge.os.domain.agent.ReflectionManager>,
         userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
-    ) = MemoryManager(daily, longterm, skill, sem, reranker, reflectionManager, userPreferencesManager)
+    ) = MemoryManager(daily, longterm, skill, sem, reranker, userPreferencesManager)
 
     // Phase 4 — Cron + Notifications
     @Provides @Singleton fun provideNotificationHelper(@ApplicationContext ctx: Context) =

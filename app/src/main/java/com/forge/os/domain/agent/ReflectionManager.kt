@@ -1,31 +1,38 @@
 package com.forge.os.domain.agent
 
-import com.forge.os.domain.memory.MemoryManager
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 /**
  * Manages agent reflection and learning from past interactions.
- * 
- * Stores:
- * - Execution history (steps taken, outcomes)
- * - Learned patterns (what works, what doesn't)
- * - Context from previous sessions
- * - Failure analysis and recovery strategies
+ *
+ * ## What gets stored
+ * Only meaningful, user-visible signals:
+ * - Task execution traces (goal, success, outcome) — one entry per taskId
+ * - Failure + recovery strategies — one entry per taskId
+ * - Learned behavioural patterns (e.g. "user prefers Python projects") — deduplicated by name
+ *
+ * ## What does NOT get stored
+ * Internal plumbing events (memory reads/writes, heartbeat ticks, notification
+ * sends, etc.) — those were the source of 100+ irrelevant entries per message.
+ *
+ * ## Storage
+ * All data goes to [ReflectionStore] (workspace/memory/reflection/patterns.json),
+ * completely isolated from the user's LongtermMemory fact space. Patterns are
+ * deduplicated: recording the same pattern name twice increments useCount
+ * instead of creating a new entry.
  */
 @Singleton
 class ReflectionManager @Inject constructor(
-    private val memoryManager: MemoryManager,
+    private val store: ReflectionStore,
 ) {
-    private val json = Json { prettyPrint = true }
+
+    // ── Execution traces ──────────────────────────────────────────────────────
 
     /**
-     * Store a complete execution trace for learning.
-     * Called at the end of each agent task.
+     * Record a completed task execution. Deduplicated by [taskId].
+     * Call this at the end of a ReAct agent loop.
      */
     suspend fun recordExecution(
         taskId: String,
@@ -33,206 +40,152 @@ class ReflectionManager @Inject constructor(
         steps: List<ExecutionStep>,
         success: Boolean,
         outcome: String,
-        tags: List<String> = emptyList()
+        tags: List<String> = emptyList(),
     ) {
-        val trace = ExecutionTrace(
-            taskId = taskId,
-            goal = goal,
-            steps = steps,
+        store.upsertExecution(
+            taskId  = taskId,
+            goal    = goal,
             success = success,
             outcome = outcome,
-            timestamp = System.currentTimeMillis(),
-            tags = tags
+            tags    = tags,
         )
-
-        val key = "execution_${taskId}_${System.currentTimeMillis()}"
-        val content = json.encodeToString(trace)
-        
-        memoryManager.store(
-            key = key,
-            content = content,
-            tags = listOf("execution", "reflection") + trace.tags
-        )
-
-        Timber.i("Recorded execution trace: $taskId (success=$success)")
+        Timber.i("ReflectionManager: recorded execution $taskId (success=$success)")
     }
 
     /**
-     * Retrieve similar past executions to learn from.
+     * Retrieve execution summaries similar to [goal].
      */
-    suspend fun findSimilarExecutions(
-        goal: String,
-        limit: Int = 5
-    ): List<ExecutionTrace> {
-        val results = memoryManager.recall(goal, k = limit)
-        return results
-            .filter { it.key.startsWith("execution_") }
-            .mapNotNull { entry ->
-                runCatching {
-                    json.decodeFromString<ExecutionTrace>(entry.content)
-                }.getOrNull()
-            }
-    }
-
-    /**
-     * Get context from previous sessions.
-     * Helps agent understand what was done before.
-     */
-    suspend fun getPreviousSessionContext(): String {
-        val results = memoryManager.recall("session context", k = 3)
-        if (results.isEmpty()) return "No previous session context found."
-
-        return buildString {
-            appendLine("📚 Previous Session Context:")
-            results.forEach { entry ->
-                appendLine("• ${entry.key}: ${entry.content.take(200)}")
-            }
+    suspend fun findSimilarExecutions(goal: String, limit: Int = 5): List<StoredPattern> {
+        return store.getExecutions(limit).filter {
+            it.description.lowercase().contains(goal.lowercase().take(30))
         }
     }
 
+    // ── Failure recovery ──────────────────────────────────────────────────────
+
     /**
-     * Store a failure and recovery strategy for future reference.
+     * Record a failure and the strategy used to recover. Deduplicated by [taskId].
      */
     suspend fun recordFailureAndRecovery(
         taskId: String,
         failureReason: String,
         recoveryStrategy: String,
-        tags: List<String> = emptyList()
+        tags: List<String> = emptyList(),
     ) {
-        val recovery = FailureRecovery(
-            taskId = taskId,
-            failureReason = failureReason,
+        store.upsertRecovery(
+            taskId           = taskId,
+            failureReason    = failureReason,
             recoveryStrategy = recoveryStrategy,
-            timestamp = System.currentTimeMillis()
         )
-
-        val key = "recovery_${taskId}_${System.currentTimeMillis()}"
-        val content = json.encodeToString(recovery)
-
-        memoryManager.store(
-            key = key,
-            content = content,
-            tags = listOf("failure", "recovery") + tags  // Use function parameter directly
-        )
-
-        Timber.i("Recorded failure recovery: $taskId")
+        Timber.i("ReflectionManager: recorded failure recovery for $taskId")
     }
 
     /**
-     * Get recovery strategies for similar failures.
+     * Get recovery strategies relevant to [failureType].
      */
-    suspend fun getRecoveryStrategies(failureType: String): List<FailureRecovery> {
-        val results = memoryManager.recall(failureType, k = 5)
-        return results
-            .filter { it.key.startsWith("recovery_") }
-            .mapNotNull { entry ->
-                runCatching {
-                    json.decodeFromString<FailureRecovery>(entry.content)
-                }.getOrNull()
-            }
+    suspend fun getRecoveryStrategies(failureType: String): List<StoredPattern> {
+        return store.getRecoveries(failureType)
     }
 
+    // ── Behavioural patterns ──────────────────────────────────────────────────
+
     /**
-     * Store learned patterns (e.g., "Python projects need pytest", "Web projects need npm")
+     * Record a learned behavioural pattern.
+     *
+     * Only call this for **meaningful, user-visible signals** — things that
+     * would genuinely help the agent behave better next time. Examples:
+     *   - "User prefers Python for scripting tasks"
+     *   - "Code review: project_x (Score: 87)"
+     *   - "Test generation: python project"
+     *
+     * Do NOT call this for internal plumbing events (memory reads/writes,
+     * heartbeat ticks, notification sends). Those are noise.
      */
     suspend fun recordPattern(
         pattern: String,
         description: String,
-        applicableTo: List<String>,
-        tags: List<String> = emptyList()
+        applicableTo: List<String> = emptyList(),
+        tags: List<String> = emptyList(),
     ) {
-        val learned = LearnedPattern(
-            pattern = pattern,
+        store.upsert(
+            name        = pattern,
             description = description,
             applicableTo = applicableTo,
-            timestamp = System.currentTimeMillis(),
-            useCount = 0
+            tags        = tags,
         )
-
-        val key = "pattern_${pattern.replace(" ", "_")}_${System.currentTimeMillis()}"
-        val content = json.encodeToString(learned)
-
-        memoryManager.store(
-            key = key,
-            content = content,
-            tags = listOf("pattern", "learned") + tags  // Use function parameter directly
-        )
-
-        Timber.i("Recorded learned pattern: $pattern")
+        Timber.i("ReflectionManager: recorded pattern '$pattern'")
     }
 
     /**
-     * Get all learned patterns relevant to current task.
+     * Get patterns relevant to [taskType].
      */
-    suspend fun getRelevantPatterns(taskType: String): List<LearnedPattern> {
-        val results = memoryManager.recall(taskType, k = 10)
-        return results
-            .filter { it.key.startsWith("pattern_") }
-            .mapNotNull { entry ->
-                runCatching {
-                    json.decodeFromString<LearnedPattern>(entry.content)
-                }.getOrNull()
-            }
+    suspend fun getRelevantPatterns(taskType: String): List<StoredPattern> {
+        return store.getRelevant(taskType)
     }
 
+    // ── Context building ──────────────────────────────────────────────────────
+
     /**
-     * Create a reflection prompt for the agent to use.
+     * Build a reflection prompt to prepend to the agent's system context.
+     * Only includes high-signal entries (useCount > 1 or tagged "execution").
      */
     suspend fun createReflectionPrompt(
         currentGoal: String,
-        previousSteps: List<String> = emptyList()
+        previousSteps: List<String> = emptyList(),
     ): String {
-        val similar = findSimilarExecutions(currentGoal, limit = 3)
+        val similar  = findSimilarExecutions(currentGoal, limit = 3)
         val patterns = getRelevantPatterns(currentGoal)
-        val sessionContext = getPreviousSessionContext()
+            .filter { it.useCount > 1 }   // only patterns seen more than once
+            .take(5)
+
+        if (similar.isEmpty() && patterns.isEmpty() && previousSteps.isEmpty()) return ""
 
         return buildString {
             appendLine("🧠 REFLECTION & CONTEXT")
             appendLine()
-            
+
             if (previousSteps.isNotEmpty()) {
                 appendLine("📋 Previous Steps in This Session:")
-                previousSteps.forEach { step ->
-                    appendLine("  • $step")
-                }
+                previousSteps.forEach { appendLine("  • $it") }
                 appendLine()
             }
 
             if (similar.isNotEmpty()) {
                 appendLine("📚 Similar Past Executions:")
-                similar.forEach { trace ->
-                    appendLine("  • Goal: ${trace.goal}")
-                    appendLine("    Success: ${trace.success}")
-                    appendLine("    Outcome: ${trace.outcome.take(100)}")
+                similar.forEach { p ->
+                    appendLine("  • ${p.description.take(120)}")
                 }
                 appendLine()
             }
 
             if (patterns.isNotEmpty()) {
                 appendLine("💡 Learned Patterns:")
-                patterns.forEach { pattern ->
-                    appendLine("  • ${pattern.pattern}: ${pattern.description}")
+                patterns.forEach { p ->
+                    appendLine("  • ${p.name}: ${p.description.take(80)} (seen ${p.useCount}×)")
                 }
                 appendLine()
             }
-
-            appendLine(sessionContext)
         }
     }
+
+    /**
+     * Get context from previous sessions (top 3 most-used patterns).
+     */
+    suspend fun getPreviousSessionContext(): String {
+        val top = store.getAll().take(3)
+        if (top.isEmpty()) return "No previous session context found."
+        return buildString {
+            appendLine("📚 Previous Session Context:")
+            top.forEach { p -> appendLine("• ${p.name}: ${p.description.take(150)}") }
+        }
+    }
+
+    /** Human-readable summary of what's been learned. */
+    fun summary(): String = store.summary()
 }
 
-@Serializable
-data class ExecutionTrace(
-    val taskId: String,
-    val goal: String,
-    val steps: List<ExecutionStep>,
-    val success: Boolean,
-    val outcome: String,
-    val timestamp: Long,
-    val tags: List<String> = emptyList()
-)
+// ── Data classes (kept for call-site compatibility) ───────────────────────────
 
-@Serializable
 data class ExecutionStep(
     val stepNumber: Int,
     val action: String,
@@ -240,22 +193,13 @@ data class ExecutionStep(
     val args: String,
     val result: String,
     val duration: Long,
-    val success: Boolean
+    val success: Boolean,
 )
 
-@Serializable
-data class FailureRecovery(
-    val taskId: String,
-    val failureReason: String,
-    val recoveryStrategy: String,
-    val timestamp: Long
-)
-
-@Serializable
 data class LearnedPattern(
     val pattern: String,
     val description: String,
     val applicableTo: List<String>,
     val timestamp: Long,
-    val useCount: Int = 0
+    val useCount: Int = 0,
 )
