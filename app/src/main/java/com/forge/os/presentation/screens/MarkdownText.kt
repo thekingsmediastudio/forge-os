@@ -3,6 +3,7 @@ package com.forge.os.presentation.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,7 +12,9 @@ import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -21,6 +24,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -152,6 +156,9 @@ fun MarkdownText(
                             .background(Color(0xFF333333))
                     )
                 }
+                is MdSegment.Table -> {
+                    MarkdownTable(seg, baseFontSize, baseColor)
+                }
                 is MdSegment.Paragraph -> {
                     if (seg.content.isNotBlank()) {
                         val context = LocalContext.current
@@ -189,7 +196,96 @@ sealed class MdSegment {
     data class BulletItem(val content: String) : MdSegment()
     data class NumberedItem(val number: Int, val content: String) : MdSegment()
     data class Paragraph(val content: String) : MdSegment()
+    data class Table(val headers: List<String>, val rows: List<List<String>>) : MdSegment()
     object HorizontalRule : MdSegment()
+}
+
+@Composable
+private fun MarkdownTable(table: MdSegment.Table, baseFontSize: Float, baseColor: Color) {
+    val palette = LocalForgePalette.current
+    val colCount = maxOf(table.headers.size, table.rows.maxOfOrNull { it.size } ?: 0)
+    if (colCount == 0) return
+
+    // Estimate column widths based on content length, min 60dp max 200dp
+    val colWidths = (0 until colCount).map { col ->
+        val maxLen = maxOf(
+            table.headers.getOrElse(col) { "" }.length,
+            table.rows.maxOfOrNull { it.getOrElse(col) { "" }.length } ?: 0
+        )
+        (maxLen * 8 + 16).coerceIn(60, 200).dp
+    }
+
+    val borderColor = Color(0xFF333333)
+    val headerBg   = Color(0xFF1a1a2e)
+    val rowBg      = Color(0xFF0f0f1a)
+    val altRowBg   = Color(0xFF141420)
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(6.dp))
+    ) {
+        Column {
+            // Header row
+            Row(Modifier.background(headerBg)) {
+                colWidths.forEachIndexed { col, width ->
+                    Box(
+                        Modifier
+                            .width(width)
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = table.headers.getOrElse(col) { "" },
+                            color = palette.orange,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = (baseFontSize - 1).sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (col < colCount - 1) {
+                        Box(Modifier.width(1.dp).height(IntrinsicSize.Max).background(borderColor))
+                    }
+                }
+            }
+            // Separator
+            Box(Modifier.fillMaxWidth().height(1.dp).background(borderColor))
+            // Data rows
+            table.rows.forEachIndexed { rowIdx, row ->
+                val bg = if (rowIdx % 2 == 0) rowBg else altRowBg
+                Row(Modifier.background(bg)) {
+                    colWidths.forEachIndexed { col, width ->
+                        Box(
+                            Modifier
+                                .width(width)
+                                .padding(horizontal = 8.dp, vertical = 5.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                text = row.getOrElse(col) { "" },
+                                color = baseColor,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = (baseFontSize - 1).sp,
+                                lineHeight = (baseFontSize + 3).sp,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (col < colCount - 1) {
+                            Box(Modifier.width(1.dp).height(IntrinsicSize.Max).background(borderColor))
+                        }
+                    }
+                }
+                if (rowIdx < table.rows.size - 1) {
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(borderColor))
+                }
+            }
+        }
+    }
 }
 
 fun parseMarkdownSegments(text: String): List<MdSegment> {
@@ -245,6 +341,31 @@ fun parseMarkdownSegments(text: String): List<MdSegment> {
                 content = numberedMatch.groupValues[2]
             ))
             i++; continue
+        }
+        // Table — a run of lines containing '|', with a separator row (---|---) as line 2
+        if (line.contains("|")) {
+            val tableLines = mutableListOf<String>()
+            var j = i
+            while (j < lines.size && lines[j].contains("|")) {
+                tableLines.add(lines[j])
+                j++
+            }
+            if (tableLines.size >= 2) {
+                val isSeparator = { s: String -> s.replace("|", "").replace("-", "").replace(":", "").replace(" ", "").isEmpty() }
+                val headerLine = tableLines[0]
+                val sepIdx = tableLines.indexOfFirst { isSeparator(it) }
+                if (sepIdx == 1 && tableLines.size >= 2) {
+                    val parseRow = { row: String ->
+                        row.trim().trimStart('|').trimEnd('|')
+                            .split("|").map { it.trim() }
+                    }
+                    val headers = parseRow(headerLine)
+                    val rows = tableLines.drop(2).map { parseRow(it) }
+                    result.add(MdSegment.Table(headers, rows))
+                    i = j
+                    continue
+                }
+            }
         }
         // Regular paragraph
         result.add(MdSegment.Paragraph(line))
