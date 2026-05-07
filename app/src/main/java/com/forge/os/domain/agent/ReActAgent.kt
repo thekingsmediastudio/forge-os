@@ -340,7 +340,7 @@ Tools available ({tool_count} total): {tool_catalog}
                 val recentPatterns = reflectionManager.get().getRelevantPatterns(userMessage).take(3)
                 if (recentPatterns.isNotEmpty()) {
                     "\n\nLEARNED PATTERNS:\n" + 
-                    recentPatterns.joinToString("\n") { "• ${it.pattern}: ${it.description}" }
+                    recentPatterns.joinToString("\n") { "• ${it.name}: ${it.description}" }
                 } else ""
             } catch (e: Exception) {
                 Timber.w(e, "Failed to load learned patterns")

@@ -350,15 +350,19 @@ private fun ModernHeader(
                                             fontFamily = FontFamily.Monospace,
                                             maxLines = 2
                                         )
-                                        if (spec.provider.isNotBlank() && spec.model.isNotBlank()) {
-                                            Text(
-                                                "${spec.provider} • ${spec.model}",
-                                                color = ModernTextSecondary,
-                                                fontSize = 11.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                maxLines = 1
-                                            )
+                                        val providerLabel = when (spec) {
+                                            is com.forge.os.domain.security.ProviderSpec.Builtin ->
+                                                spec.provider.displayName
+                                            is com.forge.os.domain.security.ProviderSpec.Custom ->
+                                                spec.endpoint.name
                                         }
+                                        Text(
+                                            "$providerLabel • ${spec.effectiveModel}",
+                                            color = ModernTextSecondary,
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 1
+                                        )
                                     }
                                 },
                                 onClick = {

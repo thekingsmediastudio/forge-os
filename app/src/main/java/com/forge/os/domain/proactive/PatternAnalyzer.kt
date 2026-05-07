@@ -79,7 +79,7 @@ class PatternAnalyzer @Inject constructor(
         // Enhanced context with learned patterns
         val patternContext = if (learnedPatterns.isNotEmpty()) {
             "\n\nLearned Patterns:\n" + learnedPatterns.joinToString("\n") { pattern ->
-                "- ${pattern.pattern}: ${pattern.description}"
+                "- ${pattern.name}: ${pattern.description}"
             }
         } else ""
 
