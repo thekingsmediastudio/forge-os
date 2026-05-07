@@ -214,12 +214,17 @@ class ExternalApiBridge @Inject constructor(
             
             audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "invokeTool",
                 target = toolName, outcome = if (result.isError) "error" else "ok",
-                durationMs = System.currentTimeMillis() - started, outputBytes = payload.length))
+                durationMs = System.currentTimeMillis() - started, outputBytes = payload.length,
+                inputPayload = jsonArgs.take(500),
+                outputPayload = result.output.take(500),
+            ))
             payload
         } catch (e: Exception) {
             Timber.e(e, "invokeToolSync failed")
             audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "invokeTool",
-                target = toolName, outcome = "error", message = e.message ?: e.javaClass.simpleName))
+                target = toolName, outcome = "error", message = e.message ?: e.javaClass.simpleName,
+                inputPayload = jsonArgs.take(500),
+            ))
             """{"ok":false,"error":${q(e.message ?: "internal")}}"""
         }
     }
@@ -249,12 +254,17 @@ class ExternalApiBridge @Inject constructor(
                 put("text", full.toString())
             }.toString()
             audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "askAgent",
-                outcome = "ok", durationMs = System.currentTimeMillis() - started, outputBytes = payload.length))
+                outcome = "ok", durationMs = System.currentTimeMillis() - started, outputBytes = payload.length,
+                inputPayload = prompt.take(500),
+                outputPayload = full.toString().take(500),
+            ))
             onResult(payload)
         } catch (e: Exception) {
             Timber.e(e, "askAgent failed")
             audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "askAgent",
-                outcome = "error", message = e.message ?: e.javaClass.simpleName))
+                outcome = "error", message = e.message ?: e.javaClass.simpleName,
+                inputPayload = prompt.take(500),
+            ))
             onError(500, e.message ?: "internal")
         }
     }
@@ -269,7 +279,9 @@ class ExternalApiBridge @Inject constructor(
         }
         val out = hit?.content.orEmpty()
         audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "getMemory",
-            target = key, outcome = "ok", outputBytes = out.length))
+            target = key, outcome = "ok", outputBytes = out.length,
+            outputPayload = out.take(500),
+        ))
         return out
     }
 
@@ -277,7 +289,9 @@ class ExternalApiBridge @Inject constructor(
         val tags = tagsCsv.split(',').map { it.trim() }.filter { it.isNotEmpty() }
         memoryManager.store(key = key, content = value, tags = tags + "external:${caller.packageName}")
         audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "putMemory",
-            target = key, outcome = "ok", outputBytes = value.length))
+            target = key, outcome = "ok", outputBytes = value.length,
+            inputPayload = value.take(500),
+        ))
     }
 
     fun runSkill(caller: ExternalCaller, skillId: String, jsonArgs: String): String {
@@ -294,7 +308,10 @@ class ExternalApiBridge @Inject constructor(
         }.toString()
         audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = "runSkill",
             target = skillId, outcome = if (r.success) "ok" else "error",
-            durationMs = r.durationMs, outputBytes = payload.length))
+            durationMs = r.durationMs, outputBytes = payload.length,
+            inputPayload = jsonArgs.take(500),
+            outputPayload = r.output.take(500),
+        ))
         return payload
     }
 

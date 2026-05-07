@@ -18,6 +18,8 @@ data class ExternalAuditEntry(
     val durationMs: Long = 0,
     val outputBytes: Int = 0,
     val message: String = "",
+    val inputPayload: String = "",    // request args / prompt (truncated to 500 chars)
+    val outputPayload: String = "",   // response output (truncated to 500 chars)
 )
 
 /**

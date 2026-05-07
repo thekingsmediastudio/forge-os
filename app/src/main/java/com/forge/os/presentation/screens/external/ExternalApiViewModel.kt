@@ -84,4 +84,11 @@ class ExternalApiViewModel @Inject constructor(
     fun setRateLimit(caller: ExternalCaller, callsPerMin: Int, tokensPerDay: Int) {
         registry.setRateLimit(caller.packageName, RateLimit(callsPerMin, tokensPerDay)); refresh()
     }
+
+    fun clearHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            audit.clear()
+            _state.value = _state.value.copy(recentAudit = emptyList())
+        }
+    }
 }
