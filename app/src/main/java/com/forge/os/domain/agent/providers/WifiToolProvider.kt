@@ -90,7 +90,8 @@ class WifiToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "wifi_status"         -> wifiStatus()
         "wifi_scan"           -> {
             if (!hasPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) &&
@@ -101,6 +102,7 @@ class WifiToolProvider @Inject constructor(
         "wifi_open_settings"  -> openWifiSettings()
         "wifi_saved_networks" -> savedNetworks()
         else                  -> null
+        }
     }
 
     private fun hasPermission(permission: String) =

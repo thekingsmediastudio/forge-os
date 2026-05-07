@@ -79,7 +79,8 @@ class CalendarToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "calendar_list_events"    -> {
             if (!hasPermission(android.Manifest.permission.READ_CALENDAR))
                 return "Error: READ_CALENDAR permission not granted. Forge OS needs calendar access — please grant it in Settings → Apps → Forge OS → Permissions."
@@ -106,6 +107,7 @@ class CalendarToolProvider @Inject constructor(
             deleteEvent(args["id"]?.toString() ?: "")
         }
         else -> null
+        }
     }
 
     private fun hasPermission(permission: String) =

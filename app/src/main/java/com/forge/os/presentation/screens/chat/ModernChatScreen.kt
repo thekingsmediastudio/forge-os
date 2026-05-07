@@ -891,7 +891,7 @@ private fun BubbleActionsSheet(
     onDismiss: () -> Unit,
     actions: List<BubbleAction>,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartialExpansion = true)
+    val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,

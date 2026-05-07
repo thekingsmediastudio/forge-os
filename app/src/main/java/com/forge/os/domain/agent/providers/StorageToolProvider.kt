@@ -104,12 +104,12 @@ class StorageToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "storage_overview"       -> storageOverview()
         "storage_volumes"        -> storageVolumes()
         "storage_app_cache"      -> appCache(args["clear"]?.toString()?.toBooleanStrictOrNull() ?: false)
         "storage_list_downloads" -> {
-            // API 29+ uses MediaStore — no permission needed. Older needs READ_EXTERNAL_STORAGE.
             if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q &&
                 !hasStorageReadPermission())
                 return err("READ_EXTERNAL_STORAGE permission not granted. Grant it in Settings → Apps → Forge OS → Permissions.")
@@ -121,12 +121,12 @@ class StorageToolProvider @Inject constructor(
         }
         "storage_list_dir"       -> {
             val path = args["path"]?.toString() ?: ""
-            // Only check permission for external paths — app-internal dirs are always accessible
             if (isExternalPath(path) && !hasStorageReadPermission())
                 return err("Storage read permission not granted for external path. Grant READ_MEDIA_* (API 33+) or READ_EXTERNAL_STORAGE in Settings → Apps → Forge OS → Permissions.")
             listDir(path = path, limit = args["limit"]?.toString()?.toIntOrNull() ?: 50)
         }
         else -> null
+        }
     }
 
     private fun hasStorageReadPermission(): Boolean {

@@ -765,13 +765,13 @@ class ToolRegistry @Inject constructor(
                 }
                 "personality_save" -> {
                     val name = args["name"]?.toString()?.trim()
-                        ?: return@dispatch "Error: name required"
+                        ?: return ToolResult(toolCallId, toolName, "Error: name required", isError = true)
                     agentPersonality.saveProfile(name)
                     "✅ Saved personality profile: $name"
                 }
                 "personality_switch" -> {
                     val name = args["name"]?.toString()?.trim()
-                        ?: return@dispatch "Error: name required"
+                        ?: return ToolResult(toolCallId, toolName, "Error: name required", isError = true)
                     val ok = agentPersonality.switchToProfile(name)
                     if (ok) "✅ Switched to personality: ${agentPersonality.getPersonality().name}\n\nThe new personality takes effect on the next message."
                     else "❌ No profile named '$name'. Use personality_list to see available profiles."
@@ -2266,7 +2266,7 @@ To use Composio:
      * agent can review what was said in a Telegram chat without relying solely
      * on the current context window.
      */
-    private fun telegramGetHistory(args: Map<String, Any>): String {
+    private suspend fun telegramGetHistory(args: Map<String, Any>): String {
         val chatId = args["chat_id"]?.toString() ?: return "Error: chat_id required"
         val n = args["limit"]?.toString()?.toIntOrNull()?.coerceIn(1, 80) ?: 20
 
@@ -2499,7 +2499,7 @@ To use Composio:
         }.trimEnd()
     }
 
-    private fun telegramGetAllowedChats(args: Map<String, Any>): String {
+    private suspend fun telegramGetAllowedChats(args: Map<String, Any>): String {
         val (id, err) = resolveTelegramChannelId(args)
         if (err != null) return err
         val cfg = channelManager.find(id!!)
@@ -2516,7 +2516,7 @@ To use Composio:
         }.trimEnd()
     }
 
-    private fun telegramSetAllowedChats(args: Map<String, Any>): String {
+    private suspend fun telegramSetAllowedChats(args: Map<String, Any>): String {
         val (id, err) = resolveTelegramChannelId(args)
         if (err != null) return err
         val csv = args["chat_ids"]?.toString() ?: ""
@@ -2531,7 +2531,7 @@ To use Composio:
         }
     }
 
-    private fun telegramAllowChat(args: Map<String, Any>): String {
+    private suspend fun telegramAllowChat(args: Map<String, Any>): String {
         val (id, err) = resolveTelegramChannelId(args)
         if (err != null) return err
         val cfg = channelManager.find(id!!) ?: return "❌ Unknown channel id: $id"
@@ -2548,7 +2548,7 @@ To use Composio:
             "(${current.size} total)"
     }
 
-    private fun telegramDenyChat(args: Map<String, Any>): String {
+    private suspend fun telegramDenyChat(args: Map<String, Any>): String {
         val (id, err) = resolveTelegramChannelId(args)
         if (err != null) return err
         val cfg = channelManager.find(id!!) ?: return "❌ Unknown channel id: $id"

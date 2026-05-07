@@ -105,7 +105,8 @@ class LocationToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "location_current"       -> {
             if (!hasPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) &&
                 !hasPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION))
@@ -130,6 +131,7 @@ class LocationToolProvider @Inject constructor(
         )
         "location_open_settings" -> openLocationSettings()
         else                     -> null
+        }
     }
 
     private fun hasPermission(permission: String) =

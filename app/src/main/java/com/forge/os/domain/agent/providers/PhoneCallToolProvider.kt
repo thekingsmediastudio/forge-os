@@ -62,7 +62,8 @@ class PhoneCallToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "call_log_list"   -> {
             if (!hasPermission(android.Manifest.permission.READ_CALL_LOG))
                 return "Error: READ_CALL_LOG permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."
@@ -80,6 +81,7 @@ class PhoneCallToolProvider @Inject constructor(
             call(args["number"]?.toString() ?: "")
         }
         else -> null
+        }
     }
 
     private fun hasPermission(permission: String) =

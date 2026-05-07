@@ -93,7 +93,8 @@ class BluetoothToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "bluetooth_status"            -> bluetoothStatus()
         "bluetooth_paired_devices"    -> {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
@@ -109,6 +110,7 @@ class BluetoothToolProvider @Inject constructor(
         }
         "bluetooth_open_settings"     -> openSettings()
         else                          -> null
+        }
     }
 
     private fun hasPermission(permission: String) =

@@ -50,7 +50,8 @@ class ContactsToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "contacts_search" -> {
             if (!hasPermission(android.Manifest.permission.READ_CONTACTS))
                 return "Error: READ_CONTACTS permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."
@@ -67,6 +68,7 @@ class ContactsToolProvider @Inject constructor(
             getContact(args["id"]?.toString() ?: "")
         }
         else -> null
+        }
     }
 
     private fun hasPermission(permission: String) =

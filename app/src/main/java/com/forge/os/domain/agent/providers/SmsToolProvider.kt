@@ -67,7 +67,8 @@ class SmsToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
+        return when (toolName) {
         "sms_list"    -> {
             if (!hasPermission(android.Manifest.permission.READ_SMS))
                 return "Error: READ_SMS permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."
@@ -89,6 +90,7 @@ class SmsToolProvider @Inject constructor(
             sendSms(args["to"]?.toString() ?: "", args["body"]?.toString() ?: "")
         }
         else -> null
+        }
     }
 
     private fun hasPermission(permission: String) =

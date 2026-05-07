@@ -3,6 +3,7 @@ package com.forge.os.presentation.screens.channels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -237,6 +238,7 @@ private fun MessageRow(m: IncomingMessage) {
     Spacer(Modifier.height(4.dp))
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddTelegramDialog(
     onDismiss: () -> Unit,
