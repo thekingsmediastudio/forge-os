@@ -2,12 +2,18 @@ package com.forge.os.presentation.screens.voice
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.forge.os.data.api.ApiMessage
+import com.forge.os.data.conversations.ConversationRepository
+import com.forge.os.data.conversations.StoredConversation
+import com.forge.os.data.conversations.StoredChatMessage
+import com.forge.os.data.conversations.StoredApiMessage
 import com.forge.os.domain.agent.AgentEvent
 import com.forge.os.domain.agent.ReActAgent
+import com.forge.os.domain.config.ConfigRepository
 import com.forge.os.domain.voice.TTSState
 import com.forge.os.domain.voice.VoiceInputManager
-import com.forge.os.data.api.ApiMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +21,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 
 enum class VoicePhase {
@@ -30,24 +40,31 @@ data class VoiceModeState(
     val agentResponse: String = "",     // what the agent said
     val rmsLevel: Float = 0f,           // mic level 0..1
     val error: String? = null,
+    val conversationId: String? = null, // the stored conversation for this session
 )
 
 @HiltViewModel
 class VoiceModeViewModel @Inject constructor(
     private val voiceInputManager: VoiceInputManager,
     private val reActAgent: ReActAgent,
+    private val conversationRepo: ConversationRepository,
+    private val configRepository: ConfigRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(VoiceModeState())
     val state: StateFlow<VoiceModeState> = _state.asStateFlow()
 
-    // Shared API history for the voice session (separate from chat history)
+    // API history for the current voice session
     private val voiceHistory = mutableListOf<ApiMessage>()
+    // UI messages for the current voice session (persisted to conversation)
+    private val voiceMessages = mutableListOf<StoredChatMessage>()
+    // The conversation being written to
+    private var currentConversation: StoredConversation? = null
+
     private var agentJob: Job? = null
-    private var ttsJob: Job? = null
 
     init {
-        // Mirror RMS level into state
+        // Mirror RMS level into state while listening
         viewModelScope.launch {
             voiceInputManager.rmsLevel.collect { rms ->
                 if (_state.value.phase == VoicePhase.LISTENING) {
@@ -69,8 +86,7 @@ class VoiceModeViewModel @Inject constructor(
         viewModelScope.launch {
             voiceInputManager.ttsState.collect { ttsState ->
                 if (ttsState == TTSState.IDLE && _state.value.phase == VoicePhase.SPEAKING) {
-                    // Small pause before listening again so it doesn't pick up its own echo
-                    delay(600)
+                    delay(600) // brief pause so mic doesn't catch speaker echo
                     if (_state.value.phase == VoicePhase.SPEAKING) {
                         startListening()
                     }
@@ -79,46 +95,77 @@ class VoiceModeViewModel @Inject constructor(
         }
     }
 
-    /** Enter voice mode — starts listening immediately. */
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /** Enter voice mode — creates a new conversation and starts listening. */
     fun enterVoiceMode() {
         voiceHistory.clear()
-        _state.value = VoiceModeState(phase = VoicePhase.IDLE)
+        voiceMessages.clear()
+
+        // Create a dedicated conversation for this voice session
+        val timestamp = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date())
+        val id = "voice-${System.currentTimeMillis()}"
+        val now = System.currentTimeMillis()
+        val conv = StoredConversation(
+            id = id,
+            title = "🎤 Voice — $timestamp",
+            createdAt = now,
+            updatedAt = now,
+        )
+        conversationRepo.save(conv)
+        conversationRepo.setCurrent(id)
+        currentConversation = conv
+
+        // Add a system greeting message
+        val greeting = StoredChatMessage(
+            id = UUID.randomUUID().toString(),
+            role = "system",
+            content = "🎤 Voice session started — ${configRepository.get().agentIdentity.name} is listening.",
+        )
+        voiceMessages.add(greeting)
+        persistConversation()
+
+        _state.value = VoiceModeState(
+            phase = VoicePhase.IDLE,
+            conversationId = id,
+        )
         startListening()
     }
 
-    /** Exit voice mode — stops everything. */
+    /** Exit voice mode — stops everything, saves the conversation. */
     fun exitVoiceMode() {
         agentJob?.cancel()
-        ttsJob?.cancel()
         voiceInputManager.stopListening()
         voiceInputManager.stopSpeaking()
+        persistConversation()
         _state.value = VoiceModeState(phase = VoicePhase.IDLE)
     }
 
-    /** Manually re-trigger listening (e.g. user taps the orb). */
+    /** Tap the orb to toggle listening / interrupt speaking. */
     fun tapOrb() {
         when (_state.value.phase) {
             VoicePhase.LISTENING -> {
-                // Tap while listening = stop and send what we have
                 voiceInputManager.stopListening()
                 val partial = _state.value.transcript
                 if (partial.isNotBlank()) onSpeechRecognized(partial)
             }
             VoicePhase.SPEAKING -> {
-                // Tap while speaking = interrupt TTS and listen again
                 voiceInputManager.stopSpeaking()
                 startListening()
             }
-            VoicePhase.THINKING -> { /* can't interrupt agent mid-run */ }
+            VoicePhase.THINKING -> { /* agent is running, can't interrupt */ }
             VoicePhase.IDLE -> startListening()
         }
     }
+
+    // ── Private ───────────────────────────────────────────────────────────────
 
     private fun startListening() {
         _state.value = _state.value.copy(
             phase = VoicePhase.LISTENING,
             transcript = "",
             error = null,
+            rmsLevel = 0f,
         )
         voiceInputManager.startListening()
     }
@@ -130,6 +177,14 @@ class VoiceModeViewModel @Inject constructor(
             transcript = text,
             agentResponse = "",
         )
+
+        // Persist the user turn immediately
+        voiceMessages.add(StoredChatMessage(
+            id = UUID.randomUUID().toString(),
+            role = "user",
+            content = text,
+        ))
+        persistConversation()
 
         agentJob?.cancel()
         agentJob = viewModelScope.launch {
@@ -149,9 +204,37 @@ class VoiceModeViewModel @Inject constructor(
                         is AgentEvent.Response -> {
                             fullResponse = event.text
                             _state.value = _state.value.copy(agentResponse = fullResponse)
+
+                            // Update API history
                             voiceHistory.add(ApiMessage(role = "user", content = text))
                             voiceHistory.add(ApiMessage(role = "assistant", content = fullResponse))
                             while (voiceHistory.size > 20) voiceHistory.removeAt(0)
+
+                            // Persist agent response
+                            voiceMessages.add(StoredChatMessage(
+                                id = UUID.randomUUID().toString(),
+                                role = "assistant",
+                                content = fullResponse,
+                            ))
+                            persistConversation()
+                        }
+                        is AgentEvent.ToolCall -> {
+                            // Record tool calls in the conversation so they're visible in history
+                            voiceMessages.add(StoredChatMessage(
+                                id = UUID.randomUUID().toString(),
+                                role = "tool_call",
+                                content = event.args,
+                                toolName = event.name,
+                            ))
+                        }
+                        is AgentEvent.ToolResult -> {
+                            voiceMessages.add(StoredChatMessage(
+                                id = UUID.randomUUID().toString(),
+                                role = "tool_result",
+                                content = event.result,
+                                toolName = event.name,
+                                isError = event.isError,
+                            ))
                         }
                         is AgentEvent.Error -> {
                             _state.value = _state.value.copy(
@@ -160,7 +243,7 @@ class VoiceModeViewModel @Inject constructor(
                             )
                             return@collect
                         }
-                        else -> { /* tool calls etc — ignore in voice mode */ }
+                        else -> {}
                     }
                 }
 
@@ -180,7 +263,6 @@ class VoiceModeViewModel @Inject constructor(
     }
 
     private fun speakResponse(text: String) {
-        // Strip markdown for cleaner TTS output
         val clean = text
             .replace(Regex("```[\\s\\S]*?```"), "code block")
             .replace(Regex("`[^`]+`"), "")
@@ -189,10 +271,33 @@ class VoiceModeViewModel @Inject constructor(
             .replace(Regex("#+\\s"), "")
             .replace(Regex("- "), "")
             .trim()
-            .take(500) // don't read a novel
+            .take(500)
 
         _state.value = _state.value.copy(phase = VoicePhase.SPEAKING)
         voiceInputManager.speak(clean)
+    }
+
+    /** Write the current message list to the conversation file. */
+    private fun persistConversation() {
+        val conv = currentConversation ?: return
+        val apiStored = voiceHistory.map { StoredApiMessage(role = it.role, content = it.content) }
+        // Derive title from first user message
+        val firstUserMsg = voiceMessages.firstOrNull { it.role == "user" }?.content
+        val title = if (firstUserMsg != null)
+            "🎤 ${firstUserMsg.take(50)}"
+        else
+            conv.title
+
+        val updated = conv.copy(
+            title = title,
+            updatedAt = System.currentTimeMillis(),
+            messages = voiceMessages.toList(),
+            apiHistory = apiStored,
+        )
+        currentConversation = updated
+        viewModelScope.launch(Dispatchers.IO) {
+            conversationRepo.save(updated)
+        }
     }
 
     override fun onCleared() {
