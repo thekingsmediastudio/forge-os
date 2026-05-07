@@ -218,14 +218,17 @@ private fun ModernHeader(
     var showModelMenu by remember { mutableStateOf(false) }
     
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp),
         color = ModernSurface,
         shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .fillMaxHeight()
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Menu button
@@ -286,7 +289,8 @@ private fun ModernHeader(
                             text = selectedSpec?.displayLabel ?: "Auto",
                             color = ModernTextPrimary,
                             fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1
                         )
                         Spacer(Modifier.width(4.dp))
                         Icon(
@@ -303,12 +307,15 @@ private fun ModernHeader(
                     onDismissRequest = { showModelMenu = false },
                     modifier = Modifier
                         .background(ModernSurface)
-                        .widthIn(max = 250.dp)
+                        .widthIn(min = 200.dp, max = 300.dp)
                 ) {
                     // Auto-route option
                     DropdownMenuItem(
                         text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Icon(
                                     Icons.Outlined.AutoAwesome,
                                     contentDescription = null,
@@ -335,13 +342,24 @@ private fun ModernHeader(
                         availableSpecs.forEach { spec ->
                             DropdownMenuItem(
                                 text = {
-                                    Text(
-                                        spec.displayLabel,
-                                        color = ModernTextPrimary,
-                                        fontSize = 13.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        maxLines = 1
-                                    )
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Text(
+                                            spec.displayLabel,
+                                            color = ModernTextPrimary,
+                                            fontSize = 13.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 2
+                                        )
+                                        if (spec.provider.isNotBlank() && spec.model.isNotBlank()) {
+                                            Text(
+                                                "${spec.provider} • ${spec.model}",
+                                                color = ModernTextSecondary,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
                                 },
                                 onClick = {
                                     onSelectSpec(spec)
@@ -599,15 +617,14 @@ private fun ModernInputBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .wrapContentHeight(),
+            .height(80.dp),
         color = ModernSurface,
         shadowElevation = 8.dp
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .wrapContentHeight(),
+                .fillMaxSize()
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -615,7 +632,7 @@ private fun ModernInputBar(
             Surface(
                 modifier = Modifier
                     .weight(1f)
-                    .wrapContentHeight(),
+                    .height(48.dp),
                 color = ModernBg,
                 shape = RoundedCornerShape(24.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, ModernBorder)
@@ -623,15 +640,13 @@ private fun ModernInputBar(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .wrapContentHeight()
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
                 ) {
                     TextField(
                         value = value,
                         onValueChange = onValueChange,
-                        modifier = Modifier
-                            .weight(1f)
-                            .wrapContentHeight(),
+                        modifier = Modifier.weight(1f),
                         placeholder = {
                             Text(
                                 "Message Forge...",
@@ -651,7 +666,7 @@ private fun ModernInputBar(
                             cursorColor = ModernAccent
                         ),
                         textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
-                        maxLines = 3,
+                        singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = { if (enabled) onSend() })
                     )
@@ -661,7 +676,7 @@ private fun ModernInputBar(
                         onVoiceInput = { recognizedText ->
                             onValueChange(recognizedText)
                         },
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
             }
