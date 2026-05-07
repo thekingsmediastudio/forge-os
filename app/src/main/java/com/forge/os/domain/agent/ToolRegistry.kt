@@ -2380,7 +2380,8 @@ To use Composio:
             }
         }
         // 2. Fall back to the most-recent inbound message for the resolved channel.
-        val (id, err) = resolveTelegramChannelId(args)        if (err != null) return err
+        val (id, err) = resolveTelegramChannelId(args)
+        if (err != null) return err
         val cfg = channelManager.find(id!!)
             ?: return "❌ Unknown channel id: $id"
         val recent = channelManager.recent.value
