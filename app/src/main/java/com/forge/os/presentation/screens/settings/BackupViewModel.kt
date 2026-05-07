@@ -1,13 +1,20 @@
 package com.forge.os.presentation.screens.settings
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.forge.os.domain.backup.BackupManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileInputStream
 import javax.inject.Inject
 
 data class BackupUiState(
@@ -26,6 +33,7 @@ sealed class BackupStatus {
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val backupManager: BackupManager
 ) : ViewModel() {
 
@@ -80,6 +88,47 @@ class BackupViewModel @Inject constructor(
     fun deleteBackup(path: String) {
         backupManager.deleteBackup(path)
         refreshBackupList()
+    }
+
+    /** Copy the just-created backup to a user-chosen URI (from ACTION_CREATE_DOCUMENT). */
+    fun copyBackupTo(destUri: Uri) {
+        val currentPath = (state.value.status as? BackupStatus.Done)?.path ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val src = File(currentPath)
+                context.contentResolver.openOutputStream(destUri)?.use { out ->
+                    FileInputStream(src).use { it.copyTo(out) }
+                }
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(
+                        lastMessage = "✅ Backup saved successfully"
+                    )
+                }
+            }.onFailure { e ->
+                withContext(Dispatchers.Main) {
+                    _state.value = _state.value.copy(lastMessage = "❌ Save failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /** Share an existing backup file via the system share sheet. */
+    fun shareBackup(path: String) {
+        runCatching {
+            val file = File(path)
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share backup").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            })
+        }
     }
 
     fun clearMessage() {

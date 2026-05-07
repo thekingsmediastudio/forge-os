@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,8 +22,123 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.forge.os.presentation.theme.Glass
 import com.forge.os.presentation.theme.VibrantBlue
+import java.io.File
+import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.*
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BackupScreen(
+    onBack: () -> Unit,
+    viewModel: BackupViewModel = hiltViewModel()
+) {
+    val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Restore: pick an existing backup file
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.restoreBackup(it) }
+    }
+
+    // Save: after backup is created, let the user pick where to save it
+    val saveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { destUri: Uri? ->
+        if (destUri != null) {
+            viewModel.copyBackupTo(destUri)
+        }
+    }
+
+    // When backup finishes, immediately open the save dialog
+    val backupStatus = state.status
+    LaunchedEffect(backupStatus) {
+        if (backupStatus is BackupStatus.Done && backupStatus.path.isNotBlank()) {
+            val filename = File(backupStatus.path).name
+            saveLauncher.launch(filename)
+        }
+    }
+
+    LaunchedEffect(state.lastMessage) {
+        state.lastMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearMessage()
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Backup & Restore", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = Color.Transparent
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    MainActionsCard(
+                        onBackup = { viewModel.createBackup() },
+                        onRestore = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        status = state.status
+                    )
+                }
+
+                item {
+                    Text(
+                        "Local Backups",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+
+                if (state.backups.isEmpty()) {
+                    item { EmptyBackupsCard() }
+                } else {
+                    items(state.backups) { backup ->
+                        BackupItemCard(
+                            backup = backup,
+                            onShare = { viewModel.shareBackup(backup.path) },
+                            onDelete = { viewModel.deleteBackup(backup.path) }
+                        )
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(80.dp)) }
+            }
+
+            if (state.status is BackupStatus.Running) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = VibrantBlue)
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -193,6 +307,7 @@ fun MainActionsCard(
 @Composable
 fun BackupItemCard(
     backup: com.forge.os.domain.backup.BackupManager.BackupInfo,
+    onShare: () -> Unit,
     onDelete: () -> Unit
 ) {
     val date = remember(backup.timestamp) {
@@ -212,9 +327,7 @@ fun BackupItemCard(
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
     ) {
         Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -225,16 +338,15 @@ fun BackupItemCard(
             ) {
                 Icon(Icons.Default.FilePresent, contentDescription = null, tint = Color.LightGray)
             }
-
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
+                modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
             ) {
                 Text(backup.name, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1)
                 Text("$date · $size", fontSize = 12.sp, color = Color.Gray)
             }
-
+            IconButton(onClick = onShare) {
+                Icon(Icons.Default.Share, contentDescription = "Share", tint = VibrantBlue)
+            }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.7f))
             }

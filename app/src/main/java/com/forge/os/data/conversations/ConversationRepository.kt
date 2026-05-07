@@ -20,7 +20,9 @@ data class StoredChatMessage(
     val role: String,
     val content: String,
     val toolName: String? = null,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val attachmentPath: String? = null,
+    val attachmentMime: String? = null,
 )
 
 @Serializable
@@ -129,12 +131,14 @@ class ConversationRepository @Inject constructor(
 
 fun ChatMessage.toStored() = StoredChatMessage(
     id = id, role = role, content = content,
-    toolName = toolName, isError = isError
+    toolName = toolName, isError = isError,
+    attachmentPath = attachmentPath, attachmentMime = attachmentMime,
 )
 
 fun StoredChatMessage.toUi() = ChatMessage(
     id = id, role = role, content = content,
-    toolName = toolName, isError = isError, isStreaming = false
+    toolName = toolName, isError = isError, isStreaming = false,
+    attachmentPath = attachmentPath, attachmentMime = attachmentMime,
 )
 
 fun ApiMessage.toStored() = StoredApiMessage(role = role, content = content)

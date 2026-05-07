@@ -28,12 +28,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.rememberAsyncImagePainter
 import com.forge.os.presentation.components.ForgeLogo
 import com.forge.os.presentation.screens.ChatViewModel
 import com.forge.os.presentation.theme.LocalForgePalette
@@ -543,7 +545,17 @@ private fun ModernMessageBubble(message: ChatMessage, onRetry: () -> Unit, onSpe
         "assistant"     -> if (message.isError) ModernErrorBubble(message, onRetry)
                            else ModernAssistantBubble(message.content, message.isStreaming, onSpeak)
         "tool_call"     -> ModernToolCallChip(message.toolName ?: "tool", message.content)
-        "tool_result"   -> ModernToolResultBubble(message.toolName ?: "tool", message.content, message.isError)
+        "tool_result"   -> {
+            ModernToolResultBubble(message.toolName ?: "tool", message.content, message.isError)
+            // If the tool produced a file, show it inline below the result
+            if (message.attachmentPath != null && message.attachmentMime != null) {
+                Spacer(Modifier.height(4.dp))
+                FileAttachmentBubble(
+                    path = message.attachmentPath,
+                    mime = message.attachmentMime,
+                )
+            }
+        }
         "system"        -> ModernSystemBubble(message.content)
         "input_request" -> ModernInputRequestBubble(message.content)
         else            -> ModernAssistantBubble(message.content, message.isStreaming, onSpeak)
@@ -872,6 +884,227 @@ private fun BubbleActionButton(label: String, onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
         )
     }
+}
+
+/**
+ * Inline file attachment card shown below a tool_result bubble.
+ * - Images: rendered inline with a tap-to-open action
+ * - Audio: play/pause button using MediaPlayer
+ * - Everything else: filename + open/share button
+ */
+@Composable
+private fun FileAttachmentBubble(path: String, mime: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val file = remember(path) { java.io.File(path) }
+    if (!file.exists()) return
+
+    val isImage = mime.startsWith("image/")
+    val isAudio = mime.startsWith("audio/")
+
+    Column(
+        modifier = Modifier
+            .padding(start = 44.dp)
+            .widthIn(max = 520.dp)
+    ) {
+        when {
+            isImage -> {
+                // Inline image preview — tap to open full-screen
+                coil.compose.AsyncImage(
+                    model = path,
+                    contentDescription = file.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { openFile(context, file, mime) },
+                    contentScale = ContentScale.Fit,
+                )
+                Spacer(Modifier.height(4.dp))
+                FileActionRow(file, mime, context)
+            }
+            isAudio -> {
+                AudioPlayerCard(file, context)
+            }
+            else -> {
+                FileCard(file, mime, context)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioPlayerCard(file: java.io.File, context: android.content.Context) {
+    var isPlaying by remember { mutableStateOf(false) }
+    val mediaPlayer = remember { android.media.MediaPlayer() }
+
+    DisposableEffect(file.absolutePath) {
+        onDispose {
+            if (mediaPlayer.isPlaying) mediaPlayer.stop()
+            mediaPlayer.release()
+        }
+    }
+
+    Surface(
+        color = ModernSurface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, ModernBorder),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            IconButton(
+                onClick = {
+                    if (isPlaying) {
+                        mediaPlayer.pause()
+                        isPlaying = false
+                    } else {
+                        runCatching {
+                            if (!mediaPlayer.isPlaying) {
+                                mediaPlayer.reset()
+                                mediaPlayer.setDataSource(file.absolutePath)
+                                mediaPlayer.prepare()
+                                mediaPlayer.setOnCompletionListener { isPlaying = false }
+                            }
+                            mediaPlayer.start()
+                            isPlaying = true
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(ModernAccent, CircleShape),
+            ) {
+                Icon(
+                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    file.name,
+                    color = ModernTextPrimary,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    formatFileSize(file.length()),
+                    color = ModernTextSecondary,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            IconButton(onClick = { shareFile(context, file) }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Filled.Share, "Share", tint = ModernTextSecondary, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileCard(file: java.io.File, mime: String, context: android.content.Context) {
+    Surface(
+        color = ModernSurface,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, ModernBorder),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(ModernAccent.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    file.extension.uppercase().take(4),
+                    color = ModernAccent,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    file.name,
+                    color = ModernTextPrimary,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    formatFileSize(file.length()),
+                    color = ModernTextSecondary,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(onClick = { openFile(context, file, mime) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.OpenInNew, "Open", tint = ModernAccent, modifier = Modifier.size(16.dp))
+                }
+                IconButton(onClick = { shareFile(context, file) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Filled.Share, "Share", tint = ModernTextSecondary, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileActionRow(file: java.io.File, mime: String, context: android.content.Context) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        BubbleActionButton("Open") { openFile(context, file, mime) }
+        BubbleActionButton("Share") { shareFile(context, file) }
+    }
+}
+
+private fun openFile(context: android.content.Context, file: java.io.File, mime: String) {
+    runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", file
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    }
+}
+
+private fun shareFile(context: android.content.Context, file: java.io.File) {
+    runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", file
+        )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "*/*"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share ${file.name}").apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+    }
+}
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} KB"
+    else -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
 }
 
 @Composable

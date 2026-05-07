@@ -1,5 +1,6 @@
 package com.forge.os.presentation.screens
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.forge.os.data.api.AiApiManager
@@ -29,10 +30,12 @@ import com.forge.os.domain.security.PermissionManager
 import com.forge.os.domain.security.ProviderSpec
 import com.forge.os.domain.security.SecureKeyStore
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 data class ChatMessage(
@@ -42,7 +45,11 @@ data class ChatMessage(
     val toolName: String? = null,
     val isError: Boolean = false,
     val isStreaming: Boolean = false,
-    val errorDetail: ApiError? = null
+    val errorDetail: ApiError? = null,
+    /** Absolute path to a file the agent produced (image, audio, download, etc.) */
+    val attachmentPath: String? = null,
+    /** MIME type of the attachment, e.g. "image/png", "audio/mpeg", "application/pdf" */
+    val attachmentMime: String? = null,
 )
 
 /** A mid-run clarification request from the agent to the user. */
@@ -50,6 +57,7 @@ data class InputRequest(val question: String, val requestId: String)
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val reActAgent: ReActAgent,
     private val configRepository: ConfigRepository,
     private val configMutationEngine: ConfigMutationEngine,
@@ -242,8 +250,16 @@ class ChatViewModel @Inject constructor(
                         } else {
                             hapticManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.SUCCESS)
                         }
-                        addMsg(ChatMessage(role = "tool_result", content = event.result,
-                            toolName = event.name, isError = event.isError))
+                        // Check if this tool result produced a file the user can view/play/download
+                        val (attachPath, attachMime) = resolveAttachment(event.name, event.result)
+                        addMsg(ChatMessage(
+                            role = "tool_result",
+                            content = event.result,
+                            toolName = event.name,
+                            isError = event.isError,
+                            attachmentPath = attachPath,
+                            attachmentMime = attachMime,
+                        ))
                         val lastCall = _messages.value.lastOrNull {
                             it.role == "tool_call" && it.toolName == event.name
                         }
@@ -509,6 +525,52 @@ SETTINGS: tap ⚙ to add API keys & custom endpoints.
         val trimmed = _messages.value.dropLastWhile { it.role == "assistant" || it.role == "tool_call" || it.role == "tool_result" }
         _messages.value = trimmed
         send(lastUser)
+    }
+
+    /**
+     * Inspect a tool result to see if it produced a file the user can view/play/download.
+     * Returns (absolutePath, mimeType) or (null, null) if no file was produced.
+     */
+    private fun resolveAttachment(toolName: String, result: String): Pair<String?, String?> {
+        // Tools that produce files: file_write, file_download, python_run (output path), autophone_screenshot
+        val fileProducingTools = setOf(
+            "file_write", "file_download", "python_run",
+            "autophone_screenshot", "browser_screenshot_region",
+        )
+        if (toolName !in fileProducingTools) return null to null
+        if (result.contains("\"ok\":false") || result.contains("error")) return null to null
+
+        // Try to extract a path from the JSON result
+        val pathRegex = Regex(""""(?:path|file|saved_to|output_path|screenshot)"\s*:\s*"([^"]+)"""")
+        val match = pathRegex.find(result) ?: return null to null
+        val relativePath = match.groupValues[1]
+
+        // Resolve to absolute path inside the sandbox
+        val sandboxRoot = File(context.filesDir, "workspace")
+        val absFile = if (relativePath.startsWith("/")) File(relativePath)
+                      else File(sandboxRoot, relativePath)
+        if (!absFile.exists()) return null to null
+
+        val mime = guessMime(absFile.name)
+        return absFile.absolutePath to mime
+    }
+
+    private fun guessMime(filename: String): String {
+        val ext = filename.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "png", "jpg", "jpeg", "gif", "webp", "bmp" -> "image/$ext"
+            "mp3"  -> "audio/mpeg"
+            "wav"  -> "audio/wav"
+            "ogg"  -> "audio/ogg"
+            "m4a"  -> "audio/mp4"
+            "mp4"  -> "video/mp4"
+            "webm" -> "video/webm"
+            "pdf"  -> "application/pdf"
+            "zip"  -> "application/zip"
+            "json" -> "application/json"
+            "txt", "md", "py", "kt", "js", "html", "css" -> "text/plain"
+            else   -> "application/octet-stream"
+        }
     }
 
     private fun addMsg(msg: ChatMessage) { _messages.value = _messages.value + msg }
