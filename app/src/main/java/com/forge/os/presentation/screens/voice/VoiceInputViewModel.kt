@@ -62,12 +62,29 @@ class VoiceInputViewModel @Inject constructor(
     }
     
     /**
-     * Speak text using TTS.
+     * Speak text using TTS — strips markdown before sending to the TTS engine
+     * so asterisks, backticks, headers etc. are not read aloud.
      */
     fun speak(text: String) {
         viewModelScope.launch {
             try {
-                voiceInputManager.speak(text)
+                val clean = text
+                    .replace(Regex("```[\\s\\S]*?```"), "code block")  // fenced code blocks
+                    .replace(Regex("`[^`]+`"), "")                      // inline code
+                    .replace(Regex("\\*\\*([^*]+)\\*\\*"), "$1")        // bold
+                    .replace(Regex("\\*([^*]+)\\*"), "$1")              // italic
+                    .replace(Regex("__([^_]+)__"), "$1")                // bold underscore
+                    .replace(Regex("_([^_]+)_"), "$1")                  // italic underscore
+                    .replace(Regex("#+\\s+"), "")                       // headings
+                    .replace(Regex("^[-*+]\\s+", RegexOption.MULTILINE), "") // list bullets
+                    .replace(Regex("^>\\s+", RegexOption.MULTILINE), "")     // blockquotes
+                    .replace(Regex("\\[([^]]+)]\\([^)]+\\)"), "$1")    // links → label only
+                    .replace(Regex("<[^>]+>"), "")                      // HTML tags
+                    .replace(Regex("\\|"), " ")                         // table pipes
+                    .replace(Regex("\\\\([*_`#])"), "$1")               // escaped chars
+                    .replace(Regex("\\s{2,}"), " ")                     // collapse whitespace
+                    .trim()
+                voiceInputManager.speak(clean)
             } catch (e: Exception) {
                 Timber.e(e, "Failed to speak text")
             }
