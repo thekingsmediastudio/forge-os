@@ -60,6 +60,7 @@ fun SettingsScreen(
     onNavigateToModelRouting: () -> Unit = {},
     onNavigateToOverrides: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {},
+    onNavigateToPersonality: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val keyStatuses by viewModel.keyStatuses.collectAsState()
@@ -356,6 +357,13 @@ fun SettingsScreen(
                     title = "🔒  Advanced overrides",
                     subtitle = "Per-tool blocked hosts/extensions/configs (the padlock the agent can't open)",
                     onClick = onNavigateToOverrides,
+                )
+            }
+            item {
+                NavRow(
+                    title = "🎭  Personality",
+                    subtitle = "Customize agent name, traits, communication style and manage profiles",
+                    onClick = onNavigateToPersonality,
                 )
             }
             item {

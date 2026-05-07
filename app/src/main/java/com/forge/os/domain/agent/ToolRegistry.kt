@@ -755,6 +755,31 @@ class ToolRegistry @Inject constructor(
                     agentPersonality.updatePersonality(updated)
                     "✅ Agent personality updated:\n${agentPersonality.getPersonalitySummary()}"
                 }
+                "personality_list" -> {
+                    val profiles = agentPersonality.listProfiles()
+                    val current = agentPersonality.getPersonality().name
+                    if (profiles.isEmpty()) "No saved personality profiles yet. Use personality_save to save the current one."
+                    else "🎭 Personality profiles:\n" + profiles.joinToString("\n") { p ->
+                        "  ${if (p == current) "▶" else "  "} $p"
+                    } + "\n\nActive: $current"
+                }
+                "personality_save" -> {
+                    val name = args["name"]?.toString()?.trim()
+                        ?: return@dispatch "Error: name required"
+                    agentPersonality.saveProfile(name)
+                    "✅ Saved personality profile: $name"
+                }
+                "personality_switch" -> {
+                    val name = args["name"]?.toString()?.trim()
+                        ?: return@dispatch "Error: name required"
+                    val ok = agentPersonality.switchToProfile(name)
+                    if (ok) "✅ Switched to personality: ${agentPersonality.getPersonality().name}\n\nThe new personality takes effect on the next message."
+                    else "❌ No profile named '$name'. Use personality_list to see available profiles."
+                }
+                "personality_reset" -> {
+                    agentPersonality.resetToDefault()
+                    "✅ Personality reset to Forge defaults.\n\n${agentPersonality.getPersonalitySummary()}"
+                }
                 "preferences_show" -> {
                     userPreferencesManager.getPreferencesSummary()
                 }
@@ -3676,6 +3701,26 @@ To use Composio:
                    "traits" to "string:Comma-separated personality traits (e.g. 'helpful,direct,technical')",
                    "communication_style" to "string:How the agent should communicate (e.g. 'concise,technical,warm')",
                    "custom_instructions" to "string:Additional custom instructions for this agent")),
+        tool("personality_list",
+            "List all saved personality profiles. Shows which one is currently active. " +
+            "Use this before personality_switch to see what profiles are available.",
+            params()),
+        tool("personality_save",
+            "Save the current personality as a named profile so it can be switched " +
+            "back to later. Use this before switching to a new personality.",
+            params("name" to "string:Profile name (e.g. 'Work Mode', 'Creative', 'Formal')"),
+            required = listOf("name")),
+        tool("personality_switch",
+            "Switch to a previously saved personality profile. The new personality " +
+            "takes effect on the NEXT message. Use personality_list first to see " +
+            "available profiles. Use personality_save to save the current one before switching.",
+            params("name" to "string:Profile name to switch to (from personality_list)"),
+            required = listOf("name")),
+        tool("personality_reset",
+            "Reset the active personality back to the built-in Forge defaults. " +
+            "Use this when the user says 'reset personality', 'go back to default', " +
+            "'restore default personality', or similar. Saved profiles are not affected.",
+            params()),
         tool("preferences_show",
             "Display the user's saved preferences including UI settings, remembered " +
             "projects, interaction patterns, and custom shortcuts. Use this to " +

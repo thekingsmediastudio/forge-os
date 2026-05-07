@@ -172,6 +172,7 @@ fun ModernChatScreen(
                         inputText = ""
                     }
                 },
+                onVoiceMode = { showVoiceMode = true },
                 enabled = !isLoading
             )
         }
@@ -434,8 +435,7 @@ private fun ModernHeader(
                     tint = ModernTextPrimary,
                     modifier = Modifier.size(22.dp)
                 )
-            }
-        }
+            }        }
     }
 }
 
@@ -1191,6 +1191,7 @@ private fun ModernInputBar(
     value: String,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
+    onVoiceMode: () -> Unit,
     enabled: Boolean
 ) {
     Surface(

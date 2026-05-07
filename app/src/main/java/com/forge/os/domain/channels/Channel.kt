@@ -13,29 +13,27 @@ data class ChannelConfig(
     val createdAt: Long = System.currentTimeMillis(),
 
     // ── Phase T (auto-reply pipeline) ────────────────────────────────────
-    /** When true, every incoming message is fed to the ReAct agent and the
-     *  final response is sent back to the chat. Default: true. */
     val autoReply: Boolean = true,
-
-    /** Telegram parse_mode for outbound text. One of:
-     *   "HTML"        — recommended (LLM markdown is converted to HTML).
-     *   "MarkdownV2"  — strict, requires escaping; passed through verbatim.
-     *   "Markdown"    — legacy.
-     *   ""            — plain text, no parsing. */
     val parseMode: String = "HTML",
-
-    /** Optional comma-separated allow-list of `chat_id`s. Empty means
-     *  every chat that messages the bot is allowed. Useful as a poor
-     *  man's auth — only your own chat will get replies. */
     val allowedChatIds: String = "",
 
     // ── Phase U (per-channel model picker) ───────────────────────────────
-    /** Per-channel provider override (e.g. "ANTHROPIC", "OPENAI", "GROQ").
-     *  Empty/blank means "use the global default + fallback chain". */
     val provider: String = "",
-    /** Per-channel model id override (e.g. "claude-sonnet-4-20250514").
-     *  Honoured only when [provider] is also set. */
     val model: String = "",
+
+    // ── Channel purpose / workspace scoping ──────────────────────────────
+    /** Optional system prompt suffix injected for this channel only.
+     *  Use this to give a channel a specific purpose, persona, or set of
+     *  instructions (e.g. "You are a customer support agent for X. Only
+     *  answer questions about X. Do not discuss other topics."). */
+    val systemPromptSuffix: String = "",
+
+    /** Optional workspace sub-path this channel's agent is restricted to.
+     *  Empty = full workspace access (default).
+     *  Example: "projects/customer-support" restricts the agent to only
+     *  read/write files under workspace/projects/customer-support/.
+     *  The agent cannot access files outside this path. */
+    val workspacePath: String = "",
 )
 
 @Serializable

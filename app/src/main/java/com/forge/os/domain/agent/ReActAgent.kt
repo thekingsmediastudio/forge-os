@@ -445,26 +445,29 @@ Tools available ({tool_count} total): {tool_catalog}
             val catalog = tools.joinToString(", ") { it.function.name }
                 .let { if (it.length > 1800) it.take(1800) + ", …" else it }
             
-            // Task 4: Integrate personality configuration
-            val personalityPrompt = if (mode != Mode.COMPANION) {
-                agentPersonality.getSystemPrompt()
-            } else {
+            // Build system prompt: base rules always included, personality layered on top
+            val resolvedBase = if (mode == Mode.COMPANION) {
                 baseSystemPrompt
                     .replace("{current_time}", timeStr)
                     .replace("{config_version}", config.version)
                     .replace("{agent_name}", personaManager.get().name)
                     .replace("{tool_count}", tools.size.toString())
                     .replace("{tool_catalog}", catalog)
-            }
-            
-            if (mode != Mode.COMPANION) {
-                append(personalityPrompt
+            } else {
+                baseSystemPrompt
                     .replace("{current_time}", timeStr)
                     .replace("{config_version}", config.version)
+                    .replace("{agent_name}", config.agentIdentity.name)
                     .replace("{tool_count}", tools.size.toString())
-                    .replace("{tool_catalog}", catalog))
-            } else {
-                append(personalityPrompt)
+                    .replace("{tool_catalog}", catalog)
+            }
+            append(resolvedBase)
+
+            // Append personality suffix (empty for default Forge personality)
+            val personalitySuffix = agentPersonality.getPersonalitySuffix()
+            if (personalitySuffix.isNotBlank()) {
+                appendLine(); appendLine()
+                append(personalitySuffix)
             }
             if (memoryContext.isNotBlank()) { appendLine(); appendLine(); append(memoryContext) }
             if (conversationRagContext.isNotBlank()) {

@@ -261,6 +261,12 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToModelRouting = { navController.navigate("modelRouting") },
                                 onNavigateToOverrides = { navController.navigate("toolOverrides") },
                                 onNavigateToBackup = { navController.navigate("backup") },
+                                onNavigateToPersonality = { navController.navigate("personality") },
+                            )
+                        }
+                        composable("personality") {
+                            com.forge.os.presentation.screens.settings.PersonalityScreen(
+                                onNavigateBack = { navController.popBackStack() }
                             )
                         }
                         composable("modelRouting") {

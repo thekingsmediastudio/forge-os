@@ -61,7 +61,7 @@ class PatternAnalyzer @Inject constructor(
             reflectionManager.getRelevantPatterns("tool_prediction").take(5)
         } catch (e: Exception) {
             Timber.w(e, "Failed to get learned patterns")
-            emptyList()
+            emptyList<com.forge.os.domain.agent.StoredPattern>()
         }
 
         // Get recent execution history for better context
@@ -69,7 +69,7 @@ class PatternAnalyzer @Inject constructor(
             executionHistoryManager.getAllSessions().take(3)
         } catch (e: Exception) {
             Timber.w(e, "Failed to get recent sessions")
-            emptyList()
+            emptyList<com.forge.os.domain.agent.ExecutionSession>()
         }
 
         val history = recentEvents.joinToString("\n") { event ->

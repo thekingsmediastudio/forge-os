@@ -11,13 +11,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Manages agent personality and configuration.
- * 
- * Allows users to:
- * - Set agent name and identity
- * - Customize system prompt
- * - Configure behavior and preferences
- * - Save and load personality profiles
+ * Manages agent personality profiles.
+ *
+ * Supports multiple named profiles stored under workspace/system/personalities/.
+ * The active profile is workspace/system/agent_personality.json.
+ * Switching profiles is instant — just overwrite the active file.
  */
 @Singleton
 class AgentPersonality @Inject constructor(
@@ -25,21 +23,14 @@ class AgentPersonality @Inject constructor(
 ) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     private val configFile: File get() = context.filesDir.resolve("workspace/system/agent_personality.json")
+    private val profilesDir: File get() = context.filesDir.resolve("workspace/system/personalities").also { it.mkdirs() }
 
     init {
         configFile.parentFile?.mkdirs()
     }
 
-    /**
-     * Get the current agent personality configuration.
-     */
-    fun getPersonality(): PersonalityConfig {
-        return loadPersonality() ?: createDefaultPersonality()
-    }
+    fun getPersonality(): PersonalityConfig = loadPersonality() ?: createDefaultPersonality()
 
-    /**
-     * Update agent personality.
-     */
     fun updatePersonality(config: PersonalityConfig) {
         try {
             configFile.writeText(json.encodeToString(config))
@@ -49,125 +40,160 @@ class AgentPersonality @Inject constructor(
         }
     }
 
-    /**
-     * Get the system prompt for the agent.
-     * This is what tells the agent how to behave.
-     */
-    fun getSystemPrompt(): String {
-        val personality = getPersonality()
-        
-        return buildString {
-            appendLine("You are ${personality.name}.")
-            appendLine()
-            appendLine(personality.systemPrompt)
-            appendLine()
-            appendLine("PERSONALITY TRAITS:")
-            personality.traits.forEach { trait ->
-                appendLine("• $trait")
+    /** Save current personality as a named profile. */
+    fun saveProfile(profileName: String, config: PersonalityConfig? = null) {
+        val toSave = config ?: getPersonality()
+        val safe = profileName.trim().replace(Regex("[^a-zA-Z0-9_\\- ]"), "").take(40).ifBlank { "profile" }
+        val file = profilesDir.resolve("$safe.json")
+        try {
+            file.writeText(json.encodeToString(toSave.copy(name = profileName.trim())))
+            Timber.i("Saved personality profile: $safe")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to save profile $safe")
+        }
+    }
+
+    /** List all saved profiles by name. */
+    fun listProfiles(): List<String> {
+        return profilesDir.listFiles { f -> f.extension == "json" }
+            ?.mapNotNull { f ->
+                runCatching { json.decodeFromString<PersonalityConfig>(f.readText()).name }.getOrNull()
+                    ?: f.nameWithoutExtension
             }
-            appendLine()
-            appendLine("COMMUNICATION STYLE:")
-            appendLine(personality.communicationStyle)
-            appendLine()
-            appendLine("PREFERENCES:")
-            personality.preferences.forEach { (key, value) ->
-                appendLine("• $key: $value")
-            }
+            ?.sorted() ?: emptyList()
+    }
+
+    /** Switch to a named profile. Returns true on success. */
+    fun switchToProfile(profileName: String): Boolean {
+        val file = profilesDir.listFiles { f -> f.extension == "json" }
+            ?.firstOrNull { f ->
+                runCatching { json.decodeFromString<PersonalityConfig>(f.readText()).name }
+                    .getOrNull()?.equals(profileName, ignoreCase = true) == true
+                    || f.nameWithoutExtension.equals(profileName, ignoreCase = true)
+            } ?: return false
+        return try {
+            val profile = json.decodeFromString<PersonalityConfig>(file.readText())
+            updatePersonality(profile)
+            true
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to switch to profile $profileName")
+            false
         }
     }
 
     /**
-     * Create a default personality.
+     * Returns a personality suffix to append to the base agent system prompt.
+     * This keeps all 36 agent rules intact while layering the personality on top.
      */
-    private fun createDefaultPersonality(): PersonalityConfig {
-        val default = PersonalityConfig(
-            name = "Forge",
-            description = "Your AI development assistant",
-            systemPrompt = """
-                You are Forge, an AI development assistant designed to help developers build, test, and deploy projects.
-                
-                Your core responsibilities:
-                1. Help users create and manage projects
-                2. Execute code and run tests
-                3. Provide technical guidance and solutions
-                4. Learn from past interactions and remember user preferences
-                5. Maintain context across sessions
-                
-                Always:
-                - Be direct and concise in your explanations
-                - Show your reasoning when making decisions
-                - Ask for clarification when needed
-                - Remember what the user has told you
-                - Suggest improvements based on best practices
-            """.trimIndent(),
-            traits = listOf(
-                "Helpful and supportive",
-                "Technical and knowledgeable",
-                "Direct and concise",
-                "Proactive in suggesting improvements",
-                "Respectful of user preferences"
-            ),
-            communicationStyle = """
-                • Use clear, technical language
-                • Provide code examples when relevant
-                • Explain your reasoning
-                • Be warm but professional
-                • Adapt to the user's communication style
-            """.trimIndent(),
-            preferences = mapOf(
-                "language" to "English",
-                "verbosity" to "concise",
-                "code_style" to "follow_project_conventions",
-                "error_handling" to "detailed_explanations",
-                "learning_mode" to "enabled"
-            ),
-            customInstructions = ""
-        )
-        
+    fun getPersonalitySuffix(): String {
+        val p = getPersonality()
+        // Only emit non-empty sections to avoid cluttering the prompt
+        if (p.name == "Forge" && p.systemPrompt.isBlank() && p.traits.isEmpty()
+            && p.communicationStyle.isBlank() && p.customInstructions.isBlank()) return ""
+        return buildString {
+            appendLine("── ACTIVE PERSONALITY: ${p.name} ──")
+            if (p.systemPrompt.isNotBlank()) {
+                appendLine(p.systemPrompt)
+                appendLine()
+            }
+            if (p.traits.isNotEmpty()) {
+                appendLine("PERSONALITY TRAITS:")
+                p.traits.forEach { appendLine("• $it") }
+                appendLine()
+            }
+            if (p.communicationStyle.isNotBlank()) {
+                appendLine("COMMUNICATION STYLE:")
+                appendLine(p.communicationStyle)
+                appendLine()
+            }
+            if (p.preferences.isNotEmpty()) {
+                appendLine("PREFERENCES:")
+                p.preferences.forEach { (k, v) -> appendLine("• $k: $v") }
+                appendLine()
+            }
+            if (p.customInstructions.isNotBlank()) {
+                appendLine("CUSTOM INSTRUCTIONS:")
+                appendLine(p.customInstructions)
+            }
+        }.trimEnd()
+    }
+
+    /**
+     * Full system prompt — base rules replaced by personality.
+     * Used when the caller explicitly wants the personality to own the entire prompt
+     * (e.g. a dedicated persona mode). For normal agent use, prefer [getPersonalitySuffix].
+     */
+    fun getSystemPrompt(): String {
+        val p = getPersonality()
+        return buildString {
+            appendLine("You are ${p.name}.")
+            appendLine()
+            if (p.systemPrompt.isNotBlank()) {
+                appendLine(p.systemPrompt)
+                appendLine()
+            }
+            if (p.traits.isNotEmpty()) {
+                appendLine("PERSONALITY TRAITS:")
+                p.traits.forEach { appendLine("• $it") }
+                appendLine()
+            }
+            if (p.communicationStyle.isNotBlank()) {
+                appendLine("COMMUNICATION STYLE:")
+                appendLine(p.communicationStyle)
+                appendLine()
+            }
+            if (p.preferences.isNotEmpty()) {
+                appendLine("PREFERENCES:")
+                p.preferences.forEach { (k, v) -> appendLine("• $k: $v") }
+            }
+            if (p.customInstructions.isNotBlank()) {
+                appendLine()
+                appendLine(p.customInstructions)
+            }
+        }
+    }
+
+    fun getPersonalitySummary(): String {
+        val p = getPersonality()
+        return buildString {
+            appendLine("🤖 Active personality: ${p.name}")
+            if (p.description.isNotBlank()) appendLine("  ${p.description}")
+            if (p.traits.isNotEmpty()) appendLine("  Traits: ${p.traits.joinToString(", ")}")
+            val profiles = listProfiles()
+            if (profiles.isNotEmpty()) appendLine("  Saved profiles: ${profiles.joinToString(", ")}")
+        }.trimEnd()
+    }
+
+    /** Reset the active personality to the built-in Forge defaults. */
+    fun resetToDefault(): PersonalityConfig {
+        val default = buildDefaultPersonality()
         updatePersonality(default)
+        // Overwrite the saved default profile so it stays in sync
+        saveProfile("Forge (Default)", default)
         return default
     }
 
-    /**
-     * Load personality from disk.
-     */
-    private fun loadPersonality(): PersonalityConfig? {
-        return runCatching {
-            if (!configFile.exists()) return null
-            val content = configFile.readText()
-            json.decodeFromString<PersonalityConfig>(content)
-        }.getOrNull()
+    private fun createDefaultPersonality(): PersonalityConfig {
+        val default = buildDefaultPersonality()
+        updatePersonality(default)
+        saveProfile("Forge (Default)", default)
+        return default
     }
 
-    /**
-     * Get a formatted personality summary for display.
-     */
-    fun getPersonalitySummary(): String {
-        val personality = getPersonality()
-        
-        return buildString {
-            appendLine("🤖 Agent Personality Configuration")
-            appendLine()
-            appendLine("Name: ${personality.name}")
-            appendLine("Description: ${personality.description}")
-            appendLine()
-            appendLine("Traits:")
-            personality.traits.forEach { trait -> appendLine("  • $trait") }
-            appendLine()
-            appendLine("Communication Style:")
-            appendLine(personality.communicationStyle)
-            appendLine()
-            appendLine("Preferences:")
-            personality.preferences.forEach { (k, v) ->
-                appendLine("  • $k: $v")
-            }
-            if (personality.customInstructions.isNotBlank()) {
-                appendLine()
-                appendLine("Custom Instructions:")
-                appendLine(personality.customInstructions)
-            }
-        }
-    }
+    private fun buildDefaultPersonality() = PersonalityConfig(
+        name = "Forge",
+        description = "Your AI development assistant",
+        systemPrompt = "",
+        traits = listOf("Helpful and supportive", "Technical and knowledgeable", "Direct and concise"),
+        communicationStyle = "Clear, technical language. Provide code examples when relevant. Be warm but professional.",
+        preferences = mapOf("verbosity" to "concise", "code_style" to "follow_project_conventions"),
+        customInstructions = ""
+    )
+
+    private fun loadPersonality(): PersonalityConfig? = runCatching {
+        if (!configFile.exists()) return null
+        json.decodeFromString<PersonalityConfig>(configFile.readText())
+    }.getOrNull()
 }
 
 @Serializable

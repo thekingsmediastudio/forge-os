@@ -684,6 +684,13 @@ class ChannelManager @Inject constructor(
             msg.messageId?.let {
                 appendLine("Incoming message_id: $it  (use this as reply_to_id in telegram_reply to quote the user's message).")
             }
+            if (cfg.workspacePath.isNotBlank()) {
+                appendLine("WORKSPACE RESTRICTION: You may only read/write files under 'workspace/${cfg.workspacePath}/'. Do not access files outside this path.")
+            }
+            if (cfg.systemPromptSuffix.isNotBlank()) {
+                appendLine()
+                appendLine(cfg.systemPromptSuffix)
+            }
             if (cfg.parseMode.equals("HTML", ignoreCase = true)) {
                 appendLine("You may use Markdown — it is converted to Telegram HTML.")
             }
