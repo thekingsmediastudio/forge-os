@@ -1,5 +1,9 @@
 package com.forge.os.presentation.screens.voice
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,9 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.forge.os.presentation.theme.LocalForgePalette
 
@@ -42,26 +48,42 @@ fun VoiceInputButton(
     val isListening by viewModel.isListening.collectAsState()
     val lastRecognizedText by viewModel.lastRecognizedText.collectAsState()
     val isAvailable by viewModel.isAvailable.collectAsState()
-    
+    val context = LocalContext.current
+
+    // Runtime permission launcher for RECORD_AUDIO
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.startListening()
+    }
+
     // Send recognized text to callback
     LaunchedEffect(lastRecognizedText) {
         if (lastRecognizedText.isNotBlank()) {
             onVoiceInput(lastRecognizedText)
         }
     }
-    
+
     if (!isAvailable) {
         // Don't show button if voice input is not available
         return
     }
-    
+
     Box(modifier = modifier) {
         IconButton(
             onClick = {
                 if (isListening) {
                     viewModel.stopListening()
                 } else {
-                    viewModel.startListening()
+                    // Check permission before starting — request it if not granted
+                    val hasPermission = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (hasPermission) {
+                        viewModel.startListening()
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
                 }
             },
             modifier = Modifier

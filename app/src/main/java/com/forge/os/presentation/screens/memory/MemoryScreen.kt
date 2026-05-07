@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.forge.os.domain.agent.StoredPattern
 import com.forge.os.domain.companion.EpisodicMemory
 import com.forge.os.domain.memory.FactEntry
 import com.forge.os.domain.memory.SkillEntry
@@ -185,12 +186,16 @@ fun MemoryScreen(
                         MemoryTab.EPISODES -> items(state.episodes, key = { it.id }) { e ->
                             EpisodeCard(e, onDelete = { viewModel.deleteEpisode(e.id) })
                         }
+                        MemoryTab.REFLECTIONS -> items(state.reflections, key = { it.name }) { p ->
+                            ReflectionCard(p)
+                        }
                     }
                     item {
                         if ((state.tab == MemoryTab.DAILY && state.daily.isEmpty()) ||
                             (state.tab == MemoryTab.FACTS && state.facts.isEmpty()) ||
                             (state.tab == MemoryTab.SKILLS && state.skills.isEmpty()) ||
-                            (state.tab == MemoryTab.EPISODES && state.episodes.isEmpty())) {
+                            (state.tab == MemoryTab.EPISODES && state.episodes.isEmpty()) ||
+                            (state.tab == MemoryTab.REFLECTIONS && state.reflections.isEmpty())) {
                             Text("(empty)", color = ForgeOsPalette.TextDim,
                                 fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                         }
@@ -372,6 +377,46 @@ private fun EpisodeCard(e: EpisodicMemory, onDelete: () -> Unit) {
                 Text("  • ${f.question}", color = ForgeOsPalette.TextPrimary,
                     fontFamily = FontFamily.Monospace, fontSize = 10.sp)
             }
+        }
+    }
+}
+
+@Composable
+private fun ReflectionCard(p: StoredPattern) {
+    Column(
+        Modifier.fillMaxWidth()
+            .background(ForgeOsPalette.Surface, RoundedCornerShape(6.dp))
+            .border(1.dp, ForgeOsPalette.Border, RoundedCornerShape(6.dp))
+            .padding(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                p.name,
+                color = ForgeOsPalette.Orange,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "×${p.useCount}",
+                color = ForgeOsPalette.TextDim,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+            )
+        }
+        Text(
+            p.description.take(200),
+            color = ForgeOsPalette.TextPrimary,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+        if (p.tags.isNotEmpty()) {
+            Text(
+                p.tags.joinToString(" ") { "#$it" },
+                color = ForgeOsPalette.TextMuted,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+            )
         }
     }
 }

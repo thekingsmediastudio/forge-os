@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.forge.os.domain.agent.ReflectionStore
+import com.forge.os.domain.agent.StoredPattern
 import com.forge.os.domain.companion.EpisodicMemory
 import com.forge.os.domain.companion.EpisodicMemoryStore
 import com.forge.os.domain.memory.DailyEvent
@@ -23,7 +25,7 @@ import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
 
-enum class MemoryTab { DAILY, FACTS, SKILLS, EPISODES }
+enum class MemoryTab { DAILY, FACTS, SKILLS, EPISODES, REFLECTIONS }
 enum class SearchMode { LEXICAL, SEMANTIC }
 
 data class MemoryUiState(
@@ -34,6 +36,7 @@ data class MemoryUiState(
     val facts: List<FactEntry> = emptyList(),
     val skills: List<SkillEntry> = emptyList(),
     val episodes: List<EpisodicMemory> = emptyList(),
+    val reflections: List<com.forge.os.domain.agent.StoredPattern> = emptyList(),
     /** Phase J2: filled when [searchMode] = SEMANTIC; key → cosine score. */
     val factScores: Map<String, Float> = emptyMap(),
     val semanticBusy: Boolean = false,
@@ -45,6 +48,7 @@ class MemoryViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val memoryManager: MemoryManager,
     private val episodicStore: EpisodicMemoryStore,
+    private val reflectionStore: ReflectionStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MemoryUiState())
@@ -77,6 +81,19 @@ class MemoryViewModel @Inject constructor(
             daily = daily, facts = factsLexical, skills = skills, episodes = episodes,
             factScores = if (s.searchMode == SearchMode.LEXICAL) emptyMap() else s.factScores,
         )
+        // Load reflections async (suspend function)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val reflections = if (q.isBlank()) {
+                    reflectionStore.getAll()
+                } else {
+                    reflectionStore.getRelevant(q, limit = 50)
+                }
+                _state.value = _state.value.copy(reflections = reflections)
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to load reflections")
+            }
+        }
         // Phase J2: in semantic mode, kick off an async re-rank of the facts list.
         if (s.searchMode == SearchMode.SEMANTIC && s.tab == MemoryTab.FACTS && q.isNotBlank()) {
             runSemanticFactSearch(s.query)
