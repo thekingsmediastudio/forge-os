@@ -63,12 +63,28 @@ class PhoneCallToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "call_log_list"   -> callLog(args["type"]?.toString() ?: "all", args["limit"]?.toString()?.toIntOrNull() ?: 20)
-        "call_log_missed" -> callLog("missed", args["limit"]?.toString()?.toIntOrNull() ?: 20)
+        "call_log_list"   -> {
+            if (!hasPermission(android.Manifest.permission.READ_CALL_LOG))
+                return "Error: READ_CALL_LOG permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."
+            callLog(args["type"]?.toString() ?: "all", args["limit"]?.toString()?.toIntOrNull() ?: 20)
+        }
+        "call_log_missed" -> {
+            if (!hasPermission(android.Manifest.permission.READ_CALL_LOG))
+                return "Error: READ_CALL_LOG permission not granted."
+            callLog("missed", args["limit"]?.toString()?.toIntOrNull() ?: 20)
+        }
         "call_dial"       -> dial(args["number"]?.toString() ?: "")
-        "call_phone"      -> call(args["number"]?.toString() ?: "")
+        "call_phone"      -> {
+            if (!hasPermission(android.Manifest.permission.CALL_PHONE))
+                return """{"ok":false,"error":"CALL_PHONE permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."}"""
+            call(args["number"]?.toString() ?: "")
+        }
         else -> null
     }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── Implementations ───────────────────────────────────────────────────────
 

@@ -108,17 +108,45 @@ class StorageToolProvider @Inject constructor(
         "storage_overview"       -> storageOverview()
         "storage_volumes"        -> storageVolumes()
         "storage_app_cache"      -> appCache(args["clear"]?.toString()?.toBooleanStrictOrNull() ?: false)
-        "storage_list_downloads" -> listDownloads(
-            limit      = args["limit"]?.toString()?.toIntOrNull() ?: 30,
-            filter     = args["filter"]?.toString() ?: "",
-            mimePrefix = args["mime_prefix"]?.toString() ?: "",
-        )
-        "storage_list_dir"       -> listDir(
-            path  = args["path"]?.toString() ?: "",
-            limit = args["limit"]?.toString()?.toIntOrNull() ?: 50,
-        )
+        "storage_list_downloads" -> {
+            // API 29+ uses MediaStore — no permission needed. Older needs READ_EXTERNAL_STORAGE.
+            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q &&
+                !hasStorageReadPermission())
+                return err("READ_EXTERNAL_STORAGE permission not granted. Grant it in Settings → Apps → Forge OS → Permissions.")
+            listDownloads(
+                limit      = args["limit"]?.toString()?.toIntOrNull() ?: 30,
+                filter     = args["filter"]?.toString() ?: "",
+                mimePrefix = args["mime_prefix"]?.toString() ?: "",
+            )
+        }
+        "storage_list_dir"       -> {
+            val path = args["path"]?.toString() ?: ""
+            // Only check permission for external paths — app-internal dirs are always accessible
+            if (isExternalPath(path) && !hasStorageReadPermission())
+                return err("Storage read permission not granted for external path. Grant READ_MEDIA_* (API 33+) or READ_EXTERNAL_STORAGE in Settings → Apps → Forge OS → Permissions.")
+            listDir(path = path, limit = args["limit"]?.toString()?.toIntOrNull() ?: 50)
+        }
         else -> null
     }
+
+    private fun hasStorageReadPermission(): Boolean {
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            hasPermission(android.Manifest.permission.READ_MEDIA_IMAGES) ||
+            hasPermission(android.Manifest.permission.READ_MEDIA_VIDEO) ||
+            hasPermission(android.Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            hasPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+    }
+
+    private fun isExternalPath(path: String): Boolean {
+        val externalRoot = android.os.Environment.getExternalStorageDirectory().absolutePath
+        return path.startsWith(externalRoot) || path.startsWith("/sdcard") || path.startsWith("/storage")
+    }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── storage_overview ──────────────────────────────────────────────────────
 

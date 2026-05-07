@@ -91,12 +91,21 @@ class WifiToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "wifi_status"        -> wifiStatus()
-        "wifi_scan"          -> wifiScan(args["limit"]?.toString()?.toIntOrNull() ?: 20)
-        "wifi_open_settings" -> openWifiSettings()
-        "wifi_saved_networks"-> savedNetworks()
-        else                 -> null
+        "wifi_status"         -> wifiStatus()
+        "wifi_scan"           -> {
+            if (!hasPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) &&
+                !hasPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION))
+                return """{"ok":false,"error":"Location permission not granted — required to read Wi-Fi scan results on Android 8+. Grant it in Settings → Apps → Forge OS → Permissions."}"""
+            wifiScan(args["limit"]?.toString()?.toIntOrNull() ?: 20)
+        }
+        "wifi_open_settings"  -> openWifiSettings()
+        "wifi_saved_networks" -> savedNetworks()
+        else                  -> null
     }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── wifi_status ───────────────────────────────────────────────────────────
 

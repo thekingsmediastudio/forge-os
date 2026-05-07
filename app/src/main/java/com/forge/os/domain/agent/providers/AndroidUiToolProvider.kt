@@ -49,8 +49,9 @@ class AndroidUiToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "android_toast" -> showToast(args["text"]?.toString() ?: "")
-        "android_vibrate" -> vibrate((args["duration_ms"] as? Number)?.toLong() ?: 500L)
+        "android_toast"     -> showToast(args["text"]?.toString() ?: "")
+        "android_vibrate"   -> vibrate((args["duration_ms"] as? Number)?.toLong()
+                                    ?: args["duration_ms"]?.toString()?.toLongOrNull() ?: 500L)
         "android_tts_speak" -> speakText(args["text"]?.toString() ?: "")
         else -> null
     }
@@ -62,23 +63,27 @@ class AndroidUiToolProvider @Inject constructor(
         }.getOrElse { """{"ok":false,"error":"${it.message}"}""" }
     }
 
-    private fun vibrate(durationMs: Long): String = runCatching {
-        val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vm.defaultVibrator
-        } else {
-            @Suppress("DEPRECATION")
-            context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-        }
-        
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
-        } else {
-            @Suppress("DEPRECATION")
-            vibrator.vibrate(durationMs)
-        }
-        """{"ok":true,"duration_ms":$durationMs}"""
-    }.getOrElse { """{"ok":false,"error":"${it.message}"}""" }
+    private suspend fun vibrate(durationMs: Long): String = withContext(Dispatchers.Main) {
+        runCatching {
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+
+            if (!vibrator.hasVibrator()) return@runCatching """{"ok":false,"error":"Device has no vibrator"}"""
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(durationMs)
+            }
+            """{"ok":true,"duration_ms":$durationMs}"""
+        }.getOrElse { """{"ok":false,"error":"${it.message}"}""" }
+    }
 
     private fun speakText(text: String): String = runCatching {
         if (!isTtsInitialized || tts == null) {
