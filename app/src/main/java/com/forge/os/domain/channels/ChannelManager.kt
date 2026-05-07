@@ -672,9 +672,6 @@ class ChannelManager @Inject constructor(
                 appendLine("]")
             }
             append(msg.text)
-            // Tell the agent how to send back: it can rely on auto-reply
-            // (the final assistant text is sent automatically), or call
-            // `telegram_send_voice` if a voice reply is more natural.
             appendLine()
             appendLine()
             appendLine("Reply concisely. The text of your final response is sent")
@@ -684,6 +681,9 @@ class ChannelManager @Inject constructor(
             appendLine("the final auto-reply when you do, so the user never sees the")
             appendLine("same message twice.")
             appendLine("Telegram chat id: $chatId. Channel id: ${cfg.id}.")
+            msg.messageId?.let {
+                appendLine("Incoming message_id: $it  (use this as reply_to_id in telegram_reply to quote the user's message).")
+            }
             if (cfg.parseMode.equals("HTML", ignoreCase = true)) {
                 appendLine("You may use Markdown — it is converted to Telegram HTML.")
             }

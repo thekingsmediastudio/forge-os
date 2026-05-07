@@ -2293,9 +2293,10 @@ To use Composio:
     // optional — when omitted we pick the most recently active Telegram
     // channel from `channelManager.list()`.
 
-    /** Resolve a channel id from args, falling back to the only / most recent
-     *  Telegram channel. Returns null + an error string if ambiguous. */
-    private fun resolveTelegramChannelId(args: Map<String, Any>): Pair<String?, String?> {
+    /** Resolve a channel id from args, falling back to the InputRoute coroutine
+     *  context (set when the agent is running on behalf of a Telegram turn),
+     *  then to the only / most-recently-active Telegram channel. */
+    private suspend fun resolveTelegramChannelId(args: Map<String, Any>): Pair<String?, String?> {
         val explicit = args["channel_id"]?.toString()?.takeIf { it.isNotBlank() }
         if (explicit != null) return explicit to null
         val byName = args["channel"]?.toString()?.takeIf { it.isNotBlank() }
@@ -2305,10 +2306,21 @@ To use Composio:
             } ?: return null to "❌ No channel named '$byName'"
             return match.id to null
         }
+        // Auto-detect from the current coroutine's InputRoute (set by ChannelManager
+        // when a Telegram message triggers this agent run). This is the most reliable
+        // source — it's the exact channel/chat that sent the message.
+        val routeKey = currentCoroutineContext()[InputRoute]?.routeKey
+        if (routeKey != null && routeKey.startsWith("channel:")) {
+            val rest = routeKey.removePrefix("channel:")
+            val sep = rest.indexOf(':')
+            if (sep > 0) {
+                val channelId = rest.substring(0, sep)
+                if (channelManager.find(channelId) != null) return channelId to null
+            }
+        }
         val tg = channelManager.list().filter { it.type == "telegram" }
         return when (tg.size) {
-            0 -> null to "❌ No Telegram channel configured. " +
-                "Use channel_add_telegram first."
+            0 -> null to "❌ No Telegram channel configured. Use channel_add_telegram first."
             1 -> tg.first().id to null
             else -> {
                 // Pick the channel whose most recent inbound is newest.
@@ -2343,8 +2355,7 @@ To use Composio:
             }
         }
         // 2. Fall back to the most-recent inbound message for the resolved channel.
-        val (id, err) = resolveTelegramChannelId(args)
-        if (err != null) return err
+        val (id, err) = resolveTelegramChannelId(args)        if (err != null) return err
         val cfg = channelManager.find(id!!)
             ?: return "❌ Unknown channel id: $id"
         val recent = channelManager.recent.value

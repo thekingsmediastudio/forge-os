@@ -751,11 +751,13 @@ private fun ModernErrorBubble(msg: ChatMessage, onRetry: () -> Unit) {
 /** Compact chip shown while a tool is being called — gear icon + tool name + args preview. */
 @Composable
 private fun ModernToolCallChip(toolName: String, args: String) {
+    var expanded by remember { mutableStateOf(false) }
+    val PREVIEW = 120
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 44.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.Top
     ) {
-        // Spinning gear while tool runs
         val infiniteTransition = rememberInfiniteTransition(label = "gear_spin")
         val rotation by infiniteTransition.animateFloat(
             initialValue = 0f, targetValue = 360f,
@@ -765,13 +767,14 @@ private fun ModernToolCallChip(toolName: String, args: String) {
         Icon(
             Icons.Filled.Settings, "Running",
             tint = ModernAccent,
-            modifier = Modifier.size(14.dp).graphicsLayer { rotationZ = rotation }
+            modifier = Modifier.size(14.dp).padding(top = 3.dp).graphicsLayer { rotationZ = rotation }
         )
         Spacer(Modifier.width(8.dp))
         Surface(
             color = ModernAccent.copy(alpha = 0.08f),
             shape = RoundedCornerShape(8.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, ModernAccent.copy(alpha = 0.25f))
+            border = androidx.compose.foundation.BorderStroke(1.dp, ModernAccent.copy(alpha = 0.25f)),
+            modifier = Modifier.widthIn(max = 520.dp),
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(
@@ -783,12 +786,25 @@ private fun ModernToolCallChip(toolName: String, args: String) {
                 )
                 if (args.isNotBlank()) {
                     Spacer(Modifier.height(2.dp))
+                    val needsTruncation = args.length > PREVIEW
                     Text(
-                        args.take(120).let { if (args.length > 120) "$it…" else it },
+                        if (expanded || !needsTruncation) args
+                        else args.take(PREVIEW) + "…",
                         color = ModernTextSecondary,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace
                     )
+                    if (needsTruncation) {
+                        Text(
+                            if (expanded) "▲ less" else "▼ more",
+                            color = ModernAccent,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .clickable { expanded = !expanded }
+                                .padding(top = 2.dp)
+                        )
+                    }
                 }
             }
         }
@@ -798,6 +814,9 @@ private fun ModernToolCallChip(toolName: String, args: String) {
 /** Result bubble shown after a tool completes — tick/cross + tool name + output preview. */
 @Composable
 private fun ModernToolResultBubble(toolName: String, result: String, isError: Boolean) {
+    var expanded by remember { mutableStateOf(false) }
+    val PREVIEW = 300
+
     val accentColor = if (isError) Color(0xFFef4444) else Color(0xFF22c55e)
     val bgColor = if (isError) Color(0xFF1a0a0a) else Color(0xFF0a1a0a)
     Row(
@@ -827,13 +846,26 @@ private fun ModernToolResultBubble(toolName: String, result: String, isError: Bo
                 )
                 if (result.isNotBlank()) {
                     Spacer(Modifier.height(2.dp))
+                    val needsTruncation = result.length > PREVIEW
                     Text(
-                        result.take(300).let { if (result.length > 300) "$it…" else it },
+                        if (expanded || !needsTruncation) result
+                        else result.take(PREVIEW) + "…",
                         color = ModernTextPrimary,
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         lineHeight = 16.sp
                     )
+                    if (needsTruncation) {
+                        Text(
+                            if (expanded) "▲ show less" else "▼ show more",
+                            color = accentColor,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .clickable { expanded = !expanded }
+                                .padding(top = 4.dp)
+                        )
+                    }
                 }
             }
         }

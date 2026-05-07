@@ -30,6 +30,14 @@ class ProjectToolProvider @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     override fun getTools(): List<ToolDefinition> = listOf(
+        tool("project_create",
+            "Create a new project workspace. Creates the project directory under projects/<slug>/ " +
+            "and saves a project.json metadata file. Returns the slug to use with other project tools.",
+            params("name" to "string:Human-readable project name (e.g. 'My Web App')",
+                   "description" to "string:Short description of the project",
+                   "tags" to "string:Comma-separated tags (e.g. 'python,web,api')"),
+            required = listOf("name")),
+
         tool("project_list",
             "List all projects with metadata. Returns project name, description, file count, tags.",
             params()),
@@ -76,6 +84,7 @@ class ProjectToolProvider @Inject constructor(
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
         return when (toolName) {
+            "project_create"         -> projectCreate(args)
             "project_list"           -> projectList()
             "project_read_metadata"  -> projectReadMetadata(args)
             "project_write_metadata" -> projectWriteMetadata(args)
@@ -86,6 +95,38 @@ class ProjectToolProvider @Inject constructor(
             "project_get_active"     -> projectGetActive()
             else -> null
         }
+    }
+
+    private fun projectCreate(args: Map<String, Any>): String {
+        val name = args["name"]?.toString()?.trim() ?: return "Error: name required"
+        val description = args["description"]?.toString()?.trim() ?: ""
+        val tagsRaw = args["tags"]?.toString() ?: ""
+        val tags = tagsRaw.split(',').map { it.trim() }.filter { it.isNotBlank() }
+
+        val project = repository.create(name, description).let { p ->
+            if (tags.isNotEmpty()) {
+                val withTags = p.copy(tags = tags)
+                repository.save(withTags)
+                withTags
+            } else p
+        }
+
+        // Create the project directory (repository.create already does this via save,
+        // but ensure it exists for immediate file writes)
+        val projectDir = repository.root.resolve(project.slug)
+        projectDir.mkdirs()
+
+        Timber.i("Created project: ${project.slug}")
+        return buildString {
+            appendLine("✅ Created project: ${project.name}")
+            appendLine("  slug: ${project.slug}")
+            appendLine("  path: projects/${project.slug}/")
+            if (description.isNotBlank()) appendLine("  description: $description")
+            if (tags.isNotEmpty()) appendLine("  tags: ${tags.joinToString(", ")}")
+            appendLine()
+            appendLine("Use project_write_file to add files, or file_write with path 'projects/${project.slug}/...' to write directly.")
+            appendLine("Use project_activate {slug: \"${project.slug}\"} to set it as the active project.")
+        }.trimEnd()
     }
 
     private fun projectList(): String {
