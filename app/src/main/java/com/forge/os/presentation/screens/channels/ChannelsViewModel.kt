@@ -38,11 +38,12 @@ class ChannelsViewModel @Inject constructor(
         autoReply: Boolean = true,
         parseMode: String = "HTML",
         allowedChatIds: String = "",
+        purpose: String = "personal",
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             manager.createTelegram(
                 displayName, botToken, defaultChatId,
-                autoReply, parseMode, allowedChatIds,
+                autoReply, parseMode, allowedChatIds, purpose,
             )
             refresh()
         }

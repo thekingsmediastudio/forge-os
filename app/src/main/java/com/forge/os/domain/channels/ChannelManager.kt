@@ -173,6 +173,8 @@ class ChannelManager @Inject constructor(
         autoReply: Boolean = true,
         parseMode: String = "HTML",
         allowedChatIds: String = "",
+        purpose: String = "personal",
+        systemPromptSuffix: String = "",
     ): ChannelConfig {
         val id = "tg_${UUID.randomUUID().toString().take(8)}"
         val configJson = buildString {
@@ -180,6 +182,15 @@ class ChannelManager @Inject constructor(
             append("\"botToken\":\"").append(botToken.jsonEscape()).append("\",")
             append("\"defaultChatId\":\"").append(defaultChatId.jsonEscape()).append('"')
             append('}')
+        }
+        // Auto-generate a sensible system prompt suffix based on purpose if none provided
+        val resolvedSuffix = systemPromptSuffix.ifBlank {
+            when (purpose) {
+                "teaching"  -> "You are a teaching assistant on this channel. Explain concepts clearly, use examples, and encourage questions. Adapt your explanations to the learner's level."
+                "work"      -> "You are a professional work assistant on this channel. Be concise, focused, and action-oriented. Prioritise tasks and deliverables."
+                "support"   -> "You are a support agent on this channel. Be patient, empathetic, and solution-focused. Always confirm the issue is resolved before closing."
+                else        -> "" // personal — no suffix, full agent behaviour
+            }
         }
         val cfg = ChannelConfig(
             id = id, type = "telegram",
@@ -189,6 +200,8 @@ class ChannelManager @Inject constructor(
             autoReply = autoReply,
             parseMode = parseMode,
             allowedChatIds = allowedChatIds,
+            purpose = purpose,
+            systemPromptSuffix = resolvedSuffix,
         )
         repository.upsert(cfg)
         scope.launch { startChannel(cfg) }

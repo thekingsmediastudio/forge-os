@@ -93,8 +93,8 @@ fun ChannelsScreen(
     if (showAdd) {
         AddTelegramDialog(
             onDismiss = { showAdd = false },
-            onConfirm = { name, token, chat, autoReply, parseMode, allow ->
-                viewModel.addTelegram(name, token, chat, autoReply, parseMode, allow)
+            onConfirm = { name, token, chat, autoReply, parseMode, allow, purpose ->
+                viewModel.addTelegram(name, token, chat, autoReply, parseMode, allow, purpose)
                 showAdd = false
             }
         )
@@ -147,7 +147,7 @@ private fun ChannelRow(
             Column(Modifier.weight(1f)) {
                 Text(c.displayName, color = ForgeOsPalette.TextPrimary,
                     fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                Text("${c.type}  ·  auto-reply: ${if (c.autoReply) "ON" else "OFF"}  ·  ${c.parseMode.ifBlank { "plain" }}",
+                Text("${c.type}  ·  ${c.purpose}  ·  auto-reply: ${if (c.autoReply) "ON" else "OFF"}  ·  ${c.parseMode.ifBlank { "plain" }}",
                     color = ForgeOsPalette.TextMuted,
                     fontFamily = FontFamily.Monospace, fontSize = 10.sp)
             }
@@ -241,7 +241,8 @@ private fun MessageRow(m: IncomingMessage) {
 private fun AddTelegramDialog(
     onDismiss: () -> Unit,
     onConfirm: (name: String, token: String, chat: String,
-                autoReply: Boolean, parseMode: String, allow: String) -> Unit,
+                autoReply: Boolean, parseMode: String, allow: String,
+                purpose: String) -> Unit,
 ) {
     var name by remember { mutableStateOf("Telegram Bot") }
     var token by remember { mutableStateOf("") }
@@ -249,6 +250,15 @@ private fun AddTelegramDialog(
     var autoReply by remember { mutableStateOf(true) }
     var parseMode by remember { mutableStateOf("HTML") }
     var allow by remember { mutableStateOf("") }
+    var purpose by remember { mutableStateOf("personal") }
+
+    val purposes = listOf(
+        "personal"  to "👤 Personal",
+        "teaching"  to "📚 Teaching",
+        "work"      to "💼 Work",
+        "support"   to "🎧 Support",
+        "custom"    to "⚙️ Custom",
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -269,6 +279,27 @@ private fun AddTelegramDialog(
                 OutlinedTextField(allow, { allow = it },
                     label = { Text("Allowed chat ids (CSV, blank = all)") },
                     singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(10.dp))
+                Text("Channel purpose:", fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                    color = ForgeOsPalette.TextMuted)
+                Spacer(Modifier.height(4.dp))
+                androidx.compose.foundation.layout.FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    purposes.forEach { (key, label) ->
+                        val selected = purpose == key
+                        OutlinedButton(
+                            onClick = { purpose = key },
+                            colors = if (selected)
+                                ButtonDefaults.outlinedButtonColors(
+                                    containerColor = ForgeOsPalette.Orange.copy(alpha = 0.2f))
+                            else ButtonDefaults.outlinedButtonColors(),
+                        ) {
+                            Text(label, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+                        }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Auto-reply", modifier = Modifier.weight(1f),
@@ -296,7 +327,7 @@ private fun AddTelegramDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onConfirm(name, token.trim(), chat.trim(), autoReply, parseMode, allow.trim())
+                onConfirm(name, token.trim(), chat.trim(), autoReply, parseMode, allow.trim(), purpose)
             }) { Text("Add") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }

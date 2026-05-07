@@ -290,7 +290,11 @@ class AiApiManager @Inject constructor(
 
     fun isVisionModel(model: String): Boolean {
         val m = model.lowercase()
-        return m.contains("vision") || m.contains("claude-3") || m.contains("gpt-4o") || m.contains("gemini")
+        return m.contains("vision") || m.contains("gpt-4o") ||
+               m.contains("claude-3") || m.contains("claude-opus") ||
+               m.contains("claude-haiku") || m.contains("claude-sonnet") ||
+               m.contains("gemini") || m.contains("pixtral") ||
+               m.contains("llava") || m.contains("bakllava")
     }
 
     /**

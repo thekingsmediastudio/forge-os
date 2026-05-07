@@ -562,12 +562,12 @@ private fun ModernMessageBubble(message: ChatMessage, onRetry: () -> Unit, onSpe
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun ModernUserBubble(text: String) {
-    var showActions by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
-        targetValue = if (showActions) 0.97f else 1f,
+        targetValue = if (showSheet) 0.97f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "user_bubble_scale"
     )
@@ -583,8 +583,8 @@ private fun ModernUserBubble(text: String) {
                     .widthIn(max = 560.dp)
                     .graphicsLayer { scaleX = scale; scaleY = scale }
                     .combinedClickable(
-                        onClick = { showActions = false },
-                        onLongClick = { showActions = !showActions },
+                        onClick = {},
+                        onLongClick = { showSheet = true },
                     ),
                 color = ModernAccent.copy(alpha = 0.15f),
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 4.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
@@ -599,17 +599,6 @@ private fun ModernUserBubble(text: String) {
                     )
                 }
             }
-            AnimatedVisibility(visible = showActions) {
-                Row(
-                    modifier = Modifier.padding(top = 4.dp, end = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    BubbleActionButton("Copy") {
-                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
-                        showActions = false
-                    }
-                }
-            }
         }
         Spacer(Modifier.width(12.dp))
         Box(
@@ -619,15 +608,26 @@ private fun ModernUserBubble(text: String) {
             Icon(Icons.Outlined.Person, "User", tint = ModernTextPrimary, modifier = Modifier.size(18.dp))
         }
     }
+
+    if (showSheet) {
+        BubbleActionsSheet(
+            onDismiss = { showSheet = false },
+            actions = listOf(
+                BubbleAction("📋 Copy", Icons.Outlined.ContentCopy) {
+                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                }
+            )
+        )
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun ModernAssistantBubble(text: String, isStreaming: Boolean, onSpeak: (String) -> Unit) {
-    var showActions by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val scale by animateFloatAsState(
-        targetValue = if (showActions) 0.97f else 1f,
+        targetValue = if (showSheet) 0.97f else 1f,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "assistant_bubble_scale"
     )
@@ -639,59 +639,50 @@ private fun ModernAssistantBubble(text: String, isStreaming: Boolean, onSpeak: (
     ) {
         ForgeLogo(size = 32.dp)
         Spacer(Modifier.width(12.dp))
-        Column {
-            Surface(
-                modifier = Modifier
-                    .widthIn(max = 600.dp)
-                    .graphicsLayer { scaleX = scale; scaleY = scale }
-                    .combinedClickable(
-                        onClick = { showActions = false },
-                        onLongClick = { showActions = !showActions },
-                    ),
-                color = ModernSurface,
-                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
-            ) {
-                val displayText = text + if (isStreaming) "▋" else ""
-                SelectionContainer {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        com.forge.os.presentation.screens.MarkdownText(
-                            text = displayText,
-                            baseColor = ModernTextPrimary,
-                            baseFontSize = 14f
-                        )
-                    }
-                }
-            }
-
-            // Action row — copy, speak, retry
-            AnimatedVisibility(
-                visible = showActions && !isStreaming,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    BubbleActionButton("Copy") {
-                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
-                        showActions = false
-                    }
-                    BubbleActionButton("🔊 Speak") {
-                        onSpeak(text)
-                        showActions = false
-                    }
+        Surface(
+            modifier = Modifier
+                .widthIn(max = 600.dp)
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = { if (!isStreaming) showSheet = true },
+                ),
+            color = ModernSurface,
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+        ) {
+            val displayText = text + if (isStreaming) "▋" else ""
+            SelectionContainer {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    com.forge.os.presentation.screens.MarkdownText(
+                        text = displayText,
+                        baseColor = ModernTextPrimary,
+                        baseFontSize = 14f
+                    )
                 }
             }
         }
     }
+
+    if (showSheet) {
+        BubbleActionsSheet(
+            onDismiss = { showSheet = false },
+            actions = listOf(
+                BubbleAction("📋 Copy", Icons.Outlined.ContentCopy) {
+                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
+                },
+                BubbleAction("🔊 Speak", Icons.Outlined.VolumeUp) {
+                    onSpeak(text)
+                }
+            )
+        )
+    }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun ModernErrorBubble(msg: ChatMessage, onRetry: () -> Unit) {
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
-    var showActions by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -700,51 +691,45 @@ private fun ModernErrorBubble(msg: ChatMessage, onRetry: () -> Unit) {
     ) {
         ForgeLogo(size = 32.dp)
         Spacer(Modifier.width(12.dp))
-        Column {
-            Surface(
-                modifier = Modifier
-                    .widthIn(max = 560.dp)
-                    .combinedClickable(
-                        onClick = { showActions = false },
-                        onLongClick = { showActions = !showActions },
-                    ),
-                color = Color(0xFF1a0a0a),
-                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
-            ) {
-                SelectionContainer {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                        Text(msg.content, color = Color(0xFFef4444), fontSize = 13.sp, lineHeight = 18.sp)
-                        msg.errorDetail?.let { err ->
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                buildString {
-                                    append("provider=${err.provider} model=${err.model}")
-                                    if (err.httpCode > 0) append(" http=${err.httpCode}")
-                                    err.providerCode?.let { append(" code=$it") }
-                                },
-                                color = Color(0xFF7f1d1d), fontSize = 10.sp, fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
-            }
-            AnimatedVisibility(
-                visible = showActions,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    BubbleActionButton("↺ Retry") { onRetry(); showActions = false }
-                    BubbleActionButton("Copy") {
-                        clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(msg.content))
-                        showActions = false
+        Surface(
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = { showSheet = true },
+                ),
+            color = Color(0xFF1a0a0a),
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp)
+        ) {
+            SelectionContainer {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(msg.content, color = Color(0xFFef4444), fontSize = 13.sp, lineHeight = 18.sp)
+                    msg.errorDetail?.let { err ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            buildString {
+                                append("provider=${err.provider} model=${err.model}")
+                                if (err.httpCode > 0) append(" http=${err.httpCode}")
+                                err.providerCode?.let { append(" code=$it") }
+                            },
+                            color = Color(0xFF7f1d1d), fontSize = 10.sp, fontFamily = FontFamily.Monospace
+                        )
                     }
                 }
             }
         }
+    }
+
+    if (showSheet) {
+        BubbleActionsSheet(
+            onDismiss = { showSheet = false },
+            actions = listOf(
+                BubbleAction("↺ Retry", Icons.Outlined.Refresh) { onRetry() },
+                BubbleAction("📋 Copy", Icons.Outlined.ContentCopy) {
+                    clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(msg.content))
+                }
+            )
+        )
     }
 }
 
@@ -900,6 +885,67 @@ private fun ModernInputRequestBubble(question: String) {
 }
 
 /** Small pill button shown in the long-press action row under a bubble. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BubbleActionsSheet(
+    onDismiss: () -> Unit,
+    actions: List<BubbleAction>,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartialExpansion = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = ModernSurface,
+        dragHandle = {
+            Box(
+                Modifier
+                    .padding(vertical = 8.dp)
+                    .size(width = 32.dp, height = 4.dp)
+                    .background(ModernBorder, RoundedCornerShape(2.dp))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp)
+        ) {
+            actions.forEach { action ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            action.onClick()
+                            onDismiss()
+                        }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(
+                        action.icon,
+                        contentDescription = null,
+                        tint = ModernAccent,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        action.label,
+                        color = ModernTextPrimary,
+                        fontSize = 15.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class BubbleAction(
+    val label: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
+
 @Composable
 private fun BubbleActionButton(label: String, onClick: () -> Unit) {
     Surface(

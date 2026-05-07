@@ -34,6 +34,17 @@ data class ChannelConfig(
      *  read/write files under workspace/projects/customer-support/.
      *  The agent cannot access files outside this path. */
     val workspacePath: String = "",
+
+    // ── Channel purpose ───────────────────────────────────────────────────
+    /** Describes what this channel is for. One of:
+     *   "personal"  — the user's own private channel (default)
+     *   "teaching"  — a channel for teaching, tutoring, or Q&A
+     *   "work"      — a work or team channel
+     *   "support"   — customer support / help desk
+     *   "custom"    — fully custom (governed by systemPromptSuffix)
+     *  The purpose is used to pre-fill a sensible systemPromptSuffix when
+     *  the channel is created, and shown as a badge in the UI. */
+    val purpose: String = "personal",
 )
 
 @Serializable

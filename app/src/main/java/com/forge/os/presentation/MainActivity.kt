@@ -85,6 +85,9 @@ class MainActivity : ComponentActivity() {
             if (granted) autoPhoneConnection.connect()
         }
 
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
+
     /**
      * Pending in-app navigation request, populated by [consumeIntentExtras]
      * whenever the activity is started or re-delivered (e.g. by a notification
@@ -100,6 +103,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ensureAutoPhoneControlPermission()
+        ensureNotificationPermission()
         consumeIntentExtras(intent)
         setContent {
             val themeMode by configRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
@@ -364,6 +368,18 @@ class MainActivity : ComponentActivity() {
                 autoPhoneConnection.connect()
             else ->
                 requestAutoPhoneControl.launch(AUTO_PHONE_CONTROL)
+        }
+    }
+
+    /** POST_NOTIFICATIONS is a runtime permission on API 33+. Request it on first launch. */
+    private fun ensureNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this, android.Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 

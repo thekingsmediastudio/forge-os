@@ -24,6 +24,8 @@ private const val CHANNEL_COMPANION_ID   = "forge_companion"
 private const val CHANNEL_COMPANION_NAME = "Companion Check-ins"
 private const val CHANNEL_WELLBEING_ID   = "forge_wellbeing"
 private const val CHANNEL_WELLBEING_NAME = "Wellbeing"
+private const val CHANNEL_ALARM_ID       = "forge_alarms"
+private const val CHANNEL_ALARM_NAME     = "Alarms"
 
 /**
  * Centralised notification helper.
@@ -56,6 +58,9 @@ class NotificationHelper @Inject constructor(
         createChannelIfAbsent(CHANNEL_WELLBEING_ID, CHANNEL_WELLBEING_NAME,
             NotificationManager.IMPORTANCE_LOW,
             "Occasional gentle reminders to connect with people in your life.")
+        // Alarms — high importance so they heads-up on the lock screen
+        createChannelIfAbsent(CHANNEL_ALARM_ID, CHANNEL_ALARM_NAME,
+            NotificationManager.IMPORTANCE_HIGH, "Forge alarm notifications")
     }
 
     private fun createChannelIfAbsent(id: String, name: String, importance: Int, desc: String) {
