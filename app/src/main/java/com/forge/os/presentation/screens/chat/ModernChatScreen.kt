@@ -87,6 +87,7 @@ fun ModernChatScreen(
     val scope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
+    var showVoiceMode by remember { mutableStateOf(false) }
     
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -110,7 +111,8 @@ fun ModernChatScreen(
                 isLoading = isLoading,
                 selectedSpec = selectedSpec,
                 availableSpecs = availableSpecs,
-                onSelectSpec = { viewModel.selectSpec(it) }
+                onSelectSpec = { viewModel.selectSpec(it) },
+                onVoiceModeClick = { showVoiceMode = true },
             )
             
             // Messages Area
@@ -203,6 +205,13 @@ fun ModernChatScreen(
                 onNavigateToBrowser = { showMenu = false; onNavigateToBrowser() }
             )
         }
+
+        // Voice Mode Overlay
+        if (showVoiceMode) {
+            com.forge.os.presentation.screens.voice.VoiceModeOverlay(
+                onDismiss = { showVoiceMode = false }
+            )
+        }
     }
 }
 
@@ -213,7 +222,8 @@ private fun ModernHeader(
     isLoading: Boolean,
     selectedSpec: com.forge.os.domain.security.ProviderSpec?,
     availableSpecs: List<com.forge.os.domain.security.ProviderSpec>,
-    onSelectSpec: (com.forge.os.domain.security.ProviderSpec) -> Unit
+    onSelectSpec: (com.forge.os.domain.security.ProviderSpec) -> Unit,
+    onVoiceModeClick: () -> Unit,
 ) {
     var showModelMenu by remember { mutableStateOf(false) }
     
@@ -390,6 +400,19 @@ private fun ModernHeader(
             
             Spacer(Modifier.width(8.dp))
             
+            // Voice mode button
+            IconButton(
+                onClick = onVoiceModeClick,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    Icons.Filled.Mic,
+                    "Voice Mode",
+                    tint = ModernAccent,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
             // Settings button
             IconButton(
                 onClick = onSettingsClick,

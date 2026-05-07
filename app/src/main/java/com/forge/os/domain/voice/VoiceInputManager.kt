@@ -47,6 +47,10 @@ class VoiceInputManager @Inject constructor(
     
     private val _ttsState = MutableStateFlow(TTSState.IDLE)
     val ttsState: StateFlow<TTSState> = _ttsState.asStateFlow()
+
+    /** RMS audio level 0..1 for waveform animation while listening. */
+    private val _rmsLevel = MutableStateFlow(0f)
+    val rmsLevel: StateFlow<Float> = _rmsLevel.asStateFlow()
     
     // Channel for voice commands
     private val voiceCommandChannel = Channel<VoiceCommand>(Channel.BUFFERED)
@@ -128,7 +132,8 @@ class VoiceInputManager @Inject constructor(
             }
             
             override fun onRmsChanged(rmsdB: Float) {
-                // Audio level changed - could be used for UI feedback
+                // Normalise dB (-2..10 typical range) to 0..1 for UI
+                _rmsLevel.value = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
             }
             
             override fun onBufferReceived(buffer: ByteArray?) {
@@ -137,6 +142,7 @@ class VoiceInputManager @Inject constructor(
             
             override fun onEndOfSpeech() {
                 _isListening.value = false
+                _rmsLevel.value = 0f
                 Timber.d("Speech ended")
             }
             
