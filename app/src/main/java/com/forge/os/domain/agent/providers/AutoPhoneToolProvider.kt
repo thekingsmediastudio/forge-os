@@ -143,25 +143,28 @@ class AutoPhoneToolProvider @Inject constructor(
         ),
     )
 
-    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "autophone_read_screen"          -> autoPhone.readScreen()
-        "autophone_tap_text"             -> autoPhone.tapByText(args.str("text"))
-        "autophone_tap_xy"               -> autoPhone.tapAt(args.int("x"), args.int("y"))
-        "autophone_find_and_tap"         -> autoPhone.findAndTap(args.str("text"))
-        "autophone_type"                 -> autoPhone.typeText(args.str("text"))
-        "autophone_swipe"                -> autoPhone.swipe(args.str("direction"), args.int("amount"))
-        "autophone_scroll"               -> autoPhone.scroll(args.str("direction"))
-        "autophone_launch_app"           -> autoPhone.launchApp(args.str("app"))
-        "autophone_go_back"              -> autoPhone.goBack()
-        "autophone_go_home"              -> autoPhone.goHome()
-        "autophone_open_notifications"   -> autoPhone.openNotifications()
-        "autophone_screenshot"           -> autoPhone.screenshot()
-        "autophone_status"               -> buildStatus()
-        "phone_notification_list"        -> autoPhone.readNotifications()
-        "phone_notification_dismiss"     -> autoPhone.dismissNotification(args.str("key"))
-        "phone_notification_reply"       -> autoPhone.replyToNotification(args.str("key"), args.str("text"))
-        else -> null
-    }
+    override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            when (toolName) {
+                "autophone_read_screen"          -> autoPhone.readScreen()
+                "autophone_tap_text"             -> autoPhone.tapByText(args.str("text"))
+                "autophone_tap_xy"               -> autoPhone.tapAt(args.int("x"), args.int("y"))
+                "autophone_find_and_tap"         -> autoPhone.findAndTap(args.str("text"))
+                "autophone_type"                 -> autoPhone.typeText(args.str("text"))
+                "autophone_swipe"                -> autoPhone.swipe(args.str("direction"), args.int("amount"))
+                "autophone_scroll"               -> autoPhone.scroll(args.str("direction"))
+                "autophone_launch_app"           -> autoPhone.launchApp(args.str("app"))
+                "autophone_go_back"              -> autoPhone.goBack()
+                "autophone_go_home"              -> autoPhone.goHome()
+                "autophone_open_notifications"   -> autoPhone.openNotifications()
+                "autophone_screenshot"           -> autoPhone.screenshot()
+                "autophone_status"               -> buildStatus()
+                "phone_notification_list"        -> autoPhone.readNotifications()
+                "phone_notification_dismiss"     -> autoPhone.dismissNotification(args.str("key"))
+                "phone_notification_reply"       -> autoPhone.replyToNotification(args.str("key"), args.str("text"))
+                else -> null
+            }
+        }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 

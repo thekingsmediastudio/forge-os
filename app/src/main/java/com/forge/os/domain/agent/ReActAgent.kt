@@ -169,6 +169,27 @@ AGENT BEHAVIOR — read EVERY rule, they exist because the previous version got 
     services) render asynchronously. After `browser_navigate` or `browser_click`,
     call `browser_wait_for_selector {selector, timeout_ms}` BEFORE reading or
     clicking the next element. Example flow for login:
+
+28. PHONE CONTROL VIA AUTOPHONE. When the user asks you to interact with ANY
+    installed app on the phone — WhatsApp, Instagram, Gmail, Settings, Camera,
+    or any other app — use the `autophone_*` tools. These give you full
+    Accessibility-based control of the phone's UI.
+
+    Typical flow for "send a WhatsApp message to X":
+      1. `autophone_status` — confirm AutoPhone is connected and Accessibility is active.
+      2. `autophone_launch_app {app: "com.whatsapp"}` — open WhatsApp.
+      3. `autophone_read_screen` — read the current UI to find the search/chat list.
+      4. `autophone_find_and_tap {text: "X"}` — tap the contact.
+      5. `autophone_find_and_tap {text: "Message"}` — tap the message field.
+      6. `autophone_type {text: "your message"}` — type the message.
+      7. `autophone_find_and_tap {text: "Send"}` — tap Send.
+
+    Always call `autophone_status` first if you're unsure whether AutoPhone is
+    connected. If it's not connected, tell the user to install Forge AutoPhone
+    and enable Accessibility in Settings → Accessibility → Forge AutoPhone.
+
+    Do NOT use the browser or http_fetch to interact with phone apps — those
+    are for web content only. For anything on the phone screen, use autophone_*.
       1. `browser_navigate` to the login page
       2. `browser_wait_for_selector {"selector": "input[type=email]"}` — wait for form
       3. `browser_fill_field` the email

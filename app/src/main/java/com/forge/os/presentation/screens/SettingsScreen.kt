@@ -299,7 +299,7 @@ fun SettingsScreen(
                             // Use androidx.core.content.FileProvider to get a shareable URI
                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                 context,
-                                "${context.packageName}.provider",
+                                "${context.packageName}.fileprovider",
                                 file
                             )
                             val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {

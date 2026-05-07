@@ -215,7 +215,7 @@ class BackupManager @Inject constructor(
     fun getBackupUri(file: File): android.net.Uri {
         return androidx.core.content.FileProvider.getUriForFile(
             context,
-            "${context.packageName}.provider",
+            "${context.packageName}.fileprovider",
             file
         )
     }
