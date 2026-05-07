@@ -80,13 +80,37 @@ class CalendarToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "calendar_list_events"    -> listEvents(args["days"]?.toString()?.toIntOrNull() ?: 7)
-        "calendar_search_events"  -> searchEvents(args["query"]?.toString() ?: "", args["days"]?.toString()?.toIntOrNull() ?: 30)
-        "calendar_list_calendars" -> listCalendars()
-        "calendar_create_event"   -> createEvent(args)
-        "calendar_delete_event"   -> deleteEvent(args["id"]?.toString() ?: "")
+        "calendar_list_events"    -> {
+            if (!hasPermission(android.Manifest.permission.READ_CALENDAR))
+                return "Error: READ_CALENDAR permission not granted. Forge OS needs calendar access — please grant it in Settings → Apps → Forge OS → Permissions."
+            listEvents(args["days"]?.toString()?.toIntOrNull() ?: 7)
+        }
+        "calendar_search_events"  -> {
+            if (!hasPermission(android.Manifest.permission.READ_CALENDAR))
+                return "Error: READ_CALENDAR permission not granted."
+            searchEvents(args["query"]?.toString() ?: "", args["days"]?.toString()?.toIntOrNull() ?: 30)
+        }
+        "calendar_list_calendars" -> {
+            if (!hasPermission(android.Manifest.permission.READ_CALENDAR))
+                return "Error: READ_CALENDAR permission not granted."
+            listCalendars()
+        }
+        "calendar_create_event"   -> {
+            if (!hasPermission(android.Manifest.permission.WRITE_CALENDAR))
+                return "Error: WRITE_CALENDAR permission not granted."
+            createEvent(args)
+        }
+        "calendar_delete_event"   -> {
+            if (!hasPermission(android.Manifest.permission.WRITE_CALENDAR))
+                return "Error: WRITE_CALENDAR permission not granted."
+            deleteEvent(args["id"]?.toString() ?: "")
+        }
         else -> null
     }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── Implementations ───────────────────────────────────────────────────────
 

@@ -51,11 +51,27 @@ class ContactsToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "contacts_search" -> searchContacts(args["query"]?.toString() ?: "")
-        "contacts_list"   -> listContacts(args["limit"]?.toString()?.toIntOrNull() ?: 50)
-        "contacts_get"    -> getContact(args["id"]?.toString() ?: "")
+        "contacts_search" -> {
+            if (!hasPermission(android.Manifest.permission.READ_CONTACTS))
+                return "Error: READ_CONTACTS permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."
+            searchContacts(args["query"]?.toString() ?: "")
+        }
+        "contacts_list"   -> {
+            if (!hasPermission(android.Manifest.permission.READ_CONTACTS))
+                return "Error: READ_CONTACTS permission not granted."
+            listContacts(args["limit"]?.toString()?.toIntOrNull() ?: 50)
+        }
+        "contacts_get"    -> {
+            if (!hasPermission(android.Manifest.permission.READ_CONTACTS))
+                return "Error: READ_CONTACTS permission not granted."
+            getContact(args["id"]?.toString() ?: "")
+        }
         else -> null
     }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── Implementations ───────────────────────────────────────────────────────
 

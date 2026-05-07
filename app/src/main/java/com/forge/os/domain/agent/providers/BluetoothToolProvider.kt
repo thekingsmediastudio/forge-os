@@ -94,12 +94,26 @@ class BluetoothToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "bluetooth_status"           -> bluetoothStatus()
-        "bluetooth_paired_devices"   -> pairedDevices()
-        "bluetooth_connected_devices"-> connectedDevices()
-        "bluetooth_open_settings"    -> openSettings()
-        else                         -> null
+        "bluetooth_status"            -> bluetoothStatus()
+        "bluetooth_paired_devices"    -> {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+                !hasPermission(android.Manifest.permission.BLUETOOTH_CONNECT))
+                return err("BLUETOOTH_CONNECT permission not granted. Grant it in Settings → Apps → Forge OS → Permissions.")
+            pairedDevices()
+        }
+        "bluetooth_connected_devices" -> {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S &&
+                !hasPermission(android.Manifest.permission.BLUETOOTH_CONNECT))
+                return err("BLUETOOTH_CONNECT permission not granted. Grant it in Settings → Apps → Forge OS → Permissions.")
+            connectedDevices()
+        }
+        "bluetooth_open_settings"     -> openSettings()
+        else                          -> null
     }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── bluetooth_status ──────────────────────────────────────────────────────
 

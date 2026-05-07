@@ -88,6 +88,10 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
 
+    /** Batch request for all dangerous permissions the tool providers need. */
+    private val requestDangerousPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { /* no-op — providers check at call time */ }
+
     /**
      * Pending in-app navigation request, populated by [consumeIntentExtras]
      * whenever the activity is started or re-delivered (e.g. by a notification
@@ -104,6 +108,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         ensureAutoPhoneControlPermission()
         ensureNotificationPermission()
+        ensureDangerousPermissions()
         consumeIntentExtras(intent)
         setContent {
             val themeMode by configRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
@@ -380,6 +385,78 @@ class MainActivity : ComponentActivity() {
             ) {
                 requestNotificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
             }
+        }
+    }
+
+    /**
+     * Request all dangerous permissions that the tool providers need.
+     * Only requests permissions that haven't been granted yet — the system
+     * won't show a dialog for already-granted permissions.
+     *
+     * Grouped by feature so the user understands what each group is for:
+     *   - Contacts / Calendar / SMS / Call log — personal data tools
+     *   - Location — location_current / location_address
+     *   - Bluetooth — bluetooth_paired_devices / bluetooth_connected_devices
+     *   - Storage / Media — storage tools on API 33+
+     */
+    private fun ensureDangerousPermissions() {
+        val needed = mutableListOf<String>()
+
+        fun needsGrant(vararg perms: String) {
+            perms.forEach { p ->
+                if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                    needed += p
+                }
+            }
+        }
+
+        // Contacts
+        needsGrant(
+            android.Manifest.permission.READ_CONTACTS,
+            android.Manifest.permission.WRITE_CONTACTS,
+        )
+        // Calendar
+        needsGrant(
+            android.Manifest.permission.READ_CALENDAR,
+            android.Manifest.permission.WRITE_CALENDAR,
+        )
+        // SMS
+        needsGrant(
+            android.Manifest.permission.READ_SMS,
+            android.Manifest.permission.SEND_SMS,
+            android.Manifest.permission.RECEIVE_SMS,
+        )
+        // Call log + dialer
+        needsGrant(
+            android.Manifest.permission.READ_CALL_LOG,
+            android.Manifest.permission.WRITE_CALL_LOG,
+            android.Manifest.permission.CALL_PHONE,
+        )
+        // Location
+        needsGrant(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+        // Bluetooth (API 31+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            needsGrant(
+                android.Manifest.permission.BLUETOOTH_CONNECT,
+                android.Manifest.permission.BLUETOOTH_SCAN,
+            )
+        }
+        // Media / storage (API 33+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            needsGrant(
+                android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VIDEO,
+                android.Manifest.permission.READ_MEDIA_AUDIO,
+            )
+        } else if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.S_V2) {
+            needsGrant(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+
+        if (needed.isNotEmpty()) {
+            requestDangerousPermissions.launch(needed.toTypedArray())
         }
     }
 

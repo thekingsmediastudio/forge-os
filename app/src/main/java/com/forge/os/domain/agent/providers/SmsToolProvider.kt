@@ -68,12 +68,32 @@ class SmsToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "sms_list"    -> listSms(args["box"]?.toString() ?: "inbox", args["limit"]?.toString()?.toIntOrNull() ?: 20)
-        "sms_search"  -> searchSms(args["query"]?.toString() ?: "", args["limit"]?.toString()?.toIntOrNull() ?: 20)
-        "sms_threads" -> listThreads(args["limit"]?.toString()?.toIntOrNull() ?: 30)
-        "sms_send"    -> sendSms(args["to"]?.toString() ?: "", args["body"]?.toString() ?: "")
+        "sms_list"    -> {
+            if (!hasPermission(android.Manifest.permission.READ_SMS))
+                return "Error: READ_SMS permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."
+            listSms(args["box"]?.toString() ?: "inbox", args["limit"]?.toString()?.toIntOrNull() ?: 20)
+        }
+        "sms_search"  -> {
+            if (!hasPermission(android.Manifest.permission.READ_SMS))
+                return "Error: READ_SMS permission not granted."
+            searchSms(args["query"]?.toString() ?: "", args["limit"]?.toString()?.toIntOrNull() ?: 20)
+        }
+        "sms_threads" -> {
+            if (!hasPermission(android.Manifest.permission.READ_SMS))
+                return "Error: READ_SMS permission not granted."
+            listThreads(args["limit"]?.toString()?.toIntOrNull() ?: 30)
+        }
+        "sms_send"    -> {
+            if (!hasPermission(android.Manifest.permission.SEND_SMS))
+                return """{"ok":false,"error":"SEND_SMS permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."}"""
+            sendSms(args["to"]?.toString() ?: "", args["body"]?.toString() ?: "")
+        }
         else -> null
     }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── Implementations ───────────────────────────────────────────────────────
 

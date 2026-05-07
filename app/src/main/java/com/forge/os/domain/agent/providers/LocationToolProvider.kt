@@ -106,11 +106,21 @@ class LocationToolProvider @Inject constructor(
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? = when (toolName) {
-        "location_current"       -> locationCurrent()
-        "location_address"       -> locationAddress(
-            lat = args["lat"]?.toString()?.toDoubleOrNull(),
-            lng = args["lng"]?.toString()?.toDoubleOrNull(),
-        )
+        "location_current"       -> {
+            if (!hasPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) &&
+                !hasPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION))
+                return err("Location permission not granted. Call location_open_settings to enable it, or grant it in Settings → Apps → Forge OS → Permissions.")
+            locationCurrent()
+        }
+        "location_address"       -> {
+            if (!hasPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) &&
+                !hasPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION))
+                return err("Location permission not granted. Call location_open_settings.")
+            locationAddress(
+                lat = args["lat"]?.toString()?.toDoubleOrNull(),
+                lng = args["lng"]?.toString()?.toDoubleOrNull(),
+            )
+        }
         "location_open_maps"     -> openMaps(
             lat      = args["lat"]?.toString()?.toDoubleOrNull(),
             lng      = args["lng"]?.toString()?.toDoubleOrNull(),
@@ -121,6 +131,10 @@ class LocationToolProvider @Inject constructor(
         "location_open_settings" -> openLocationSettings()
         else                     -> null
     }
+
+    private fun hasPermission(permission: String) =
+        androidx.core.content.ContextCompat.checkSelfPermission(context, permission) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     // ── location_current ──────────────────────────────────────────────────────
 
