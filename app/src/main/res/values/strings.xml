@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">Forge OS</string>
+    <string name="chat_title">Forge</string>
+    <string name="workspace_title">Workspace</string>
+    <string name="settings_title">Settings</string>
+    <string name="status_title">System Status</string>
+    <string name="input_hint">Ask Forge anything…</string>
+    <string name="send">Send</string>
+    <string name="thinking">Thinking…</string>
+    <string name="executing">Executing…</string>
+    <string name="error_generic">Something went wrong</string>
+    <string name="no_api_key">No API key configured. Go to Settings.</string>
+
+    <!-- Plugin install (G1) -->
+    <string name="install_plugin_label">Install Forge plugin</string>
+
+    <!-- External API (G2) -->
+    <string name="perm_use_api_label">Use Forge OS</string>
+    <string name="perm_use_api_desc">Allows the app to call the Forge OS external API. The user must still grant access in Forge OS settings.</string>
+    <string name="external_api_title">External API</string>
+</resources>

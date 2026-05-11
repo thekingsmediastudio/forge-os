@@ -1,0 +1,43 @@
+{
+  "_comment": "Phase O-1 — Region-keyed crisis line numbers. User can override 'custom' entry. Never round-trip through the model.",
+  "default": [
+    { "label": "International directory", "value": "https://findahelpline.com" }
+  ],
+  "US": [
+    { "label": "Suicide & Crisis Lifeline — call or text", "value": "988" },
+    { "label": "Crisis Text Line — text HOME to", "value": "741741" }
+  ],
+  "CA": [
+    { "label": "Talk Suicide Canada — call or text", "value": "988" }
+  ],
+  "GB": [
+    { "label": "Samaritans — call", "value": "116 123" },
+    { "label": "PAPYRUS (under 35) — call", "value": "0800 068 4141" }
+  ],
+  "IE": [
+    { "label": "Samaritans — call", "value": "116 123" },
+    { "label": "Pieta House — call", "value": "116 123" }
+  ],
+  "AU": [
+    { "label": "Lifeline — call", "value": "13 11 14" },
+    { "label": "Beyond Blue — call", "value": "1300 22 4636" }
+  ],
+  "NZ": [
+    { "label": "Lifeline Aotearoa — call", "value": "0800 543 354" },
+    { "label": "Need to Talk? — call or text", "value": "1737" }
+  ],
+  "ZA": [
+    { "label": "SADAG — call", "value": "0800 456 789" }
+  ],
+  "IN": [
+    { "label": "iCall — call", "value": "9152987821" },
+    { "label": "Vandrevala Foundation — call", "value": "1860-2662-345" }
+  ],
+  "DE": [
+    { "label": "Telefonseelsorge — call", "value": "0800 111 0 111" }
+  ],
+  "FR": [
+    { "label": "Numéro national prévention suicide — call", "value": "3114" }
+  ],
+  "custom": null
+}

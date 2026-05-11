@@ -1,0 +1,20 @@
+Forge OS turns your Android device into a personal AI agent operating system.
+
+Bring your own key (OpenAI, Anthropic, Groq, OpenRouter, or a local Ollama server) and Forge gives an LLM a sandboxed workspace where it can read and write files, execute Python and shell scripts, remember things across sessions, schedule recurring jobs in plain English, install Python plugins at runtime, and even spawn focused sub-agents to work on tasks in parallel.
+
+Everything runs on your device. Your conversations and files never leave the phone except for the requests you make to your chosen LLM provider.
+
+Key features:
+  • ReAct agent loop with multi-provider LLM support (BYOK)
+  • Three-tier memory: working / daily / long-term, recalled automatically
+  • Sandboxed tools: file I/O, Python (Chaquopy 3.11), shell, workspace introspection
+  • Cron engine — schedule jobs in natural language ("every 30 minutes", "daily at 9am")
+  • Plugin system — install Python plugins that add new tools at runtime
+  • Sub-agent delegation — parallel, sequential, or best-of aggregation
+  • Per-tool permission controls
+  • Encrypted on-device API key storage (Android Keystore)
+  • Material 3 chat UI with streaming responses
+
+Built for tinkerers, power users, and developers who want to run a real AI agent on their phone — not in someone else's cloud.
+
+Requires Android 8.0 (API 26) or higher.

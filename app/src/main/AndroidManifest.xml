@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Network only for BYOK API calls -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Phase Q — read Wi-Fi state so the LAN project server can compute its IP -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Wi-Fi tools: write state (request fresh scan) and read saved networks -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Required on API 26+ to get SSID in WifiInfo and on API 28+ to read scan results -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Bluetooth tools: pre-API-31 classic permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <!-- Bluetooth tools: API 31+ granular runtime permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <!-- Storage tools: external storage read on API ≤ 32; API 33+ uses MediaStore (no permission) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <!-- Storage tools: granular media permissions on API 33+ -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- Foreground service for cron jobs -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Notifications for cron alerts and external-API requests -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Wake lock for scheduled tasks -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Exact alarms (Alarms module) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Android Controller: enumerate installed apps -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Voice Input: Speech recognition and TTS -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- ── AutoPhone OS integration ─────────────────────────────────────────── -->
+    <!-- Defined by Forge AutoPhone; dangerous so Forge OS can bind to IAutoPhoneService. -->
+    <uses-permission android:name="com.forge.autophone.permission.CONTROL" />
+    <!-- Contacts -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <!-- SMS -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Calendar -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <!-- Call log + dialer -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Vibrate for haptic feedback tools -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Required so the External API screen can show readable labels for caller apps. -->
+    <queries>
+        <intent>
+            <action android:name="com.forge.os.api.IForgeOsService" />
+        </intent>
+        <!-- AutoPhone companion app binding (legacy direct AIDL) -->
+        <intent>
+            <action android:name="com.forge.autophone.IAutoPhoneService" />
+        </intent>
+        <package android:name="com.forge.autophone" />
+        <!-- Generic Forge Bridge protocol — discovers ALL installed bridge apps -->
+        <intent>
+            <action android:name="com.forge.os.bridge.TOOL_PROVIDER" />
+        </intent>
+    </queries>
+
+    <!-- ─── External API: custom permission other apps must request ───────── -->
+    <permission
+        android:name="com.forge.os.permission.USE_API"
+        android:label="@string/perm_use_api_label"
+        android:description="@string/perm_use_api_desc"
+        android:protectionLevel="dangerous" />
+
+    <application
+        android:usesCleartextTraffic="true"
+        android:name=".ForgeApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ForgeOS"
+        tools:targetApi="34">
+
+        <!-- Phase U — splash screen. This is now the launcher activity; it
+             shows the Forge logo for ~1.4s, then forwards to MainActivity. -->
+        <activity
+            android:name=".presentation.SplashActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ForgeOS.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".presentation.MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ForgeOS"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- ZIP / .fp plugin install entrypoint -->
+        <activity
+            android:name=".presentation.PluginInstallActivity"
+            android:exported="true"
+            android:label="@string/install_plugin_label"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <!-- Open from a file manager: *.fp -->
+            <intent-filter android:label="@string/install_plugin_label">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="*/*" />
+                <data android:pathPattern=".*\\.fp" />
+                <data android:pathPattern=".*\\..*\\.fp" />
+                <data android:pathPattern=".*\\..*\\..*\\.fp" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.fp" />
+                <data android:host="*" />
+            </intent-filter>
+            <!-- Share / open ZIPs explicitly -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+        </activity>
+
+        <!-- ─── External API surfaces ──────────────────────────────────────── -->
+
+        <!-- Bound service. The custom permission gates *any* bind attempt. -->
+        <service
+            android:name=".external.ForgeOsService"
+            android:exported="true"
+            android:permission="com.forge.os.permission.USE_API">
+            <intent-filter>
+                <action android:name="com.forge.os.api.IForgeOsService" />
+            </intent-filter>
+        </service>
+
+        <!-- Read/write surface for Tasker-style automations. Same permission gate. -->
+        <provider
+            android:name=".external.ForgeOsProvider"
+            android:authorities="com.forge.os.provider"
+            android:exported="true"
+            android:readPermission="com.forge.os.permission.USE_API"
+            android:writePermission="com.forge.os.permission.USE_API" />
+
+        <!-- Fire-and-forget intent surface (share sheet + Tasker). -->
+        <activity
+            android:name=".external.IntentApiActivity"
+            android:exported="true"
+            android:permission="com.forge.os.permission.USE_API"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.forge.os.action.ASK" />
+                <action android:name="com.forge.os.action.RUN_TOOL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <!-- WorkManager initialization is handled on-demand by ForgeApplication
+             implementing Configuration.Provider with a HiltWorkerFactory.
+             We must remove the default startup-based initializer so WorkManager
+             doesn't initialize itself with the default factory before Hilt is
+             ready (which would cause @HiltWorker instantiation to fail with
+             NoSuchMethodException). -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+
+        <!-- Alarms: broadcast receiver (triggered by AlarmManager) -->
+        <receiver
+            android:name=".domain.alarms.AlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.forge.os.action.ALARM_FIRED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Phase Q — receives taps on action buttons of agent-posted notifications. -->
+        <receiver
+            android:name=".domain.notifications.NotificationActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.forge.os.action.AGENT_NOTIF" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Server: long-running foreground service for the local HTTP API -->
+        <service
+            android:name=".data.server.ForgeHttpService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- FileProvider used by the workspace browser to share / "Open with" files -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>

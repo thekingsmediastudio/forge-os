@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ForgeOS" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <!-- Phase U — splash window background. The Compose-rendered logo on top
+         takes over once SplashActivity inflates; this drawable just prevents
+         a white flash before that happens. -->
+    <style name="Theme.ForgeOS.Splash" parent="Theme.ForgeOS">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:statusBarColor">#0E0E10</item>
+        <item name="android:navigationBarColor">#0E0E10</item>
+    </style>
+</resources>

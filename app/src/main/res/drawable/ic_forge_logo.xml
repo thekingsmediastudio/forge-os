@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    
+    <!-- Gradient background circle -->
+    <path
+        android:pathData="M60,10 A50,50 0 1,1 60,110 A50,50 0 1,1 60,10 Z"
+        android:fillColor="#6366F1"/>
+    
+    <!-- Inner glow circle -->
+    <path
+        android:pathData="M60,20 A40,40 0 1,1 60,100 A40,40 0 1,1 60,20 Z"
+        android:fillColor="#818CF8"/>
+    
+    <!-- Forge anvil/hammer icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,35 L80,60 L68,60 L68,85 L52,85 L52,60 L40,60 Z" />
+    
+    <!-- Accent spark -->
+    <path
+        android:fillColor="#FCD34D"
+        android:pathData="M75,45 L78,48 L75,51 L72,48 Z" />
+    
+    <!-- Letter F overlay -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,50 L48,75 L52,75 L52,64 L62,64 L62,60 L52,60 L52,54 L64,54 L64,50 Z"
+        android:fillAlpha="0.9"/>
+</vector>
