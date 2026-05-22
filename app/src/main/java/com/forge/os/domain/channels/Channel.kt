@@ -1,6 +1,7 @@
 package com.forge.os.domain.channels
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -45,6 +46,25 @@ data class ChannelConfig(
      *  The purpose is used to pre-fill a sensible systemPromptSuffix when
      *  the channel is created, and shown as a badge in the UI. */
     val purpose: String = "personal",
+    /** If true, this channel uses its own isolated memory bucket (facts + logs) 
+     *  instead of the global agent memory. Useful for sub-agents or specific 
+     *  isolated sandboxes. */
+    val scopedMemory: Boolean = false,
+
+    // ── Phase T10 (Bot API 10.0 Features) ───────────────────────────────
+    val streamingEnabled: Boolean = true,
+    val guestModeEnabled: Boolean = false,
+    val botToBotEnabled: Boolean = false,
+    val businessAutomationEnabled: Boolean = false,
+    val richPollsEnabled: Boolean = true,
+
+    // ── Channel Learning ─────────────────────────────────────────────────
+    /** If true, the agent passively learns about the user from every inbound
+     *  message on this channel — extracting facts (name, preferences, topics,
+     *  communication style) and storing them in long-term memory so future
+     *  replies are more personalised. Only meaningful on personal channels
+     *  where the sender is the owner. Disable for public/support bots. */
+    val learnFromConversations: Boolean = false,
 )
 
 @Serializable
@@ -65,6 +85,12 @@ data class IncomingMessage(
     val attachmentPath: String? = null,
     /** Telegram caption (for photo/voice/etc.) or null. */
     val caption: String? = null,
+
+    // ── Phase T10 (Bot API 10.0 tracking) ──────────────────────────────
+    /** ID used to answer a guest query (API 10.0). */
+    val guestQueryId: String? = null,
+    /** Connection ID for business messages (API 10.0). */
+    val businessConnectionId: String? = null,
 )
 
 @Serializable
@@ -78,6 +104,14 @@ data class OutgoingResult(
  * ...) implements this interface. The [ChannelManager] owns lifecycle
  * (start/stop) and multiplexes [incoming] across all enabled channels.
  */
+/** Canonical channel type identifiers. */
+object ChannelType {
+    const val TELEGRAM  = "telegram"
+    const val DISCORD   = "discord"
+    const val SLACK     = "slack"
+    const val WHATSAPP  = "whatsapp"
+}
+
 interface Channel {
     val config: ChannelConfig
 
@@ -91,7 +125,7 @@ interface Channel {
     val incoming: Flow<IncomingMessage>
 
     /** Send an outbound message. `to` is channel-specific (chat id, user id, ...). */
-    suspend fun send(to: String, text: String): OutgoingResult
+    suspend fun send(to: String, text: String, guestQueryId: String? = null, businessConnectionId: String? = null): OutgoingResult
 
     /** True if the adapter is actively polling / connected. */
     val isRunning: Boolean
@@ -99,8 +133,8 @@ interface Channel {
     /** Send a formatted message using a provider-specific parse mode (e.g.
      *  "HTML", "MarkdownV2"). Adapters that don't support formatting fall
      *  back to plain [send]. */
-    suspend fun sendFormatted(to: String, text: String, parseMode: String): OutgoingResult =
-        send(to, text)
+    suspend fun sendFormatted(to: String, text: String, parseMode: String, guestQueryId: String? = null, businessConnectionId: String? = null): OutgoingResult =
+        send(to, text, guestQueryId, businessConnectionId)
 
     /** Show a transient "the agent is working" indicator on the chat (e.g.
      *  Telegram's `sendChatAction`). `action` is provider-specific:
@@ -127,4 +161,35 @@ interface Channel {
     /** Reply to a specific message ID with text. */
     suspend fun replyToMessage(to: String, replyToId: Long, text: String, parseMode: String = "HTML"): OutgoingResult =
         OutgoingResult(false, "replies not supported by this channel")
+
+    /** Send a message to another bot. (Bot-to-Bot Communication Mode) */
+    suspend fun sendToBot(toBotUsername: String, text: String): OutgoingResult =
+        OutgoingResult(false, "bot-to-bot not supported by this channel")
+
+    /** Native streaming of word-by-word updates (supported by Telegram 10.0).
+     *  Falls back to a single [sendFormatted] if not supported. */
+    suspend fun streamFormatted(to: String, textFlow: kotlinx.coroutines.flow.Flow<String>, parseMode: String, guestQueryId: String? = null, businessConnectionId: String? = null): OutgoingResult =
+        sendFormatted(to, textFlow.lastOrNull() ?: "", parseMode, guestQueryId, businessConnectionId)
+
+    /** Send a poll (supported by Telegram). */
+    suspend fun sendPoll(
+        to: String,
+        question: String,
+        options: List<String>,
+        isAnonymous: Boolean = true,
+        type: String = "regular",
+        allowsMultipleAnswers: Boolean = false,
+        correctOptionId: Int? = null,
+        explanation: String? = null,
+        explanationParseMode: String? = null,
+        openPeriod: Int? = null,
+        closeDate: Long? = null,
+        isClosed: Boolean? = null,
+        guestQueryId: String? = null,
+        businessConnectionId: String? = null,
+        mediaPath: String? = null,
+        countryCodes: List<String>? = null,
+        mustJoinChannelId: String? = null
+    ): OutgoingResult =
+        OutgoingResult(false, "polls not supported by this channel")
 }

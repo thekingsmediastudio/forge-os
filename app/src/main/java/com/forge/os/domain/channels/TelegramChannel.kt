@@ -114,7 +114,7 @@ class TelegramChannel(
             try {
                 val url = "https://api.telegram.org/bot$token/getUpdates" +
                     "?timeout=25&offset=$offset" +
-                    "&allowed_updates=%5B%22message%22%5D"
+                    "&allowed_updates=%5B%22message%22%2C%22business_message%22%2C%22guest_message%22%5D"
                 val req = Request.Builder().url(url).get().build()
                 http.newCall(req).execute().use { resp ->
                     val body = resp.body?.string().orEmpty()
@@ -137,11 +137,31 @@ class TelegramChannel(
         val updateId = (update["update_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return
         offset = maxOf(offset, updateId + 1)
 
-        val msg = (update["message"] as? JsonObject) ?: return
+        val msg = (update["message"] as? JsonObject) 
+            ?: (update["business_message"] as? JsonObject)
+            ?: (update["guest_message"] as? JsonObject)
+            ?: return
+        
+        val guestQueryId = (msg["guest_query_id"] as? JsonPrimitive)?.content
+        val businessConnId = (update["business_connection_id"] as? JsonPrimitive)?.content
+            ?: (msg["business_connection_id"] as? JsonPrimitive)?.content
+
         val messageId = (msg["message_id"] as? JsonPrimitive)?.content?.toLongOrNull()
         val chat = (msg["chat"] as? JsonObject)
         val chatId = (chat?.get("id") as? JsonPrimitive)?.content.orEmpty()
-        if (chatId.isBlank()) return
+        
+        // Skip guest messages if not enabled
+        if (update.containsKey("guest_message") && !config.guestModeEnabled) {
+            Timber.v("TelegramChannel: dropping guest message (feature disabled)")
+            return
+        }
+        // Skip business messages if not enabled
+        if (update.containsKey("business_message") && !config.businessAutomationEnabled) {
+            Timber.v("TelegramChannel: dropping business message (feature disabled)")
+            return
+        }
+
+        if (chatId.isBlank() && guestQueryId == null) return
 
         // Allow-list (poor-man's auth). Empty list = allow everyone.
         val allow = config.allowedChatIds
@@ -237,6 +257,8 @@ class TelegramChannel(
                 attachmentKind = attachmentKind,
                 attachmentPath = attachmentPath,
                 caption = caption,
+                guestQueryId = guestQueryId,
+                businessConnectionId = businessConnId,
             )
         )
     }
@@ -283,18 +305,25 @@ class TelegramChannel(
     // ─────────────────────────────────────────────────────────────────────
     // Outgoing
     // ─────────────────────────────────────────────────────────────────────
+ 
+    override suspend fun send(to: String, text: String, guestQueryId: String?, businessConnectionId: String?): OutgoingResult =
+        sendInternal(to, text, parseMode = "", guestQueryId, businessConnectionId)
 
-    override suspend fun send(to: String, text: String): OutgoingResult =
-        sendInternal(to, text, parseMode = "")
-
-    override suspend fun sendFormatted(to: String, text: String, parseMode: String): OutgoingResult {
+    override suspend fun sendToBot(toBotUsername: String, text: String): OutgoingResult {
+        if (!config.botToBotEnabled) return OutgoingResult(false, "Bot-to-Bot feature disabled for this channel")
+        // Native Bot API 10.0: just sendMessage to the @username
+        val target = if (toBotUsername.startsWith("@")) toBotUsername else "@$toBotUsername"
+        return sendInternal(target, text, parseMode = "HTML")
+    }
+ 
+    override suspend fun sendFormatted(to: String, text: String, parseMode: String, guestQueryId: String?, businessConnectionId: String?): OutgoingResult {
         val converted = if (parseMode.equals("HTML", ignoreCase = true))
             markdownToTelegramHtml(text) else text
         // Telegram caps message bodies at 4096 chars; chunk to be safe.
         val chunks = splitForTelegram(converted, 3800)
         var last: OutgoingResult = OutgoingResult(true, "ok")
         for (chunk in chunks) {
-            last = sendInternal(to, chunk, parseMode)
+            last = sendInternal(to, chunk, parseMode, guestQueryId, businessConnectionId)
             if (!last.success) {
                 // Most common failure: "Bad Request: can't parse entities".
                 // Retry as plain text — chunk the original too in case it
@@ -312,25 +341,127 @@ class TelegramChannel(
         return last
     }
 
-    private fun sendInternal(to: String, text: String, parseMode: String): OutgoingResult {
+    override suspend fun streamFormatted(
+        to: String,
+        textFlow: kotlinx.coroutines.flow.Flow<String>,
+        parseMode: String,
+        guestQueryId: String?,
+        businessConnectionId: String?
+    ): OutgoingResult {
+        if (!config.streamingEnabled) {
+            return sendFormatted(to, textFlow.lastOrNull() ?: "", parseMode, guestQueryId, businessConnectionId)
+        }
+
+        val token = botToken()
+        if (token.isBlank()) return OutgoingResult(false, "Missing botToken")
+
+        var lastMessageId: Long? = null
+        var lastText = ""
+        var lastEditTime = 0L
+        val throttleMs = 500L // 2 updates per second
+
+        try {
+            textFlow.collect { rawChunk ->
+                val converted = if (parseMode.equals("HTML", ignoreCase = true))
+                    markdownToTelegramHtml(rawChunk).take(4090) else rawChunk.take(4090)
+                
+                if (converted == lastText) return@collect
+                lastText = converted
+
+                if (lastMessageId == null) {
+                    val (msgId, res) = sendInternalReturningMsg(to, converted, parseMode, guestQueryId, businessConnectionId)
+                    if (res.success && msgId != null) {
+                        lastMessageId = msgId
+                        lastEditTime = System.currentTimeMillis()
+                    } else if (!res.success) {
+                        throw Exception(res.detail)
+                    }
+                } else {
+                    val now = System.currentTimeMillis()
+                    if (now - lastEditTime >= throttleMs) {
+                        editMessageText(to, lastMessageId!!, converted, parseMode)
+                        lastEditTime = now
+                    }
+                }
+            }
+            // Final edit to ensure everything is there
+            if (lastMessageId != null) {
+                editMessageText(to, lastMessageId!!, lastText, parseMode)
+            }
+            return OutgoingResult(true, "ok")
+        } catch (e: Exception) {
+            Timber.w(e, "TelegramChannel: streaming failed")
+            return OutgoingResult(false, e.message ?: "streaming failed")
+        }
+    }
+
+    private suspend fun sendInternalReturningMsg(to: String, text: String, parseMode: String, guestQueryId: String? = null, businessConnId: String? = null): Pair<Long?, OutgoingResult> {
+        val token = botToken()
+        if (token.isBlank()) return null to OutgoingResult(false, "Missing botToken")
+        return try {
+            val endpoint = if (guestQueryId != null) "answerGuestQuery" else "sendMessage"
+            val builder = FormBody.Builder()
+            
+            if (guestQueryId != null) {
+                builder.add("guest_query_id", guestQueryId)
+            } else {
+                builder.add("chat_id", to)
+            }
+            
+            builder.add("text", text)
+            builder.add("disable_web_page_preview", "true")
+            if (parseMode.isNotBlank()) builder.add("parse_mode", parseMode)
+            if (businessConnId != null) builder.add("business_connection_id", businessConnId)
+
+            val req = Request.Builder()
+                .url("https://api.telegram.org/bot$token/$endpoint")
+                .post(builder.build()).build()
+            
+            http.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+                val ok = root?.get("ok")?.jsonPrimitive?.content?.toBoolean() ?: true
+                
+                if (ok) {
+                    val msgId = root?.get("result")?.jsonObject?.get("message_id")?.jsonPrimitive?.content?.toLongOrNull()
+                    msgId to OutgoingResult(true, "ok")
+                } else {
+                    val desc = root?.get("description")?.jsonPrimitive?.content ?: body.take(200)
+                    null to OutgoingResult(false, "Telegram error: $desc")
+                }
+            }
+        } catch (e: Exception) {
+            null to OutgoingResult(false, e.message ?: "send failed")
+        }
+    }
+
+    private fun sendInternal(to: String, text: String, parseMode: String, guestQueryId: String? = null, businessConnId: String? = null): OutgoingResult {
         val token = botToken()
         if (token.isBlank()) return OutgoingResult(false, "Missing botToken")
         return try {
+            val endpoint = if (guestQueryId != null) "answerGuestQuery" else "sendMessage"
             val builder = FormBody.Builder()
-                .add("chat_id", to)
-                .add("text", text)
-                .add("disable_web_page_preview", "true")
+            
+            if (guestQueryId != null) {
+                builder.add("guest_query_id", guestQueryId)
+            } else {
+                builder.add("chat_id", to)
+            }
+            
+            builder.add("text", text)
+            builder.add("disable_web_page_preview", "true")
             if (parseMode.isNotBlank()) builder.add("parse_mode", parseMode)
+            if (businessConnId != null) builder.add("business_connection_id", businessConnId)
+
             val req = Request.Builder()
-                .url("https://api.telegram.org/bot$token/sendMessage")
+                .url("https://api.telegram.org/bot$token/$endpoint")
                 .post(builder.build()).build()
+            
             http.newCall(req).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
                     return@use OutgoingResult(false, "HTTP ${resp.code}: ${body.take(200)}")
                 }
-                // Telegram may return HTTP 200 with ok=false for logical errors
-                // (e.g. bad chat_id, flood-wait). Always verify the JSON body.
                 val ok = runCatching {
                     json.parseToJsonElement(body).jsonObject["ok"]
                         ?.jsonPrimitive?.content?.toBoolean()
@@ -349,6 +480,117 @@ class TelegramChannel(
             OutgoingResult(false, e.message ?: "send failed")
         }
     }
+
+    override suspend fun sendPoll(
+        to: String,
+        question: String,
+        options: List<String>,
+        isAnonymous: Boolean,
+        type: String,
+        allowsMultipleAnswers: Boolean,
+        correctOptionId: Int?,
+        explanation: String?,
+        explanationParseMode: String?,
+        openPeriod: Int?,
+        closeDate: Long?,
+        isClosed: Boolean?,
+        guestQueryId: String?,
+        businessConnectionId: String?,
+        mediaPath: String?,
+        countryCodes: List<String>?,
+        mustJoinChannelId: String?
+    ): OutgoingResult {
+        if (!config.richPollsEnabled) return OutgoingResult(false, "Rich Polls feature disabled for this bot")
+        val token = botToken()
+        if (token.isBlank()) return OutgoingResult(false, "Missing botToken")
+        
+        return try {
+            val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+            if (guestQueryId != null) {
+                builder.addFormDataPart("guest_query_id", guestQueryId)
+            } else {
+                builder.addFormDataPart("chat_id", to)
+            }
+            builder.addFormDataPart("question", question)
+            
+            // options is a JSON array of strings
+            val optionsJson = "[" + options.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" } + "]"
+            builder.addFormDataPart("options", optionsJson)
+            
+            builder.addFormDataPart("is_anonymous", isAnonymous.toString())
+            builder.addFormDataPart("type", type)
+            builder.addFormDataPart("allows_multiple_answers", allowsMultipleAnswers.toString())
+            correctOptionId?.let { builder.addFormDataPart("correct_option_id", it.toString()) }
+            explanation?.let { builder.addFormDataPart("explanation", it) }
+            explanationParseMode?.let { builder.addFormDataPart("explanation_parse_mode", it) }
+            openPeriod?.let { builder.addFormDataPart("open_period", it.toString()) }
+            closeDate?.let { builder.addFormDataPart("close_date", it.toString()) }
+            isClosed?.let { builder.addFormDataPart("is_closed", it.toString()) }
+            if (businessConnectionId != null) builder.addFormDataPart("business_connection_id", businessConnectionId)
+
+            // API 10.0: Participation limits
+            if (mustJoinChannelId != null) builder.addFormDataPart("must_join_channel_id", mustJoinChannelId)
+            if (!countryCodes.isNullOrEmpty()) {
+                builder.addFormDataPart("country_codes", countryCodes.joinToString(","))
+            }
+
+            // API 10.0: Poll Media
+            if (!mediaPath.isNullOrBlank()) {
+                val file = resolveFile(mediaPath)
+                if (file != null && file.exists()) {
+                    // Send as InputPollMedia photo
+                    // According to API 10.0 docs, the 'media' field takes InputPollMedia
+                    // In a multipart request, we attach the file and reference it in the JSON string or use the specialized field.
+                    // For simplicity, we'll use 'media' parameter as InputPollMedia JSON if the server supports it, 
+                    // or just attach it if it's the primary media.
+                    // Actually, sendPoll with media often uses a specific structure.
+                    builder.addFormDataPart("media", file.name, file.asRequestBody("image/jpeg".toMediaType()))
+                }
+            }
+
+            val req = Request.Builder()
+                .url("https://api.telegram.org/bot$token/sendPoll")
+                .post(builder.build()).build()
+            
+            http.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val ok = runCatching { json.parseToJsonElement(body).jsonObject["ok"]?.jsonPrimitive?.content?.toBoolean() }.getOrNull() ?: true
+                if (ok) OutgoingResult(true, "ok")
+                else {
+                    val desc = runCatching { json.parseToJsonElement(body).jsonObject["description"]?.jsonPrimitive?.content }.getOrNull() ?: body.take(200)
+                    OutgoingResult(false, "Telegram error: $desc")
+                }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "TelegramChannel: sendPoll failed")
+            OutgoingResult(false, e.message ?: "sendPoll failed")
+        }
+    }
+
+    private suspend fun editMessageText(to: String, messageId: Long, text: String, parseMode: String): OutgoingResult {
+        val token = botToken()
+        return try {
+            val builder = FormBody.Builder()
+                .add("chat_id", to)
+                .add("message_id", messageId.toString())
+                .add("text", text)
+            if (parseMode.isNotBlank()) builder.add("parse_mode", parseMode)
+            
+            val req = Request.Builder()
+                .url("https://api.telegram.org/bot$token/editMessageText")
+                .post(builder.build()).build()
+            
+            http.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val ok = runCatching { json.parseToJsonElement(body).jsonObject["ok"]?.jsonPrimitive?.content?.toBoolean() }.getOrNull() ?: true
+                if (ok) OutgoingResult(true, "ok")
+                else OutgoingResult(false, "edit failed")
+            }
+        } catch (e: Exception) {
+            OutgoingResult(false, e.message ?: "edit failed")
+        }
+    }
+
 
     override suspend fun sendChatAction(to: String, action: String) {
         val token = botToken()

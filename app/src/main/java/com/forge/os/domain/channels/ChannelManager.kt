@@ -63,8 +63,10 @@ class ChannelManager @Inject constructor(
     // Enhanced Integration: Connect with learning systems
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
     private val userPreferencesManager: com.forge.os.domain.user.UserPreferencesManager,
+    private val historyRepository: ChannelHistoryRepository,
+    private val learningEngine: ChannelLearningEngine,
 ) {
-    private val channels = ConcurrentHashMap<String, Channel>()
+    internal val channels = ConcurrentHashMap<String, Channel>()
     private val ingestJobs = ConcurrentHashMap<String, Job>()
     /** Phase U2 — route keys whose auto-reply we should skip because the
      *  agent already delivered the final reply itself via channel_send to
@@ -99,6 +101,13 @@ class ChannelManager @Inject constructor(
     @Synchronized
     fun startAll() {
         ensureBrokerListener()
+        // Load persistent histories
+        val loaded = historyRepository.loadAll()
+        loaded.forEach { (key, msgs) ->
+            chatHistories[key] = ArrayDeque(msgs)
+        }
+        Timber.i("ChannelManager: loaded ${loaded.size} chat histories from disk")
+        
         repository.all().filter { it.enabled }.forEach { cfg ->
             scope.launch { startChannel(cfg) }
         }
@@ -148,8 +157,8 @@ class ChannelManager @Inject constructor(
                 runCatching {
                     val text = "❓ ${q.question}"
                     val mode = ch.config.parseMode
-                    if (mode.isNotBlank()) ch.sendFormatted(chatId, text, mode)
-                    else ch.send(chatId, text)
+                    if (mode.isNotBlank()) ch.sendFormatted(chatId, text, mode, businessConnectionId = if (ch.config.businessAutomationEnabled) q.routeKey.substringAfterLast(":", "") else null)
+                    else ch.send(chatId, text, businessConnectionId = if (ch.config.businessAutomationEnabled) q.routeKey.substringAfterLast(":", "") else null)
                 }
                 sessionStore.record(
                     channelId = ch.config.id, channelType = ch.config.type,
@@ -170,11 +179,18 @@ class ChannelManager @Inject constructor(
         displayName: String,
         botToken: String,
         defaultChatId: String = "",
-        autoReply: Boolean = true,
-        parseMode: String = "HTML",
         allowedChatIds: String = "",
         purpose: String = "personal",
         systemPromptSuffix: String = "",
+        scopedMemory: Boolean = false,
+        streamingEnabled: Boolean = true,
+        guestModeEnabled: Boolean = false,
+        botToBotEnabled: Boolean = false,
+        businessAutomationEnabled: Boolean = false,
+        richPollsEnabled: Boolean = true,
+        autoReply: Boolean = true,
+        parseMode: String = "HTML",
+        learnFromConversations: Boolean = false,
     ): ChannelConfig {
         val id = "tg_${UUID.randomUUID().toString().take(8)}"
         val configJson = buildString {
@@ -193,7 +209,7 @@ class ChannelManager @Inject constructor(
             }
         }
         val cfg = ChannelConfig(
-            id = id, type = "telegram",
+            id = id, type = ChannelType.TELEGRAM,
             displayName = displayName.ifBlank { "Telegram" },
             configJson = configJson,
             enabled = true,
@@ -202,11 +218,166 @@ class ChannelManager @Inject constructor(
             allowedChatIds = allowedChatIds,
             purpose = purpose,
             systemPromptSuffix = resolvedSuffix,
+            scopedMemory = scopedMemory,
+            streamingEnabled = streamingEnabled,
+            guestModeEnabled = guestModeEnabled,
+            botToBotEnabled = botToBotEnabled,
+            businessAutomationEnabled = businessAutomationEnabled,
+            richPollsEnabled = richPollsEnabled,
+            learnFromConversations = learnFromConversations,
         )
         repository.upsert(cfg)
         scope.launch { startChannel(cfg) }
         return cfg
     }
+
+    fun createDiscord(
+        displayName: String,
+        botToken: String,
+        guildId: String = "",
+        allowedChatIds: String = "",
+        purpose: String = "personal",
+        systemPromptSuffix: String = "",
+        scopedMemory: Boolean = false,
+        streamingEnabled: Boolean = true,
+        learnFromConversations: Boolean = false,
+    ): ChannelConfig {
+        val id = "dc_${UUID.randomUUID().toString().take(8)}"
+        val configJson = buildString {
+            append('{')
+            append("\"botToken\":\"").append(botToken.jsonEscape()).append("\"")
+            if (guildId.isNotBlank()) append(",\"guildId\":\"").append(guildId.jsonEscape()).append("\"")
+            append('}')
+        }
+        val resolvedSuffix = systemPromptSuffix.ifBlank {
+            when (purpose) {
+                "teaching" -> "You are a teaching assistant on this Discord server. Explain concepts clearly and encourage questions."
+                "work"     -> "You are a professional work assistant on this Discord server. Be concise and action-oriented."
+                "support"  -> "You are a support agent on this Discord server. Be patient and solution-focused."
+                else       -> ""
+            }
+        }
+        val cfg = ChannelConfig(
+            id = id, type = ChannelType.DISCORD,
+            displayName = displayName.ifBlank { "Discord" },
+            configJson = configJson,
+            enabled = true,
+            allowedChatIds = allowedChatIds,
+            purpose = purpose,
+            systemPromptSuffix = resolvedSuffix,
+            scopedMemory = scopedMemory,
+            streamingEnabled = streamingEnabled,
+            learnFromConversations = learnFromConversations,
+        )
+        repository.upsert(cfg)
+        scope.launch { startChannel(cfg) }
+        return cfg
+    }
+
+    fun createSlack(
+        displayName: String,
+        botToken: String,
+        appToken: String,
+        allowedChatIds: String = "",
+        purpose: String = "personal",
+        systemPromptSuffix: String = "",
+        scopedMemory: Boolean = false,
+        streamingEnabled: Boolean = true,
+        learnFromConversations: Boolean = false,
+    ): ChannelConfig {
+        val id = "sl_${UUID.randomUUID().toString().take(8)}"
+        val configJson = buildString {
+            append('{')
+            append("\"botToken\":\"").append(botToken.jsonEscape()).append("\",")
+            append("\"appToken\":\"").append(appToken.jsonEscape()).append("\"")
+            append('}')
+        }
+        val resolvedSuffix = systemPromptSuffix.ifBlank {
+            when (purpose) {
+                "teaching" -> "You are a teaching assistant on this Slack workspace. Explain concepts clearly."
+                "work"     -> "You are a professional work assistant on this Slack workspace. Be concise and action-oriented."
+                "support"  -> "You are a support agent on this Slack workspace. Be patient and solution-focused."
+                else       -> ""
+            }
+        }
+        val cfg = ChannelConfig(
+            id = id, type = ChannelType.SLACK,
+            displayName = displayName.ifBlank { "Slack" },
+            configJson = configJson,
+            enabled = true,
+            allowedChatIds = allowedChatIds,
+            purpose = purpose,
+            systemPromptSuffix = resolvedSuffix,
+            scopedMemory = scopedMemory,
+            streamingEnabled = streamingEnabled,
+            learnFromConversations = learnFromConversations,
+        )
+        repository.upsert(cfg)
+        scope.launch { startChannel(cfg) }
+        return cfg
+    }
+
+    fun createWhatsApp(
+        displayName: String,
+        accessToken: String,
+        phoneNumberId: String,
+        verifyToken: String = "forge_wa",
+        allowedChatIds: String = "",
+        purpose: String = "personal",
+        systemPromptSuffix: String = "",
+        scopedMemory: Boolean = false,
+        learnFromConversations: Boolean = false,
+    ): ChannelConfig {
+        val id = "wa_${UUID.randomUUID().toString().take(8)}"
+        val configJson = buildString {
+            append('{')
+            append("\"accessToken\":\"").append(accessToken.jsonEscape()).append("\",")
+            append("\"phoneNumberId\":\"").append(phoneNumberId.jsonEscape()).append("\",")
+            append("\"verifyToken\":\"").append(verifyToken.jsonEscape()).append("\"")
+            append('}')
+        }
+        val resolvedSuffix = systemPromptSuffix.ifBlank {
+            when (purpose) {
+                "teaching" -> "You are a teaching assistant on WhatsApp. Explain concepts clearly."
+                "work"     -> "You are a professional work assistant on WhatsApp. Be concise and action-oriented."
+                "support"  -> "You are a support agent on WhatsApp. Be patient and solution-focused."
+                else       -> ""
+            }
+        }
+        val cfg = ChannelConfig(
+            id = id, type = ChannelType.WHATSAPP,
+            displayName = displayName.ifBlank { "WhatsApp" },
+            configJson = configJson,
+            enabled = true,
+            allowedChatIds = allowedChatIds,
+            purpose = purpose,
+            systemPromptSuffix = resolvedSuffix,
+            scopedMemory = scopedMemory,
+            streamingEnabled = false, // WhatsApp doesn't support streaming
+            learnFromConversations = learnFromConversations,
+        )
+        repository.upsert(cfg)
+        scope.launch { startChannel(cfg) }
+        return cfg
+    }
+
+    /** Generic config update — used by ViewModel for toggle fields. */
+    fun updateConfig(id: String, transform: (ChannelConfig) -> ChannelConfig) {
+        val cfg = repository.find(id) ?: return
+        repository.upsert(transform(cfg))
+    }
+
+    /** Route an incoming WhatsApp webhook payload to the right channel. */
+    fun deliverWhatsAppWebhook(rawJson: String) {
+        channels.values
+            .filterIsInstance<WhatsAppChannel>()
+            .forEach { it.deliverWebhook(rawJson) }
+    }
+
+    /** Return the WhatsApp verify token for the first enabled WA channel
+     *  (used by ForgeHttpServer to respond to Meta's GET verification). */
+    fun whatsAppVerifyToken(): String? =
+        channels.values.filterIsInstance<WhatsAppChannel>().firstOrNull()?.verifyToken()
 
     fun setEnabled(id: String, enabled: Boolean) {
         val cfg = repository.find(id) ?: return
@@ -333,11 +504,12 @@ class ChannelManager @Inject constructor(
         }
     }
 
-    suspend fun send(channelId: String, to: String, text: String): OutgoingResult {
+    suspend fun send(channelId: String, to: String, text: String, guestQueryId: String? = null, businessConnectionId: String? = null): OutgoingResult {
         val ch = channels[channelId]
             ?: return OutgoingResult(false, "Channel not running: $channelId")
         val mode = ch.config.parseMode
-        val result = if (mode.isNotBlank()) ch.sendFormatted(to, text, mode) else ch.send(to, text)
+        val result = if (mode.isNotBlank()) ch.sendFormatted(to, text, mode, guestQueryId, businessConnectionId) 
+                     else ch.send(to, text, guestQueryId, businessConnectionId)
         // Mirror successful sends into the chat-history session log so that
         // messages pushed via the `channel_send` tool / SendByName / the UI
         // appear alongside incoming messages and auto-replies. Without this
@@ -361,6 +533,93 @@ class ChannelManager @Inject constructor(
         return send(cfg.id, to, text)
     }
 
+    suspend fun sendToBot(channelId: String, toBotUsername: String, text: String): OutgoingResult {
+        val ch = channels[channelId]
+            ?: return OutgoingResult(false, "Channel not running: $channelId")
+        val result = ch.sendToBot(toBotUsername, text)
+        if (result.success) {
+            sessionStore.record(
+                channelId = ch.config.id,
+                channelType = ch.config.type,
+                chatId = toBotUsername,
+                displayName = ch.config.displayName,
+                event = SessionEvent(
+                    kind = SessionEvent.Kind.OutgoingText,
+                    content = "🤖 To Bot ($toBotUsername): $text",
+                ),
+            )
+        }
+        return result
+    }
+
+    suspend fun sendToBotByName(displayName: String, toBotUsername: String, text: String): OutgoingResult {
+        val cfg = repository.all().firstOrNull { it.displayName.equals(displayName, ignoreCase = true) }
+            ?: return OutgoingResult(false, "No channel named '$displayName'")
+        return sendToBot(cfg.id, toBotUsername, text)
+    }
+
+    suspend fun sendPoll(
+        channelId: String,
+        to: String,
+        question: String,
+        options: List<String>,
+        isAnonymous: Boolean = true,
+        type: String = "regular",
+        allowsMultipleAnswers: Boolean = false,
+        correctOptionId: Int? = null,
+        explanation: String? = null,
+        openPeriod: Int? = null,
+        closeDate: Long? = null,
+        mediaPath: String? = null,
+        countryCodes: List<String>? = null,
+        mustJoinChannelId: String? = null
+    ): OutgoingResult {
+        val ch = channels[channelId]
+            ?: return OutgoingResult(false, "Channel not running: $channelId")
+        val result = ch.sendPoll(
+            to = to, question = question, options = options,
+            isAnonymous = isAnonymous, type = type, allowsMultipleAnswers = allowsMultipleAnswers,
+            correctOptionId = correctOptionId, explanation = explanation,
+            openPeriod = openPeriod, closeDate = closeDate, mediaPath = mediaPath,
+            countryCodes = countryCodes, mustJoinChannelId = mustJoinChannelId
+        )
+        if (result.success) {
+            sessionStore.record(
+                channelId = ch.config.id,
+                channelType = ch.config.type,
+                chatId = to,
+                displayName = ch.config.displayName,
+                event = SessionEvent(
+                    kind = SessionEvent.Kind.OutgoingText,
+                    content = "📊 Poll: $question",
+                ),
+            )
+        }
+        return result
+    }
+
+    suspend fun sendPollByName(
+        displayName: String,
+        to: String,
+        question: String,
+        options: List<String>,
+        isAnonymous: Boolean = true,
+        type: String = "regular",
+        allowsMultipleAnswers: Boolean = false,
+        mediaPath: String? = null,
+        countryCodes: List<String>? = null,
+        mustJoinChannelId: String? = null
+    ): OutgoingResult {
+        val cfg = repository.all().firstOrNull { it.displayName.equals(displayName, ignoreCase = true) }
+            ?: return OutgoingResult(false, "No channel named '$displayName'")
+        return sendPoll(
+            channelId = cfg.id, to = to, question = question, options = options,
+            isAnonymous = isAnonymous, type = type, allowsMultipleAnswers = allowsMultipleAnswers,
+            mediaPath = mediaPath, countryCodes = countryCodes, mustJoinChannelId = mustJoinChannelId
+        )
+    }
+
+
     /**
      * Append a message to the per-chat conversation history kept in
      * [chatHistories]. This ensures that tool-initiated outbound messages
@@ -372,8 +631,14 @@ class ChannelManager @Inject constructor(
      */
     private fun appendToHistory(historyKey: String, role: String, content: String) {
         val hist = chatHistories.getOrPut(historyKey) { ArrayDeque() }
-        hist.addLast(ApiMessage(role = role, content = content))
-        while (hist.size > 80) hist.removeFirst()
+        synchronized(hist) {
+            hist.addLast(ApiMessage(role = role, content = content))
+            while (hist.size > 80) hist.removeFirst()
+        }
+        // Persist change
+        scope.launch {
+            historyRepository.saveAll(chatHistories.mapValues { it.value.toList() })
+        }
     }
 
     /**
@@ -489,7 +754,7 @@ class ChannelManager @Inject constructor(
         return reactToMessage(cfg.id, to, messageId, reaction)
     }
 
-    suspend fun replyToMessage(channelId: String, to: String, replyToId: Long, text: String): OutgoingResult {
+    suspend fun replyToMessage(channelId: String, to: String, replyToId: Long, text: String, guestQueryId: String? = null, businessConnectionId: String? = null): OutgoingResult {
         val ch = channels[channelId]
             ?: return OutgoingResult(false, "Channel not running: $channelId")
         val result = ch.replyToMessage(to, replyToId, text, ch.config.parseMode)
@@ -524,7 +789,10 @@ class ChannelManager @Inject constructor(
         ensureBrokerListener()
         if (channels.containsKey(cfg.id)) return
         val ch: Channel = when (cfg.type) {
-            "telegram" -> TelegramChannel(cfg, context)
+            ChannelType.TELEGRAM  -> TelegramChannel(cfg, context)
+            ChannelType.DISCORD   -> DiscordChannel(cfg, context)
+            ChannelType.SLACK     -> SlackChannel(cfg, context)
+            ChannelType.WHATSAPP  -> WhatsAppChannel(cfg, context)
             else -> {
                 Timber.w("ChannelManager: unknown channel type '${cfg.type}'")
                 return
@@ -606,6 +874,8 @@ class ChannelManager @Inject constructor(
         }
 
         // 1. Mirror the incoming message into the session log.
+        val memoryNamespace = if (cfg.scopedMemory) cfg.id else null
+        
         sessionStore.record(
             channelId = cfg.id, channelType = cfg.type,
             chatId = msg.fromId, displayName = msg.fromName,
@@ -616,6 +886,16 @@ class ChannelManager @Inject constructor(
             ),
         )
 
+        // ── Channel learning ──────────────────────────────────────────────
+        // When enabled, passively extract facts about the sender and store
+        // them in long-term memory for personalised future responses.
+        if (cfg.learnFromConversations) {
+            scope.launch {
+                try { learningEngine.learn(msg, cfg) }
+                catch (e: Exception) { Timber.w(e, "ChannelManager: learning failed") }
+            }
+        }
+
         scope.launch {
             conversationIndex.indexMessage(
                 com.forge.os.domain.memory.ConversationEntry(
@@ -623,8 +903,14 @@ class ChannelManager @Inject constructor(
                     sender = "user",
                     text = msg.text,
                     timestamp = System.currentTimeMillis(),
-                    sessionId = msg.fromId
+                    sessionId = msg.fromId,
+                    namespace = memoryNamespace // Phase S: add namespace to index entry
                 )
+            )
+            memoryManager.logEvent(
+                role = "user",
+                content = msg.text,
+                namespace = memoryNamespace
             )
         }
 
@@ -675,11 +961,14 @@ class ChannelManager @Inject constructor(
         // Per-chat history (last 20 turns).
         val history = chatHistories.getOrPut(sessionKey) { ArrayDeque() }
 
+        // Phase S (Sub-sandbox) — determine memory namespace
+        val memoryNamespace = if (cfg.scopedMemory) cfg.id else null
+
         // Build the prompt the agent sees. We prefix attachment context so
         // the model knows how to react to a voice / photo / document.
         val prompt = buildString {
             if (msg.attachmentKind != null) {
-                append("[Telegram message contains a ")
+                append("[${cfg.type} message contains a ")
                 append(msg.attachmentKind)
                 msg.attachmentPath?.let { append(" saved to workspace at: ").append(it) }
                 appendLine("]")
@@ -687,18 +976,29 @@ class ChannelManager @Inject constructor(
             append(msg.text)
             appendLine()
             appendLine()
+            // ── User profile context ──────────────────────────────────────
+            if (cfg.learnFromConversations) {
+                val profile = learningEngine.buildProfileSummary(msg.fromId, cfg.type)
+                if (profile != null) {
+                    appendLine(profile)
+                    appendLine()
+                }
+            }
             appendLine("Reply concisely. The text of your final response is sent")
             appendLine("to the user automatically. You MAY also call `channel_send`")
             appendLine("explicitly to this same chat (channel_id=\"${cfg.id}\", to=\"$chatId\")")
             appendLine("if you want to push intermediate updates — Forge de-duplicates")
             appendLine("the final auto-reply when you do, so the user never sees the")
             appendLine("same message twice.")
-            appendLine("Telegram chat id: $chatId. Channel id: ${cfg.id}.")
+            appendLine("${cfg.type} chat id: $chatId. Channel id: ${cfg.id}.")
             msg.messageId?.let {
-                appendLine("Incoming message_id: $it  (use this as reply_to_id in telegram_reply to quote the user's message).")
+                appendLine("Incoming message_id: $it  (use this as reply_to_id in ${cfg.type}_reply to quote the user's message).")
             }
             if (cfg.workspacePath.isNotBlank()) {
                 appendLine("WORKSPACE RESTRICTION: You may only read/write files under 'workspace/${cfg.workspacePath}/'. Do not access files outside this path.")
+            }
+            if (memoryNamespace != null) {
+                appendLine("MEMORY ISOLATION: You are running in a scoped sub-sandbox ('$memoryNamespace'). Your memory (longterm/daily) is isolated to this channel only.")
             }
             if (cfg.systemPromptSuffix.isNotBlank()) {
                 appendLine()
@@ -743,13 +1043,14 @@ class ChannelManager @Inject constructor(
         // session/channel spec FIRST; only fall back to the default
         // auto-route if that explicit spec actually fails (auth, network,
         // model gone, etc.).
-        suspend fun runOnce(activeSpec: ProviderSpec?, onText: (String) -> Unit) {
+        suspend fun runOnce(activeSpec: ProviderSpec?, onText: (String) -> Unit, onStream: ((kotlinx.coroutines.flow.Flow<String>) -> Unit)? = null) {
             withContext(InputRoute(routeKey)) {
                 reActAgentLazy.get().run(
                     userMessage = prompt,
                     history = history.toList(),
                     spec = activeSpec,
-                    currentChannel = cfg.type
+                    currentChannel = cfg.type,
+                    memoryNamespace = memoryNamespace
                 ).collect { event ->
                     when (event) {
                         is AgentEvent.Thinking -> sessionStore.record(
@@ -774,6 +1075,9 @@ class ChannelManager @Inject constructor(
                                 toolName = event.name, isError = event.isError,
                             ),
                         )
+                        is AgentEvent.PartialResponse -> {
+                            // Handled by the collector if onStream is provided
+                        }
                         is AgentEvent.Response -> onText(event.text)
                         is AgentEvent.Error -> sessionStore.record(
                             channelId = cfg.id, channelType = cfg.type,
@@ -800,10 +1104,45 @@ class ChannelManager @Inject constructor(
             }
         }
 
+        // collect partials to push word-by-word if streaming is enabled
         var finalText = ""
         try {
             try {
-                runOnce(spec) { finalText = it }
+                if (cfg.streamingEnabled) {
+                    val partials = kotlinx.coroutines.channels.Channel<String>(capacity = kotlinx.coroutines.channels.Channel.CONFLATED)
+                    val streamingJob = scope.launch {
+                        ch.streamFormatted(chatId, kotlinx.coroutines.flow.consumeAsFlow(partials), cfg.parseMode, msg.guestQueryId, msg.businessConnectionId)
+                    }
+                    
+                    withContext(InputRoute(routeKey)) {
+                        reActAgentLazy.get().run(
+                            userMessage = prompt,
+                            history = history.toList(),
+                            spec = spec,
+                            currentChannel = cfg.type,
+                            memoryNamespace = memoryNamespace
+                        ).collect { event ->
+                            when (event) {
+                                is AgentEvent.Thinking -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.Thinking, content = event.text))
+                                is AgentEvent.ToolCall -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.ToolCall, content = event.args, toolName = event.name))
+                                is AgentEvent.ToolResult -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.ToolResult, content = event.result.take(2_000), toolName = event.name, isError = event.isError))
+                                is AgentEvent.PartialResponse -> {
+                                    finalText = event.text
+                                    partials.send(event.text)
+                                }
+                                is AgentEvent.Response -> {
+                                    finalText = event.text
+                                    partials.send(event.text)
+                                }
+                                is AgentEvent.Error -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.AgentError, content = event.message, isError = true))
+                            }
+                        }
+                    }
+                    partials.close()
+                    streamingJob.join() // wait for last edit
+                } else {
+                    runOnce(spec, onText = { finalText = it })
+                }
             } catch (primary: Exception) {
                 if (spec == null) throw primary
                 Timber.w(primary, "ChannelManager: chosen model failed, falling back to default route")
@@ -875,9 +1214,9 @@ class ChannelManager @Inject constructor(
         run {
             val mode = cfg.parseMode
             val sendResult = if (mode.isNotBlank())
-                ch.sendFormatted(chatId, finalText, mode)
+                ch.sendFormatted(chatId, finalText, mode, msg.guestQueryId, msg.businessConnectionId)
             else
-                ch.send(chatId, finalText)
+                ch.send(chatId, finalText, msg.guestQueryId, msg.businessConnectionId)
             sessionStore.record(
                 channelId = cfg.id, channelType = cfg.type,
                 chatId = chatId, displayName = msg.fromName,

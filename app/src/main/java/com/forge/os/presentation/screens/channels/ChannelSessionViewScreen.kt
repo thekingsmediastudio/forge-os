@@ -18,32 +18,21 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.forge.os.domain.channels.ChannelManager
 import com.forge.os.domain.channels.SessionEvent
-import com.forge.os.presentation.theme.forgePalette
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.ui.text.font.FontWeight
+import com.forge.os.presentation.components.*
+import com.forge.os.presentation.theme.ForgeTokens.Colors
 import com.forge.os.presentation.screens.common.ModelPickerDialog
 import com.forge.os.presentation.screens.common.ModelPickerRow
-import com.forge.os.presentation.screens.common.ModuleScaffold
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
  * Live timeline for a single channel session. Auto-scrolls to the bottom
- * as new events stream in. Each event kind gets its own colour:
- *   • IncomingText / IncomingAttachment — neutral white card (user → bot)
- *   • OutgoingText / OutgoingVoice      — orange card (bot → user)
- *   • ChatAction                        — italic muted ("typing…")
- *   • Thinking                          — italic muted partial text
- *   • ToolCall                          — yellow card with tool name
- *   • ToolResult                        — green card (red on error)
- *   • AgentError                        — red card
- *
- * Phase U2 adds an inline model picker. The selected provider+model is
- * tried FIRST for this chat's auto-replies; if it fails, ChannelManager
- * silently falls back to the global default route. The picker is a pure
- * select-list — both built-in providers AND user-defined custom endpoints
- * appear, each grouped under its provider with its live `/models` catalog.
+ * as new events stream in.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,64 +58,95 @@ fun ChannelSessionViewScreen(
         if (n > 0) listState.animateScrollToItem(n - 1)
     }
 
-    ModuleScaffold(
-        title = session?.let { "${it.channelType}:${it.displayName}".uppercase() } ?: "SESSION",
-        onBack = onBack,
-    ) {
-        if (session == null) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Session ended.", color = forgePalette.textMuted,
-                    fontFamily = FontFamily.Monospace, fontSize = 12.sp)
-            }
-            return@ModuleScaffold
-        }
-
+    ForgeScreenScaffold {
         Column(Modifier.fillMaxSize()) {
-            Text("chat ${session.chatId}  ·  ${session.events.size} events",
-                color = forgePalette.textMuted,
-                fontFamily = FontFamily.Monospace, fontSize = 10.sp,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-
-            // ─── Phase U2: inline model picker ─────────────────────────
-            ModelPickerRow(
-                override = sessionOverride,
-                onClick = { showModelPicker = true },
-                onClear = {
-                    viewModel.setSessionModel(sessionKey, "", "")
-                    sessionOverride = null
-                },
+            ForgeTopBar(
+                title = session?.let { "${it.channelType}:${it.displayName}".uppercase() } ?: "SESSION",
+                onBack = onBack,
+                actions = {
+                    IconButton(onClick = { showModelPicker = true }) {
+                        Icon(Icons.Default.Tune, "Model Settings", tint = Colors.TextPrimary)
+                    }
+                }
             )
 
-            LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(session.events.size) { idx ->
-                    EventRow(session.events[idx])
+            if (session == null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Session ended.", color = Colors.TextDim,
+                        fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                 }
+                return@ForgeScreenScaffold
             }
-            // Manual reply box (lets the user jump in mid-conversation).
-            Row(
-                Modifier.fillMaxWidth().padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedTextField(
-                    value = manualText,
-                    onValueChange = { manualText = it },
-                    placeholder = { Text("Send a manual reply") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = false,
-                )
-                Spacer(Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        if (manualText.isNotBlank()) {
-                            onSendReply(manualText); manualText = ""
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = forgePalette.orange),
-                ) { Text("SEND", fontFamily = FontFamily.Monospace) }
+
+            Column(Modifier.fillMaxSize()) {
+                // Info Subheader
+                Box(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                    Text(
+                        "METRICS: ${session.chatId} · ${session.events.size} EVENTS",
+                        color = Colors.TextTertiary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                // Inline model picker
+                Box(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                    ModelPickerRow(
+                        override = sessionOverride,
+                        onClick = { showModelPicker = true },
+                        onClear = {
+                            viewModel.setSessionModel(sessionKey, "", "")
+                            sessionOverride = null
+                        },
+                    )
+                }
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    items(session.events.size) { idx ->
+                        EventRow(session.events[idx])
+                    }
+                }
+
+                // Manual reply box
+                ForgeCard(
+                    padding = PaddingValues(12.dp),
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = manualText,
+                            onValueChange = { manualText = it },
+                            placeholder = { Text("Directive Response...", color = Colors.TextMuted, fontSize = 13.sp) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = false,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Colors.Accent,
+                                unfocusedBorderColor = Colors.Border,
+                                focusedTextColor = Colors.TextPrimary,
+                                unfocusedTextColor = Colors.TextPrimary
+                            )
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        ForgeButton(
+                            text = "SEND",
+                            onClick = {
+                                if (manualText.isNotBlank()) {
+                                    onSendReply(manualText)
+                                    manualText = ""
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -152,52 +172,49 @@ private fun EventRow(e: SessionEvent) {
     val (bg, fg, label) = when (e.kind) {
         SessionEvent.Kind.IncomingText,
         SessionEvent.Kind.IncomingAttachment ->
-            Triple(forgePalette.surface, forgePalette.textPrimary, "← ${e.kind.name}")
+            Triple(Colors.Surface, Colors.TextPrimary, "← ${e.kind.name}")
         SessionEvent.Kind.OutgoingText,
         SessionEvent.Kind.OutgoingVoice,
         SessionEvent.Kind.OutgoingAttachment ->
-            Triple(forgePalette.orange.copy(alpha = 0.15f),
-                forgePalette.textPrimary, "→ ${e.kind.name}")
+            Triple(Colors.Accent.copy(alpha = 0.1f), Colors.TextPrimary, "→ ${e.kind.name}")
         SessionEvent.Kind.ChatAction ->
-            Triple(Color.Transparent, forgePalette.textMuted, "•")
+            Triple(Color.Transparent, Colors.TextDim, "•")
         SessionEvent.Kind.Thinking ->
-            Triple(Color.Transparent, forgePalette.textMuted, "thinking")
+            Triple(Color.Transparent, Colors.TextDim, "thinking")
         SessionEvent.Kind.ToolCall ->
-            Triple(Color(0xFF3A2F00), Color(0xFFFFD24A),
-                "🔧 ${e.toolName ?: "tool"}")
+            Triple(Color(0xFF332A00), Color(0xFFFFD700), "🔧 ${e.toolName ?: "tool"}")
         SessionEvent.Kind.ToolResult ->
-            if (e.isError) Triple(Color(0xFF3A0000), Color(0xFFFF6B6B),
-                "✗ ${e.toolName ?: "tool"}")
-            else Triple(Color(0xFF062B0E), Color(0xFF6BD68A),
-                "✓ ${e.toolName ?: "tool"}")
+            if (e.isError) Triple(Color(0xFF330000), Colors.Error, "✗ ${e.toolName ?: "tool"}")
+            else Triple(Color(0xFF002200), Colors.Success, "✓ ${e.toolName ?: "tool"}")
         SessionEvent.Kind.AgentError ->
-            Triple(Color(0xFF3A0000), Color(0xFFFF6B6B), "⚠️ error")
+            Triple(Color(0xFF330000), Colors.Error, "⚠️ error")
         SessionEvent.Kind.Info ->
-            Triple(forgePalette.surface2, forgePalette.textMuted, "i")
+            Triple(Colors.Surface, Colors.TextDim, "i")
     }
-    Column(
-        Modifier.fillMaxWidth()
-            .background(bg, RoundedCornerShape(4.dp))
-            .border(1.dp, forgePalette.border, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+    
+    ForgeCard(
+        padding = PaddingValues(10.dp),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Row {
-            Text(label, color = fg, fontFamily = FontFamily.Monospace,
-                fontSize = 10.sp, modifier = Modifier.weight(1f))
-            Text(fmt.format(Date(e.timestamp)), color = forgePalette.textMuted,
-                fontFamily = FontFamily.Monospace, fontSize = 10.sp)
-        }
-        if (e.content.isNotBlank()) {
-            Spacer(Modifier.height(2.dp))
-            val isItalic = e.kind == SessionEvent.Kind.Thinking ||
-                e.kind == SessionEvent.Kind.ChatAction
-            Text(
-                e.content,
-                color = fg,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                fontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal,
-            )
+        Column {
+            Row {
+                Text(label, color = fg, fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp, modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                Text(fmt.format(Date(e.timestamp)), color = Colors.TextDim,
+                    fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+            }
+            if (e.content.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                val isItalic = e.kind == SessionEvent.Kind.Thinking ||
+                    e.kind == SessionEvent.Kind.ChatAction
+                Text(
+                    e.content,
+                    color = fg,
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    fontStyle = if (isItalic) FontStyle.Italic else FontStyle.Normal,
+                )
+            }
         }
     }
 }

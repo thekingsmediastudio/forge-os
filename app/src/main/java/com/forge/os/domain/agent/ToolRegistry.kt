@@ -16,6 +16,7 @@ import com.forge.os.domain.alarms.AlarmItem
 import com.forge.os.domain.alarms.AlarmRepository
 import com.forge.os.domain.alarms.ForgeAlarmScheduler
 import com.forge.os.domain.channels.ChannelManager
+import com.forge.os.domain.channels.ChannelLearningEngine
 import com.forge.os.domain.doctor.DoctorService
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -65,7 +66,9 @@ data class ToolResult(
     val toolCallId: String,
     val toolName: String,
     val output: String,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val attachmentPath: String? = null,
+    val attachmentMime: String? = null
 )
 
 @Singleton
@@ -92,6 +95,7 @@ class ToolRegistry @Inject constructor(
     private val httpServerLazy: Lazy<ForgeHttpServer>,
     private val doctorService: DoctorService,
     private val channelManager: ChannelManager,
+    private val learningEngine: ChannelLearningEngine,
     // Phase Q
     private val controlPlane: com.forge.os.domain.control.AgentControlPlane,
     private val consentLedger: com.forge.os.domain.control.UserConsentLedger,
@@ -146,6 +150,14 @@ class ToolRegistry @Inject constructor(
     private val projectHealthMonitor: com.forge.os.domain.projects.ProjectHealthMonitor,
     // API Manager for model catalog
     private val aiApiManager: com.forge.os.data.api.AiApiManager,
+    private val macroManager: com.forge.os.data.browser.MacroManager,
+    private val secureKeyStore: com.forge.os.domain.security.SecureKeyStore,
+    private val markSafeZoneTool: com.forge.os.domain.sensor.MarkSafeZoneTool,
+    private val restoreProtocolTool: com.forge.os.domain.sensor.RestoreProtocolTool,
+    private val manifestToHubTool: com.forge.os.domain.sensor.ManifestToHubTool,
+    private val headedBrowserPingTool: com.forge.os.domain.sensor.HeadedBrowserPingTool,
+    private val headedBrowserCloakTool: com.forge.os.domain.sensor.HeadedBrowserCloakTool,
+    private val biometricChallengeTool: com.forge.os.domain.security.BiometricChallengeTool,
 ) {
     private val httpServer: ForgeHttpServer get() = httpServerLazy.get()
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -271,7 +283,7 @@ class ToolRegistry @Inject constructor(
         return FunctionParameters(properties = props, required = required)
     }
 
-    suspend fun dispatch(toolName: String, argsJson: String, toolCallId: String): ToolResult {
+    suspend fun dispatch(toolName: String, argsJson: String, toolCallId: String, memoryNamespace: String? = null): ToolResult {
         // Feature 9 — Predictive Prefetch Cache Check
         if (!toolCallId.startsWith("prefetch_")) {
             val cached = prefetchCache.getAndRemove(toolName, argsJson)
@@ -292,6 +304,43 @@ class ToolRegistry @Inject constructor(
             recordAudit(toolName, argsJson, started, r, source)
             return r
         }
+
+        // ─── Require-confirmation gate ─────────────────────────────────────────
+        if (check.requiresConfirmation) {
+            val routeKey = "CONFIRM_TOOL:$toolName"
+            val previewArgs = argsJson.take(140).let { if (argsJson.length > 140) "$it…" else it }
+            val question = "🔒 Tool `$toolName` wants to run.\nArgs: $previewArgs\n\nReply CONFIRM to allow or ABORT to cancel."
+
+            // Post a high-priority Android notification so the user sees it even
+            // when the screen is off or the Forge app is in the background.
+            agentNotifier.postWithActions(
+                title = "⚡ Tool Confirmation Required",
+                body = "`$toolName` is requesting to run. Tap to open Forge.",
+                channelId = "forge_confirmations",
+                actions = listOf(
+                    com.forge.os.domain.notifications.AgentNotificationBuilder.ActionSpec(
+                        label = "✅ CONFIRM",
+                        kind = "chat_message",
+                        payloadJson = """{"route":"$routeKey","text":"CONFIRM"}"""
+                    ),
+                    com.forge.os.domain.notifications.AgentNotificationBuilder.ActionSpec(
+                        label = "❌ ABORT",
+                        kind = "chat_message",
+                        payloadJson = """{"route":"$routeKey","text":"ABORT"}"""
+                    )
+                ),
+                navRoute = "chat"
+            )
+
+            // Also publish via the broker so the in-app web UI poller picks it up.
+            val response = userInputBroker.awaitResponse(question, routeKey)
+            if (response.trim().uppercase() in listOf("ABORT", "NO", "CANCEL", "DENY")) {
+                val r = ToolResult(toolCallId, toolName, "🚫 Tool `$toolName` was cancelled by the user.", isError = true)
+                recordAudit(toolName, argsJson, started, r, source)
+                return r
+            }
+        }
+
         return try {
             val args = parseArgs(argsJson)
             val output = if (toolName == "python_run") {
@@ -313,6 +362,7 @@ class ToolRegistry @Inject constructor(
                     ?: locationToolProvider.dispatch(toolName, args)
                     ?: storageToolProvider.dispatch(toolName, args)
                     ?: androidUiToolProvider.dispatch(toolName, args)
+                    ?: projectToolProvider.dispatch(toolName, args)
             } ?: when (toolName) {
                 "plan_and_execute_dag" -> {
                     val complexGoal = args["complex_goal"]?.toString()
@@ -329,14 +379,48 @@ class ToolRegistry @Inject constructor(
                 // ─── System ────────────────────────────────────────────────────────
                 "heartbeat_check"    -> heartbeatCheck()
                 // ─── Memory ────────────────────────────────────────────────────────
-                "memory_store"       -> memoryStore(args)
-                "memory_recall"      -> memoryRecall(args)
-                "semantic_recall_facts" -> semanticRecallFacts(args)
-                "memory_store_skill" -> memoryStoreSkill(args)
-                "memory_get_skill"   -> memoryGetSkill(args)
-                "memory_list_skills" -> memoryListSkills()
-                "memory_store_image" -> memoryStoreImage(args)
-                "memory_summary"     -> memorySummary()
+                "memory_store"       -> memoryStore(args, memoryNamespace)
+                "memory_update"      -> memoryStore(args, memoryNamespace) // store already overwrites by key
+                "memory_delete"      -> {
+                    val key = args["key"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: key required", isError = true)
+                    val removed = memoryManager.forgetFact(key, namespace = memoryNamespace)
+                    if (removed) "✅ Memory fact '$key' deleted." else "❌ Memory fact '$key' not found."
+                }
+                "memory_list"        -> {
+                    val daysStr = args["days"]?.toString() ?: "7"
+                    val days = daysStr.toIntOrNull() ?: 7
+                    val all = memoryManager.recallAllAcrossTiers(days, namespace = memoryNamespace)
+                    // Return as JSON for UI parser
+                    val json = kotlinx.serialization.json.buildJsonArray {
+                        all.forEach { hit ->
+                            add(kotlinx.serialization.json.buildJsonObject {
+                                put("id", hit.key)
+                                put("type", hit.source.name.lowercase())
+                                put("title", hit.key)
+                                put("content", hit.content)
+                                put("time", hit.timestamp)
+                                put("icon", when(hit.source) {
+                                    com.forge.os.domain.memory.MemoryTier.LONGTERM -> "💎"
+                                    com.forge.os.domain.memory.MemoryTier.SKILL -> "⚡"
+                                    com.forge.os.domain.memory.MemoryTier.DAILY -> "📅"
+                                })
+                            })
+                        }
+                    }
+                    json.toString()
+                }
+                "memory_recall"      -> memoryRecall(args, memoryNamespace)
+                "semantic_recall_facts" -> semanticRecallFacts(args, memoryNamespace)
+                "memory_store_skill" -> memoryStoreSkill(args, memoryNamespace)
+                "memory_get_skill"   -> memoryGetSkill(args, memoryNamespace)
+                "memory_list_skills" -> memoryListSkills(memoryNamespace)
+                "memory_store_image" -> memoryStoreImage(args, memoryNamespace)
+                "memory_summary"     -> memorySummary(memoryNamespace)
+                // ─── Directives ────────────────────────────────────────────────────
+                "directive_add"      -> directiveAdd(args)
+                "directive_list"     -> directiveList()
+                "directive_toggle"   -> directiveToggle(args)
+                "directive_delete"   -> directiveDelete(args)
                 // ─── Channels ──────────────────────────────────────────────────────
                 "telegram_react"     -> telegramReact(args)
                 "telegram_reply"     -> telegramReply(args)
@@ -368,7 +452,8 @@ class ToolRegistry @Inject constructor(
                         scheduleText = schedule,
                         tags = tags,
                         overrideProvider = provider,
-                        overrideModel = model
+                        overrideModel = model,
+                        reportTo = args["report_to"]?.toString()
                     ).fold(
                         { "Scheduled job '${it.name}' (id: ${it.id}) using ${it.schedule.pretty()}" },
                         { err ->
@@ -379,6 +464,37 @@ class ToolRegistry @Inject constructor(
                             "💡 Valid formats: 'every 10 minutes' (min 5 min), 'every 2 hours', " +
                             "'every hour', 'every day', 'daily at 09:00'"
                         }
+                    )
+                }
+                "cron_update"        -> {
+                    val id = args["id"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: id required", isError = true)
+                    val name = args["name"]?.toString() ?: "Updated Job"
+                    val schedule = args["schedule"]?.toString() ?: ""
+                    val payload = args["payload"]?.toString() ?: ""
+                    val typeStr = args["task_type"]?.toString() ?: "PROMPT"
+                    val type = try { com.forge.os.domain.cron.TaskType.valueOf(typeStr.uppercase()) } catch (e: Exception) { com.forge.os.domain.cron.TaskType.PROMPT }
+                    val tags = args["tags"]?.toString()?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+                    val modelStr = args["model"]?.toString()
+                    val (provider, model) = if (modelStr != null) {
+                        if (modelStr.contains("/")) {
+                            val parts = modelStr.split("/", limit = 2)
+                            parts[0] to parts[1]
+                        } else null to modelStr
+                    } else null to null
+                    
+                    cronManager.updateJob(
+                        id = id,
+                        name = name,
+                        taskType = type,
+                        payload = payload,
+                        scheduleText = schedule,
+                        tags = tags,
+                        overrideProvider = provider,
+                        overrideModel = model,
+                        reportTo = args["report_to"]?.toString()
+                    ).fold(
+                        { "✅ Updated cron job '${it.name}' (id: ${it.id})" },
+                        { "❌ Update failed: ${it.message}" }
                     )
                 }
                 "cron_list"          -> cronList()
@@ -457,6 +573,7 @@ class ToolRegistry @Inject constructor(
                 // ─── Search ────────────────────────────────────────────────────────
                 "ddg_search"         -> ddgSearch(args)
                 // ─── Browser control ───────────────────────────────────────────────
+                "browser_execute_macro" -> browserExecuteMacro(args)
                 "browser_navigate"   -> browserNavigate(args)
                 "browser_get_html"   -> browserGetHtml(args)
                 "browser_eval_js"    -> browserEvalJs(args)
@@ -471,6 +588,8 @@ class ToolRegistry @Inject constructor(
                 "browser_get_text"         -> browserGetText(args)
                 "browser_get_attribute"    -> browserGetAttribute(args)
                 "browser_list_links"       -> browserListLinks(args)
+                "browser_snapshot"         -> browserSnapshot(args)
+                "env_get"                  -> envGet(args)
                 "file_upload_to_browser"   -> fileUploadToBrowser(args)
                 "plugin_create"            -> pluginCreate(args)
                 // ─── Temp / upload folder ──────────────────────────────────────────
@@ -485,6 +604,13 @@ class ToolRegistry @Inject constructor(
                 "composio_call"      -> composioCall(args)
                 // ─── Phase 3: Hybrid Python Execution ──────────────────────────────
                 "python_run_remote"  -> pythonRunRemote(args)
+                // ─── Phase T: Senses ────────────────────────────────────────────────
+                "mark_safe_zone"     -> markSafeZoneTool.execute(args)
+                "restore_protocol"   -> restoreProtocolTool.execute(args)
+                "manifest_to_hub"    -> manifestToHubTool.execute(args)
+                "headed_browser_ping" -> headedBrowserPingTool.execute(args)
+                "headed_browser_cloak" -> headedBrowserCloakTool.execute(args)
+                "request_biometric_auth" -> biometricChallengeTool.execute(args)
                 // ─── Alarms ────────────────────────────────────────────────────────
                 "alarm_set"          -> {
                     val label = args["label"]?.toString() ?: "Alarm"
@@ -536,10 +662,50 @@ class ToolRegistry @Inject constructor(
                         action = act,
                         payload = payload,
                         overrideProvider = provider,
-                        overrideModel = model
+                        overrideModel = model,
+                        reportTo = args["report_to"]?.toString()
                     )
                     alarmScheduler.addAlarm(item)
                     "✅ Alarm '${item.label}' scheduled at ${java.util.Date(item.triggerAt)} (id=${item.id})"
+                }
+                "alarm_update"       -> {
+                    val id = args["id"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: id required", isError = true)
+                    val label = args["label"]?.toString() ?: "Alarm"
+                    val inSeconds = args["in_seconds"]?.toString()?.toLongOrNull()
+                    val atMillis = args["at_millis"]?.toString()?.toLongOrNull()
+                    val actionStr = args["action"]?.toString() ?: "NOTIFY"
+                    val payload = args["payload"]?.toString() ?: ""
+                    val modelStr = args["model"]?.toString()
+                    val repeatMs = args["repeat_ms"]?.toString()?.toLongOrNull() ?: 0L
+                    
+                    val (provider, model) = if (modelStr != null) {
+                        if (modelStr.contains("/")) {
+                            val parts = modelStr.split("/", limit = 2)
+                            parts[0] to parts[1]
+                        } else null to modelStr
+                    } else null to null
+
+                    val triggerAt = when {
+                        atMillis != null -> atMillis
+                        inSeconds != null -> System.currentTimeMillis() + (inSeconds * 1000)
+                        else -> return ToolResult(toolCallId, toolName, "Error: either in_seconds or at_millis required", isError = true)
+                    }
+
+                    val act = try { AlarmAction.valueOf(actionStr) } catch (e: Exception) { AlarmAction.NOTIFY }
+                    val item = AlarmItem(
+                        id = id,
+                        label = label,
+                        triggerAt = triggerAt,
+                        repeatIntervalMs = repeatMs,
+                        action = act,
+                        payload = payload,
+                        overrideProvider = provider,
+                        overrideModel = model,
+                        reportTo = args["report_to"]?.toString(),
+                        enabled = true
+                    )
+                    alarmScheduler.addAlarm(item)
+                    "✅ Alarm '${item.label}' (id=$id) updated."
                 }
                 "alarm_list"         -> alarmList()
                 "alarm_cancel"       -> alarmCancel(args)
@@ -568,6 +734,8 @@ class ToolRegistry @Inject constructor(
                 "channel_toggle"      -> channelToggle(args)
                 "channel_add_telegram" -> channelAddTelegram(args)
                 "telegram_send_voice" -> telegramSendVoice(args)
+                "telegram_send_to_bot" -> telegramSendToBot(args)
+                "telegram_send_poll" -> telegramSendPoll(args)
                 // ─── Telegram session / allow-list helpers ─────────────────────────
                 "telegram_main_chat"        -> telegramMainChat(args)
                 "telegram_list_chats"       -> telegramListChats(args)
@@ -576,6 +744,42 @@ class ToolRegistry @Inject constructor(
                 "telegram_allow_chat"       -> telegramAllowChat(args)
                 "telegram_deny_chat"        -> telegramDenyChat(args)
                 "telegram_get_history"      -> telegramGetHistory(args)
+                // ─── Discord ───────────────────────────────────────────────────────
+                "channel_add_discord"       -> channelAddDiscord(args)
+                "discord_send"              -> discordSend(args)
+                "discord_send_embed"        -> discordSendEmbed(args)
+                "discord_send_file"         -> discordSendFile(args)
+                "discord_add_reaction"      -> discordAddReaction(args)
+                "discord_create_thread"     -> discordCreateThread(args)
+                "discord_manage_roles"      -> discordManageRoles(args)
+                "discord_list_members"      -> discordListMembers(args)
+                "discord_list_channels"     -> discordListChannels(args)
+                "discord_pin_message"       -> discordPinMessage(args)
+                "discord_delete_message"    -> discordDeleteMessage(args)
+                // ─── Slack ─────────────────────────────────────────────────────────
+                "channel_add_slack"         -> channelAddSlack(args)
+                "slack_send"                -> slackSend(args)
+                "slack_send_ephemeral"      -> slackSendEphemeral(args)
+                "slack_reply_thread"        -> slackReplyThread(args)
+                "slack_send_file"           -> slackSendFile(args)
+                "slack_add_reaction"        -> slackAddReaction(args)
+                "slack_get_user_info"       -> slackGetUserInfo(args)
+                "slack_list_channels"       -> slackListChannels(args)
+                "slack_get_history"         -> slackGetHistory(args)
+                "slack_delete_message"      -> slackDeleteMessage(args)
+                // ─── WhatsApp ──────────────────────────────────────────────────────
+                "channel_add_whatsapp"      -> channelAddWhatsApp(args)
+                "whatsapp_send"             -> whatsappSend(args)
+                "whatsapp_send_media"       -> whatsappSendMedia(args)
+                "whatsapp_send_location"    -> whatsappSendLocation(args)
+                "whatsapp_send_contact"     -> whatsappSendContact(args)
+                "whatsapp_send_interactive" -> whatsappSendInteractive(args)
+                "whatsapp_send_template"    -> whatsappSendTemplate(args)
+                "whatsapp_react"            -> whatsappReact(args)
+                "whatsapp_get_profile"      -> whatsappGetProfile(args)
+                // ─── Channel Learning ──────────────────────────────────────────────
+                "channel_user_profile"      -> channelUserProfile(args)
+                "channel_forget_user"       -> channelForgetUser(args)
                 // ─── Self-description ──────────────────────────────────────────────
                 "app_describe"        -> appDescribe()
                 // ─── Phase Q: Agent Control Plane ──────────────────────────────────
@@ -638,6 +842,42 @@ class ToolRegistry @Inject constructor(
                         create = (args["create"] as? Boolean) ?: false,
                     )
                 }
+                "vision_analyze"     -> {
+                    val path = args["path"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: path required", isError = true)
+                    val goal = args["goal"]?.toString() ?: "Describe this image in detail, including text, objects, and layout."
+                    val visionModel = configRepository.get().modelRouting.visionModel
+                    val ctx = kotlin.coroutines.coroutineContext[com.forge.os.domain.agents.AgentContext]
+                    delegationManager.spawnAndAwait(
+                        goal = "VISION TASK: $goal\nIMAGE PATH: $path",
+                        context = "Analyze image at $path.",
+                        overrideModel = visionModel,
+                        parentId = ctx?.agentId,
+                        callerDepth = ctx?.depth ?: 0,
+                        tags = listOf("vision", "analysis")
+                    ).summary
+                }
+                "delegate_research"  -> {
+                    val topic = args["topic"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: topic required", isError = true)
+                    val ctx = kotlin.coroutines.coroutineContext[com.forge.os.domain.agents.AgentContext]
+                    delegationManager.spawnAndAwait(
+                        goal = "RESEARCH TASK: Thoroughly research $topic. Use search, browser, and memory tools.",
+                        context = "Provide a detailed report on $topic.",
+                        parentId = ctx?.agentId,
+                        callerDepth = ctx?.depth ?: 0,
+                        tags = listOf("research", "deep_dive")
+                    ).summary
+                }
+                "delegate_code"      -> {
+                    val task = args["task"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: task required", isError = true)
+                    val ctx = kotlin.coroutines.coroutineContext[com.forge.os.domain.agents.AgentContext]
+                    delegationManager.spawnAndAwait(
+                        goal = "CODING TASK: $task. Implement, test, and verify.",
+                        context = "You are a specialized Coding Agent.",
+                        parentId = ctx?.agentId,
+                        callerDepth = ctx?.depth ?: 0,
+                        tags = listOf("code", "implementation")
+                    ).summary
+                }
                 "git_remote_set"      -> {
                     val url = args["url"]?.toString()
                         ?: return ToolResult(toolCallId, toolName, "Error: url required", isError = true)
@@ -666,17 +906,20 @@ class ToolRegistry @Inject constructor(
                     token  = args["token"]?.toString(),
                 )
                 // ─── Phase S: Downloads ────────────────────────────────────────────
-                "file_download"       -> downloadManager.download(
-                    url      = args["url"]?.toString()
-                        ?: return ToolResult(toolCallId, toolName,
-                            "Error: url required", isError = true),
-                    saveAs   = args["save_as"]?.toString(),
-                    headers  = (args["headers"] as? Map<*, *>)
-                        ?.mapNotNull { (k, v) -> if (k != null && v != null) k.toString() to v.toString() else null }
-                        ?.toMap() ?: emptyMap(),
-                    maxBytes = (args["max_bytes"] as? Number)?.toLong()
-                        ?: com.forge.os.data.net.DownloadManager.DEFAULT_MAX_BYTES,
-                ).toString()
+                "file_download"       -> {
+                    val url = args["url"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: url required", isError = true)
+                    val saveAs = args["save_as"]?.toString()
+                    val headers = (args["headers"] as? Map<*, *>)?.mapNotNull { (k, v) -> if (k != null && v != null) k.toString() to v.toString() else null }?.toMap() ?: emptyMap()
+                    val maxBytes = (args["max_bytes"] as? Number)?.toLong() ?: com.forge.os.data.net.DownloadManager.DEFAULT_MAX_BYTES
+                    
+                    val res = downloadManager.download(url, saveAs, headers, maxBytes)
+                    val resStr = res.toString()
+                    val pathMatch = Regex(""""path"\s*:\s*"([^"]+)"""").find(resStr)
+                    if (pathMatch != null) {
+                        val path = pathMatch.groupValues[1]
+                        ToolResult(toolCallId, toolName, resStr, attachmentPath = path, attachmentMime = guessMime(path))
+                    } else resStr
+                }
                 // ─── Phase T: Named secrets (extension mechanism) ──────────────────
                 "secret_list"         -> secretList()
                 "secret_request"      -> secretRequest(args)
@@ -690,23 +933,19 @@ class ToolRegistry @Inject constructor(
                     val model = args["model"]?.toString()
                     visionTool.analyze(path, prompt, model)
                 }
-                "browser_download"    -> downloadManager.downloadWithBrowserCookies(
-                    url      = args["url"]?.toString()
-                        ?: return ToolResult(toolCallId, toolName,
-                            "Error: url required", isError = true),
-                    saveAs   = args["save_as"]?.toString(),
-                    maxBytes = (args["max_bytes"] as? Number)?.toLong()
-                        ?: com.forge.os.data.net.DownloadManager.DEFAULT_MAX_BYTES,
-                ).toString()
-                // ─── Phase 1: Project-AI Integration ───────────────────────────────
-                "project_list"           -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_list"
-                "project_read_metadata"  -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_read_metadata"
-                "project_write_metadata" -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_write_metadata"
-                "project_read_file"      -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_read_file"
-                "project_write_file"     -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_write_file"
-                "project_list_files"     -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_list_files"
-                "project_activate"       -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_activate"
-                "project_get_active"     -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_get_active"
+                "browser_download"    -> {
+                    val url = args["url"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: url required", isError = true)
+                    val saveAs = args["save_as"]?.toString()
+                    val maxBytes = (args["max_bytes"] as? Number)?.toLong() ?: com.forge.os.data.net.DownloadManager.DEFAULT_MAX_BYTES
+                    
+                    val res = downloadManager.downloadWithBrowserCookies(url, saveAs, maxBytes)
+                    val resStr = res.toString()
+                    val pathMatch = Regex(""""path"\s*:\s*"([^"]+)"""").find(resStr)
+                    if (pathMatch != null) {
+                        val path = pathMatch.groupValues[1]
+                        ToolResult(toolCallId, toolName, resStr, attachmentPath = path, attachmentMime = guessMime(path))
+                    } else resStr
+                }
                 // ─── Phase 2: Project Python Execution ─────────────────────────────
                 "project_python_run_file" -> {
                     val slug = args["slug"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: slug required", isError = true)
@@ -795,7 +1034,16 @@ class ToolRegistry @Inject constructor(
                 "voice_speak" -> {
                     val text = args["text"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: text required", isError = true)
                     voiceInputManager.speak(text)
-                    "🔊 Speaking: $text"
+                    ToolResult(toolCallId, toolName, "🔊 Speaking: $text")
+                }
+                "tts_generate" -> {
+                    val text = args["text"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: text required", isError = true)
+                    val path = voiceInputManager.synthesizeToFile(text)
+                    if (path != null) {
+                        ToolResult(toolCallId, toolName, "✅ Audio generated: $path", attachmentPath = path, attachmentMime = "audio/wav")
+                    } else {
+                        ToolResult(toolCallId, toolName, "❌ TTS synthesis failed", isError = true)
+                    }
                 }
                 "sync_export" -> {
                     val includeConfig = args["include_config"]?.toString()?.toBoolean() ?: true
@@ -909,7 +1157,92 @@ class ToolRegistry @Inject constructor(
                             }
                         }
                     }
+                    } else "Unknown tool: $toolName"
                 }
+
+                // ─── Phase 1: Project Management (Delegated to ProjectToolProvider) ─
+                "project_create" -> projectToolProvider.dispatch(toolName, args)
+                "project_list" -> projectToolProvider.dispatch(toolName, args)
+                "project_read_metadata" -> projectToolProvider.dispatch(toolName, args)
+                "project_write_metadata" -> projectToolProvider.dispatch(toolName, args)
+                "project_read_file" -> projectToolProvider.dispatch(toolName, args)
+                "project_write_file" -> projectToolProvider.dispatch(toolName, args)
+                "project_list_files" -> projectToolProvider.dispatch(toolName, args)
+                "project_activate" -> projectToolProvider.dispatch(toolName, args)
+                "project_get_active" -> projectToolProvider.dispatch(toolName, args)
+                "python_run_file" -> fileToolProvider.dispatch(toolName, args)
+                "python_lib_install" -> fileToolProvider.dispatch(toolName, args)
+
+                // ─── Android UI Interface (Delegated to AndroidUiToolProvider) ─────
+                "android_toast" -> androidUiToolProvider.dispatch(toolName, args)
+                "android_vibrate" -> androidUiToolProvider.dispatch(toolName, args)
+                "android_tts_speak" -> androidUiToolProvider.dispatch(toolName, args)
+
+                // ─── Networking Interface (Delegated to specialized providers) ───
+                "wifi_scan" -> wifiToolProvider.dispatch(toolName, args)
+                "wifi_connect" -> wifiToolProvider.dispatch(toolName, args)
+                "wifi_status" -> wifiToolProvider.dispatch(toolName, args)
+                "wifi_list_saved" -> wifiToolProvider.dispatch(toolName, args)
+
+                "bluetooth_scan" -> bluetoothToolProvider.dispatch(toolName, args)
+                "bluetooth_pair" -> bluetoothToolProvider.dispatch(toolName, args)
+                "bluetooth_list_paired" -> bluetoothToolProvider.dispatch(toolName, args)
+                "bluetooth_status" -> bluetoothToolProvider.dispatch(toolName, args)
+
+                // ─── Device Interface ─────────────────────────────────────────────
+                "battery_info" -> batteryToolProvider.dispatch(toolName, args)
+                "location_get" -> locationToolProvider.dispatch(toolName, args)
+                "location_address" -> locationToolProvider.dispatch(toolName, args)
+                "storage_info" -> storageToolProvider.dispatch(toolName, args)
+                "storage_overview" -> storageToolProvider.dispatch(toolName, args)
+                "storage_volumes" -> storageToolProvider.dispatch(toolName, args)
+                "storage_app_cache" -> storageToolProvider.dispatch(toolName, args)
+                "storage_list_downloads" -> storageToolProvider.dispatch(toolName, args)
+                "storage_list_dir" -> storageToolProvider.dispatch(toolName, args)
+
+                // ─── Communication Interface ──────────────────────────────────────
+                "sms_list" -> smsToolProvider.dispatch(toolName, args)
+                "sms_search" -> smsToolProvider.dispatch(toolName, args)
+                "sms_threads" -> smsToolProvider.dispatch(toolName, args)
+                "sms_send" -> smsToolProvider.dispatch(toolName, args)
+
+                "contacts_search" -> contactsToolProvider.dispatch(toolName, args)
+                "contacts_list" -> contactsToolProvider.dispatch(toolName, args)
+                "contacts_get" -> contactsToolProvider.dispatch(toolName, args)
+
+                // ─── Phone Automation (AutoPhone) ─────────────────────────────────
+                "autophone_read_screen" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_tap_text" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_tap_xy" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_find_and_tap" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_type" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_swipe" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_scroll" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_launch_app" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_go_back" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_go_home" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_open_notifications" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_screenshot" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "autophone_status" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "phone_notification_list" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "phone_notification_dismiss" -> autoPhoneToolProvider.dispatch(toolName, args)
+                "phone_notification_reply" -> autoPhoneToolProvider.dispatch(toolName, args)
+                
+                // ─── Productivity Interface ───────────────────────────────────────
+                "clipboard_read" -> clipboardToolProvider.dispatch(toolName, args)
+                "clipboard_write" -> clipboardToolProvider.dispatch(toolName, args)
+                "clipboard_clear" -> clipboardToolProvider.dispatch(toolName, args)
+
+                "calendar_list_events" -> calendarToolProvider.dispatch(toolName, args)
+                "calendar_add_event" -> calendarToolProvider.dispatch(toolName, args)
+                "calendar_delete_event" -> calendarToolProvider.dispatch(toolName, args)
+                "calendar_list_calendars" -> calendarToolProvider.dispatch(toolName, args)
+
+                // ─── Media Interface ──────────────────────────────────────────────
+                "media_get_state" -> mediaControlToolProvider.dispatch(toolName, args)
+                "media_control" -> mediaControlToolProvider.dispatch(toolName, args)
+                "phone_call" -> phoneCallToolProvider.dispatch(toolName, args)
+
                 "project_health" -> {
                     val slug = args["slug"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: slug required", isError = true)
                     val health = projectHealthMonitor.getProjectHealth(slug)
@@ -945,7 +1278,12 @@ class ToolRegistry @Inject constructor(
                     } else "Unknown tool: $toolName"
                 }
             }
-            val r = ToolResult(toolCallId, toolName, output)
+            val r = if (output is ToolResult) {
+                // If it's already a ToolResult, we just ensure the toolCallId is correct
+                output.copy(toolCallId = toolCallId)
+            } else {
+                ToolResult(toolCallId, toolName, output.toString())
+            }
             recordAudit(toolName, argsJson, started, r, source)
             r
         } catch (e: Exception) {
@@ -1015,18 +1353,18 @@ class ToolRegistry @Inject constructor(
 
     // ─── Memory tools ────────────────────────────────────────────────────────
 
-    private fun memoryStore(args: Map<String, Any>): String {
+    private fun memoryStore(args: Map<String, Any>, namespace: String? = null): String {
         val content = args["content"]?.toString() ?: return "Error: content required"
         val key = args["key"]?.toString() ?: "mem_${System.currentTimeMillis()}"
         val tagsRaw = args["tags"]?.toString() ?: ""
         val tags = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
-        memoryManager.store(key, content, tags)
-        return "✅ Stored memory: '$key' (${content.length} chars)"
+        memoryManager.store(key, content, tags, namespace = namespace)
+        return "✅ Stored memory: '$key' (${content.length} chars)${if (namespace != null) " in namespace: $namespace" else ""}"
     }
 
-    private suspend fun memoryRecall(args: Map<String, Any>): String {
+    private suspend fun memoryRecall(args: Map<String, Any>, namespace: String? = null): String {
         val query = args["query"]?.toString() ?: return "Error: query required"
-        val results = memoryManager.recall(query, k = 5)
+        val results = memoryManager.recall(query, k = 5, namespace = namespace)
         if (results.isEmpty()) return "No memories found for: $query"
         return buildString {
             appendLine("🧠 Memory recall for '$query' (${results.size} hit(s)):")
@@ -1039,9 +1377,9 @@ class ToolRegistry @Inject constructor(
         }
     }
 
-    private fun memoryGetSkill(args: Map<String, Any>): String {
+    private fun memoryGetSkill(args: Map<String, Any>, namespace: String? = null): String {
         val name = args["name"]?.toString() ?: return "Error: name required"
-        val entry = memoryManager.skill.recall(name) ?: return "❌ Skill '$name' not found."
+        val entry = memoryManager.skill.recall(name, namespace = namespace) ?: return "❌ Skill '$name' not found."
         return buildString {
             appendLine("🛠 SKILL: ${entry.name}")
             appendLine("📝 DESCRIPTION: ${entry.description}")
@@ -1055,8 +1393,8 @@ class ToolRegistry @Inject constructor(
         }
     }
 
-    private fun memoryListSkills(): String {
-        val skills = memoryManager.skill.getAll()
+    private fun memoryListSkills(namespace: String? = null): String {
+        val skills = memoryManager.skill.getAll(namespace = namespace)
         if (skills.isEmpty()) return "No skills stored yet. Use memory_store_skill to save Python snippets."
         return buildString {
             appendLine("🛠 Stored Skills (${skills.size}):")
@@ -1066,10 +1404,10 @@ class ToolRegistry @Inject constructor(
         }
     }
 
-    private suspend fun semanticRecallFacts(args: Map<String, Any>): String {
+    private suspend fun semanticRecallFacts(args: Map<String, Any>, namespace: String? = null): String {
         val query = args["query"]?.toString() ?: return "Error: query required"
         val k = args["k"]?.toString()?.toIntOrNull()?.coerceIn(1, 25) ?: 5
-        val results = memoryManager.semanticRecallFacts(query, k)
+        val results = memoryManager.semanticRecallFacts(query, k, namespace = namespace)
         if (results.isEmpty()) return "No semantic matches for: $query"
         return buildString {
             appendLine("🔍 Semantic recall for '$query' (top $k):")
@@ -1080,17 +1418,17 @@ class ToolRegistry @Inject constructor(
         }
     }
 
-    private fun memoryStoreSkill(args: Map<String, Any>): String {
+    private fun memoryStoreSkill(args: Map<String, Any>, namespace: String? = null): String {
         val name = args["name"]?.toString() ?: return "Error: name required"
         val description = args["description"]?.toString() ?: return "Error: description required"
         val code = args["code"]?.toString() ?: return "Error: code required"
         val tagsRaw = args["tags"]?.toString() ?: ""
         val tags = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
-        memoryManager.storeSkill(name, description, code, tags)
-        return "✅ Stored skill '$name' (${code.length} chars)"
+        memoryManager.storeSkill(name, description, code, tags, namespace = namespace)
+        return "✅ Stored skill '$name' (${code.length} chars)${if (namespace != null) " in namespace: $namespace" else ""}"
     }
 
-    private fun memoryStoreImage(args: Map<String, Any>): String {
+    private fun memoryStoreImage(args: Map<String, Any>, namespace: String? = null): String {
         val path = args["path"]?.toString() ?: return "Error: path required"
         val tagsRaw = args["tags"]?.toString() ?: ""
         val tags = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
@@ -1100,12 +1438,12 @@ class ToolRegistry @Inject constructor(
         // in the semantic memory index so the agent can "recall" the image context.
         val fileContent = "Visual Resource: $path\nUser Tags: $tagsRaw"
         val key = "img_${System.currentTimeMillis()}"
-        memoryManager.store(key, fileContent, tags)
+        memoryManager.store(key, fileContent, tags, namespace = namespace)
         
-        return "✅ Stored visual memory index for $path (key: $key)"
+        return "✅ Stored visual memory index for $path (key: $key)${if (namespace != null) " in namespace: $namespace" else ""}"
     }
 
-    private fun memorySummary(): String = memoryManager.fullSummary()
+    private fun memorySummary(namespace: String? = null): String = memoryManager.fullSummary(namespace = namespace)
 
     // ─── Cron tools ─────────────────────────────────────────────────────────
 
@@ -1194,6 +1532,59 @@ class ToolRegistry @Inject constructor(
         val id = args["id"]?.toString() ?: return "Error: id required"
         return if (pluginManager.uninstall(id)) "✅ Uninstalled $id"
         else "❌ Could not uninstall $id (not found, or it is a builtin plugin)"
+    }
+
+    // ─── Directives tools ────────────────────────────────────────────────────
+    
+    private fun guessMime(path: String): String? {
+        val ext = path.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            "mp4", "m4v" -> "video/mp4"
+            "webm" -> "video/webm"
+            "mp3" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            "ogg", "opus" -> "audio/ogg"
+            "pdf" -> "application/pdf"
+            "txt", "md", "py", "js", "html", "css", "json" -> "text/plain"
+            else -> null
+        }
+    }
+
+    private fun directiveAdd(args: Map<String, Any>): String {
+        val content = args["content"]?.toString() ?: return "Error: content required"
+        val scope = args["scope"]?.toString() ?: "global"
+        val category = args["category"]?.toString() ?: "behavior"
+        directivesManager.addRule(content, category, scope)
+        return "✅ Protocol Directive added: '$content' (scope: $scope)"
+    }
+
+    private fun directiveList(): String {
+        val rules = directivesManager.listRules()
+        if (rules.isEmpty()) return "No custom directives active."
+        return buildString {
+            appendLine("📝 Active Directives (${rules.size}):")
+            rules.forEach { r ->
+                val status = if (r.enabled) "ON" else "off"
+                appendLine("• [${r.id.take(8)}] $status ${r.content} (${r.scope})")
+            }
+        }
+    }
+
+    private fun directiveToggle(args: Map<String, Any>): String {
+        val id = args["id"]?.toString() ?: return "Error: id required"
+        val enabled = args["enabled"]?.toString()?.toBooleanStrictOrNull() ?: true
+        directivesManager.toggleRule(id, enabled)
+        return "✅ Directive $id ${if (enabled) "enabled" else "disabled"}"
+    }
+
+    private fun directiveDelete(args: Map<String, Any>): String {
+        val id = args["id"]?.toString() ?: return "Error: id required"
+        directivesManager.deleteRule(id)
+        return "✅ Directive $id deleted."
     }
 
     private suspend fun pluginExecute(args: Map<String, Any>): String {
@@ -1719,6 +2110,54 @@ class ToolRegistry @Inject constructor(
     // a site once on the visible tab automatically gives the agent the same
     // logged-in session.
 
+    private suspend fun browserExecuteMacro(args: Map<String, Any>): String {
+        val name = args["name"]?.toString() ?: return "Error: name required"
+        val macro = macroManager.macros.find { it.name.equals(name, ignoreCase = true) }
+            ?: return "❌ Error: Macro not found: $name"
+            
+        // Parameterized Replacement
+        val varsRaw = args["variables"]?.toString()
+        val variables = if (!varsRaw.isNullOrBlank()) {
+            runCatching {
+                val obj = json.parseToJsonElement(varsRaw) as? kotlinx.serialization.json.JsonObject
+                obj?.mapValues { (it.value as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull ?: "" }
+            }.getOrNull() ?: emptyMap()
+        } else emptyMap()
+
+        // Serialize events, apply string replacement, and deserialize
+        var eventsStr = json.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.forge.os.data.browser.MacroEvent.serializer()), macro.events)
+        variables.forEach { (key, value) ->
+            eventsStr = eventsStr.replace("{{$key}}", value)
+            eventsStr = eventsStr.replace("{$key}", value)
+        }
+        val parameterizedEvents = json.decodeFromString(
+            kotlinx.serialization.builtins.ListSerializer(com.forge.os.data.browser.MacroEvent.serializer()), eventsStr
+        )
+        
+        val log = StringBuilder("Replaying macro '$name' with ${parameterizedEvents.size} step(s)...\n")
+        
+        for ((i, event) in parameterizedEvents.withIndex()) {
+            val stepName = "Step ${i + 1} (${event.type})"
+            log.append("$stepName...")
+            val result = try {
+                when (event.type) {
+                    "navigate" -> event.url?.let { headlessBrowser.navigate(it) } ?: "missing url"
+                    "click" -> event.selector?.let { headlessBrowser.click(it) } ?: "missing selector"
+                    "input" -> event.selector?.let { headlessBrowser.type(it, event.value ?: "") } ?: "missing selector"
+                    else -> "unknown event type ${event.type}"
+                }
+            } catch (e: Exception) {
+                "❌ failed: ${e.message}"
+            }
+            log.append("  $result\n")
+            if (event.type == "navigate" || event.type == "click") {
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+        
+        return log.toString()
+    }
+
     private suspend fun browserNavigate(args: Map<String, Any>): String {
         val url = args["url"]?.toString() ?: return "Error: url required"
         val result = headlessBrowser.navigate(url)
@@ -1733,6 +2172,34 @@ class ToolRegistry @Inject constructor(
             )
         }
         return result
+    }
+
+    private suspend fun browserSnapshot(args: Map<String, Any>): ToolResult {
+        val relPath = args["out_path"]?.toString() ?: "temp/browser_${System.currentTimeMillis()}.png"
+        val absPath = File(appContext.filesDir, "workspace/$relPath").absolutePath
+        
+        val url = headlessBrowser.currentUrl
+        val text = headlessBrowser.getReadableText(1000)
+        
+        val res = headlessBrowser.screenshotRegion(absPath)
+        val msg = if (res.startsWith("✅")) {
+            "📸 State snapshot of $url\n\nPreview text:\n$text"
+        } else {
+            "⚠️ Snapshot partially failed: $res\n\nPreview text:\n$text"
+        }
+        
+        return ToolResult(
+            toolCallId = "", // Filled by dispatch
+            toolName = "browser_snapshot",
+            output = msg,
+            attachmentPath = relPath,
+            attachmentMime = "image/png"
+        )
+    }
+
+    private suspend fun envGet(args: Map<String, Any>): String {
+        val key = args["key"]?.toString() ?: return "Error: key required"
+        return secureKeyStore.getAllSecrets()[key.uppercase()] ?: "❌ Environment variable '$key' not found."
     }
 
     private suspend fun browserGetHtml(args: Map<String, Any> = emptyMap()): String {
@@ -2003,7 +2470,7 @@ To use Composio:
                 "Set hybridExecution.remotePythonWorkerUrl in Settings → Advanced. " +
                 "Falling back to local python_run.\n\n" +
                 sandboxManager.executePython(code, timeoutSeconds = timeout).fold(
-                    onSuccess = { it },
+                    onSuccess = { formatPythonResult(it) },
                     onFailure = { "❌ Local fallback error: ${it.message}" }
                 )
         }
@@ -2287,6 +2754,63 @@ To use Composio:
         }.trimEnd()
     }
 
+    private suspend fun telegramSendToBot(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: @username required (e.g. '@some_bot')"
+        val text = args["text"]?.toString() ?: return "Error: text required"
+        val name = args["channel"]?.toString()
+        val id = args["channel_id"]?.toString()
+        val res = when {
+            !id.isNullOrBlank() -> channelManager.sendToBot(id, to, text)
+            !name.isNullOrBlank() -> channelManager.sendToBotByName(name, to, text)
+            else -> {
+                val (resolvedId, _) = resolveTelegramChannelId(args)
+                if (resolvedId != null) channelManager.sendToBot(resolvedId, to, text)
+                else return "Error: channel or channel_id required"
+            }
+        }
+        return if (res.success) "✅ Sent to bot $to" else "❌ ${res.detail}"
+    }
+
+    private suspend fun telegramSendPoll(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: recipient chat_id required"
+        val question = args["question"]?.toString() ?: return "Error: question required"
+        val options = args["options"]?.toString()?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }
+            ?: return "Error: options (comma-separated) required"
+        
+        val type = args["type"]?.toString() ?: "regular"
+        val isAnonymous = args["is_anonymous"]?.toString()?.toBooleanStrictOrNull() ?: true
+        val allowsMultipleAnswers = args["allows_multiple_answers"]?.toString()?.toBooleanStrictOrNull() ?: false
+        val mediaPath = args["media_path"]?.toString()
+        val mustJoinChannelId = args["must_join_channel_id"]?.toString()
+        val countryCodes = args["country_codes"]?.toString()?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() }
+
+        val name = args["channel"]?.toString()
+        val id = args["channel_id"]?.toString()
+
+        val res = when {
+            !id.isNullOrBlank() -> channelManager.sendPoll(
+                channelId = id, to = to, question = question, options = options,
+                type = type, isAnonymous = isAnonymous, allowsMultipleAnswers = allowsMultipleAnswers,
+                mediaPath = mediaPath, mustJoinChannelId = mustJoinChannelId, countryCodes = countryCodes
+            )
+            !name.isNullOrBlank() -> channelManager.sendPollByName(
+                displayName = name, to = to, question = question, options = options,
+                type = type, isAnonymous = isAnonymous, allowsMultipleAnswers = allowsMultipleAnswers,
+                mediaPath = mediaPath, mustJoinChannelId = mustJoinChannelId, countryCodes = countryCodes
+            )
+            else -> {
+                val (resolvedId, _) = resolveTelegramChannelId(args)
+                if (resolvedId != null) channelManager.sendPoll(
+                    channelId = resolvedId, to = to, question = question, options = options,
+                    type = type, isAnonymous = isAnonymous, allowsMultipleAnswers = allowsMultipleAnswers,
+                    mediaPath = mediaPath, mustJoinChannelId = mustJoinChannelId, countryCodes = countryCodes
+                )
+                else return "Error: channel or channel_id required"
+            }
+        }
+        return if (res.success) "✅ Poll sent to $to" else "❌ ${res.detail}"
+    }
+
     private fun channelToggle(args: Map<String, Any>): String {
         val id = args["id"]?.toString() ?: return "Error: id required"
         val enabled = args["enabled"]?.toString()?.toBooleanStrictOrNull() ?: true
@@ -2298,11 +2822,357 @@ To use Composio:
         val name = args["name"]?.toString() ?: "Telegram"
         val token = args["bot_token"]?.toString() ?: return "Error: bot_token required"
         val chat = args["default_chat_id"]?.toString() ?: ""
-        val cfg = channelManager.createTelegram(name, token, chat)
-        return "✅ Added channel '${cfg.displayName}' (id=${cfg.id})"
+        val scoped = args["scoped_memory"]?.toString()?.toBooleanStrictOrNull() ?: false
+        val learn = args["learn_from_conversations"]?.toString()?.toBooleanStrictOrNull() ?: false
+        val cfg = channelManager.createTelegram(name, token, chat, scopedMemory = scoped, learnFromConversations = learn)
+        return "✅ Added channel '${cfg.displayName}' (id=${cfg.id})" +
+            (if (scoped) " (Memory Sandboxed)" else "") +
+            (if (learn) " (Learning ON)" else "")
     }
 
-    // ─── Telegram session helpers ────────────────────────────────────────────
+    // ─── Discord tool implementations ────────────────────────────────────────
+
+    private fun channelAddDiscord(args: Map<String, Any>): String {
+        val name = args["name"]?.toString() ?: "Discord"
+        val token = args["bot_token"]?.toString() ?: return "Error: bot_token required"
+        val guildId = args["guild_id"]?.toString() ?: ""
+        val learn = args["learn_from_conversations"]?.toString()?.toBooleanStrictOrNull() ?: false
+        val cfg = channelManager.createDiscord(name, token, guildId, learnFromConversations = learn)
+        return "✅ Added Discord channel '${cfg.displayName}' (id=${cfg.id})${if (learn) " (Learning ON)" else ""}"
+    }
+
+    private suspend fun discordSend(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: channel_id required"
+        val text = args["text"]?.toString() ?: return "Error: text required"
+        val channelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val res = channelManager.send(channelId, to, text)
+        return if (res.success) "✅ Sent to Discord channel $to" else "❌ ${res.detail}"
+    }
+
+    private fun discordSendEmbed(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: channel_id required"
+        val title = args["title"]?.toString() ?: ""
+        val description = args["description"]?.toString() ?: return "Error: description required"
+        val channelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val ch = channelManager.channels[channelId] as? com.forge.os.domain.channels.DiscordChannel
+            ?: return "Error: channel is not a Discord channel"
+        val res = ch.sendEmbed(to, title, description)
+        return if (res.success) "✅ Embed sent" else "❌ ${res.detail}"
+    }
+
+    private suspend fun discordSendFile(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: channel_id required"
+        val path = args["path"]?.toString() ?: return "Error: path required"
+        val caption = args["caption"]?.toString()
+        val channelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val res = channelManager.sendFile(channelId, to, path, caption)
+        return if (res.success) "✅ File sent" else "❌ ${res.detail}"
+    }
+
+    private suspend fun discordAddReaction(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: channel_id required"
+        val messageId = args["message_id"]?.toString()?.toLongOrNull() ?: return "Error: message_id required"
+        val reaction = args["reaction"]?.toString() ?: return "Error: reaction emoji required"
+        val channelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val res = channelManager.reactToMessage(channelId, to, messageId, reaction)
+        return if (res.success) "✅ Reaction added" else "❌ ${res.detail}"
+    }
+
+    private fun discordCreateThread(args: Map<String, Any>): String {
+        val channelId = args["discord_channel_id"]?.toString() ?: args["channel_id"]?.toString() ?: return "Error: discord_channel_id required"
+        val messageId = args["message_id"]?.toString()?.toLongOrNull() ?: return "Error: message_id required"
+        val name = args["name"]?.toString() ?: return "Error: thread name required"
+        val forgeChannelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.DiscordChannel
+            ?: return "Error: channel is not a Discord channel"
+        val (threadId, res) = ch.createThread(channelId, messageId, name)
+        return if (res.success) "✅ Thread created: id=$threadId" else "❌ ${res.detail}"
+    }
+
+    private fun discordManageRoles(args: Map<String, Any>): String {
+        val guildId = args["guild_id"]?.toString() ?: return "Error: guild_id required"
+        val userId = args["user_id"]?.toString() ?: return "Error: user_id required"
+        val roleId = args["role_id"]?.toString() ?: return "Error: role_id required"
+        val add = args["add"]?.toString()?.toBooleanStrictOrNull() ?: true
+        val forgeChannelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.DiscordChannel
+            ?: return "Error: channel is not a Discord channel"
+        val res = ch.manageRole(guildId, userId, roleId, add)
+        return if (res.success) "✅ Role ${if (add) "added" else "removed"}" else "❌ ${res.detail}"
+    }
+
+    private fun discordListMembers(args: Map<String, Any>): String {
+        val guildId = args["guild_id"]?.toString() ?: return "Error: guild_id required"
+        val limit = args["limit"]?.toString()?.toIntOrNull() ?: 100
+        val forgeChannelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.DiscordChannel
+            ?: return "Error: channel is not a Discord channel"
+        return ch.listMembers(guildId, limit)
+    }
+
+    private fun discordListChannels(args: Map<String, Any>): String {
+        val guildId = args["guild_id"]?.toString() ?: return "Error: guild_id required"
+        val forgeChannelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.DiscordChannel
+            ?: return "Error: channel is not a Discord channel"
+        return ch.listChannels(guildId)
+    }
+
+    private fun discordPinMessage(args: Map<String, Any>): String {
+        val channelId = args["discord_channel_id"]?.toString() ?: args["channel_id"]?.toString() ?: return "Error: discord_channel_id required"
+        val messageId = args["message_id"]?.toString()?.toLongOrNull() ?: return "Error: message_id required"
+        val forgeChannelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.DiscordChannel
+            ?: return "Error: channel is not a Discord channel"
+        val res = ch.pinMessage(channelId, messageId)
+        return if (res.success) "✅ Message pinned" else "❌ ${res.detail}"
+    }
+
+    private fun discordDeleteMessage(args: Map<String, Any>): String {
+        val channelId = args["discord_channel_id"]?.toString() ?: args["channel_id"]?.toString() ?: return "Error: discord_channel_id required"
+        val messageId = args["message_id"]?.toString()?.toLongOrNull() ?: return "Error: message_id required"
+        val forgeChannelId = resolveChannelId(args, "discord") ?: return "Error: no Discord channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.DiscordChannel
+            ?: return "Error: channel is not a Discord channel"
+        val res = ch.deleteMessage(channelId, messageId)
+        return if (res.success) "✅ Message deleted" else "❌ ${res.detail}"
+    }
+
+    // ─── Slack tool implementations ───────────────────────────────────────────
+
+    private fun channelAddSlack(args: Map<String, Any>): String {
+        val name = args["name"]?.toString() ?: "Slack"
+        val botToken = args["bot_token"]?.toString() ?: return "Error: bot_token required"
+        val appToken = args["app_token"]?.toString() ?: return "Error: app_token required"
+        val learn = args["learn_from_conversations"]?.toString()?.toBooleanStrictOrNull() ?: false
+        val cfg = channelManager.createSlack(name, botToken, appToken, learnFromConversations = learn)
+        return "✅ Added Slack channel '${cfg.displayName}' (id=${cfg.id})${if (learn) " (Learning ON)" else ""}"
+    }
+
+    private suspend fun slackSend(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: channel required"
+        val text = args["text"]?.toString() ?: return "Error: text required"
+        val channelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val res = channelManager.send(channelId, to, text)
+        return if (res.success) "✅ Sent to Slack $to" else "❌ ${res.detail}"
+    }
+
+    private fun slackSendEphemeral(args: Map<String, Any>): String {
+        val channel = args["channel"]?.toString() ?: return "Error: channel required"
+        val userId = args["user_id"]?.toString() ?: return "Error: user_id required"
+        val text = args["text"]?.toString() ?: return "Error: text required"
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.SlackChannel
+            ?: return "Error: channel is not a Slack channel"
+        val res = ch.sendEphemeral(channel, userId, text)
+        return if (res.success) "✅ Ephemeral sent" else "❌ ${res.detail}"
+    }
+
+    private suspend fun slackReplyThread(args: Map<String, Any>): String {
+        val channel = args["channel"]?.toString() ?: return "Error: channel required"
+        val threadTs = args["thread_ts"]?.toString() ?: return "Error: thread_ts required"
+        val text = args["text"]?.toString() ?: return "Error: text required"
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val res = channelManager.send(forgeChannelId, "$channel|$threadTs", text)
+        return if (res.success) "✅ Thread reply sent" else "❌ ${res.detail}"
+    }
+
+    private suspend fun slackSendFile(args: Map<String, Any>): String {
+        val channel = args["channel"]?.toString() ?: return "Error: channel required"
+        val path = args["path"]?.toString() ?: return "Error: path required"
+        val caption = args["caption"]?.toString()
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val res = channelManager.sendFile(forgeChannelId, channel, path, caption)
+        return if (res.success) "✅ File sent" else "❌ ${res.detail}"
+    }
+
+    private suspend fun slackAddReaction(args: Map<String, Any>): String {
+        val channel = args["channel"]?.toString() ?: return "Error: channel required"
+        val messageId = args["message_id"]?.toString()?.toLongOrNull() ?: return "Error: message_id required"
+        val reaction = args["reaction"]?.toString() ?: return "Error: reaction name required"
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val res = channelManager.reactToMessage(forgeChannelId, channel, messageId, reaction)
+        return if (res.success) "✅ Reaction added" else "❌ ${res.detail}"
+    }
+
+    private fun slackGetUserInfo(args: Map<String, Any>): String {
+        val userId = args["user_id"]?.toString() ?: return "Error: user_id required"
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.SlackChannel
+            ?: return "Error: channel is not a Slack channel"
+        // Reuse the internal resolver via reflection isn't ideal — expose a public method
+        return "user_id=$userId (use slack_get_history to see messages from this user)"
+    }
+
+    private fun slackListChannels(args: Map<String, Any>): String {
+        val limit = args["limit"]?.toString()?.toIntOrNull() ?: 100
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.SlackChannel
+            ?: return "Error: channel is not a Slack channel"
+        return ch.listChannels(limit)
+    }
+
+    private fun slackGetHistory(args: Map<String, Any>): String {
+        val channel = args["channel"]?.toString() ?: return "Error: channel required"
+        val limit = args["limit"]?.toString()?.toIntOrNull() ?: 20
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.SlackChannel
+            ?: return "Error: channel is not a Slack channel"
+        return ch.getHistory(channel, limit)
+    }
+
+    private fun slackDeleteMessage(args: Map<String, Any>): String {
+        val channel = args["channel"]?.toString() ?: return "Error: channel required"
+        val ts = args["ts"]?.toString() ?: return "Error: ts (message timestamp) required"
+        val forgeChannelId = resolveChannelId(args, "slack") ?: return "Error: no Slack channel configured"
+        val ch = channelManager.channels[forgeChannelId] as? com.forge.os.domain.channels.SlackChannel
+            ?: return "Error: channel is not a Slack channel"
+        val res = ch.deleteMessage(channel, ts)
+        return if (res.success) "✅ Message deleted" else "❌ ${res.detail}"
+    }
+
+    // ─── WhatsApp tool implementations ───────────────────────────────────────
+
+    private fun channelAddWhatsApp(args: Map<String, Any>): String {
+        val name = args["name"]?.toString() ?: "WhatsApp"
+        val accessToken = args["access_token"]?.toString() ?: return "Error: access_token required"
+        val phoneNumberId = args["phone_number_id"]?.toString() ?: return "Error: phone_number_id required"
+        val verifyToken = args["verify_token"]?.toString() ?: "forge_wa"
+        val learn = args["learn_from_conversations"]?.toString()?.toBooleanStrictOrNull() ?: false
+        val cfg = channelManager.createWhatsApp(name, accessToken, phoneNumberId, verifyToken, learnFromConversations = learn)
+        return "✅ Added WhatsApp channel '${cfg.displayName}' (id=${cfg.id})\n" +
+            "Configure your Meta webhook URL to: http://<device-ip>:<port>/webhook/whatsapp\n" +
+            "Verify token: $verifyToken" +
+            (if (learn) "\nLearning: ON — agent will learn about users from messages" else "")
+    }
+
+    private suspend fun whatsappSend(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: phone number required"
+        val text = args["text"]?.toString() ?: return "Error: text required"
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val res = channelManager.send(channelId, to, text)
+        return if (res.success) "✅ Sent to $to" else "❌ ${res.detail}"
+    }
+
+    private suspend fun whatsappSendMedia(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: phone number required"
+        val path = args["path"]?.toString() ?: return "Error: path required"
+        val caption = args["caption"]?.toString()
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val res = channelManager.sendFile(channelId, to, path, caption)
+        return if (res.success) "✅ Media sent to $to" else "❌ ${res.detail}"
+    }
+
+    private fun whatsappSendLocation(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: phone number required"
+        val lat = args["latitude"]?.toString()?.toDoubleOrNull() ?: return "Error: latitude required"
+        val lon = args["longitude"]?.toString()?.toDoubleOrNull() ?: return "Error: longitude required"
+        val name = args["name"]?.toString() ?: ""
+        val address = args["address"]?.toString() ?: ""
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val ch = channelManager.channels[channelId] as? com.forge.os.domain.channels.WhatsAppChannel
+            ?: return "Error: channel is not a WhatsApp channel"
+        val res = ch.sendLocation(to, lat, lon, name, address)
+        return if (res.success) "✅ Location sent" else "❌ ${res.detail}"
+    }
+
+    private fun whatsappSendContact(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: phone number required"
+        val name = args["name"]?.toString() ?: return "Error: contact name required"
+        val phone = args["phone"]?.toString() ?: return "Error: contact phone required"
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val ch = channelManager.channels[channelId] as? com.forge.os.domain.channels.WhatsAppChannel
+            ?: return "Error: channel is not a WhatsApp channel"
+        val res = ch.sendContact(to, name, phone)
+        return if (res.success) "✅ Contact sent" else "❌ ${res.detail}"
+    }
+
+    private fun whatsappSendInteractive(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: phone number required"
+        val body = args["body"]?.toString() ?: return "Error: body text required"
+        val buttonsRaw = args["buttons"]?.toString() ?: return "Error: buttons required (format: id1:title1,id2:title2)"
+        val buttons = buttonsRaw.split(",").mapNotNull { entry ->
+            val parts = entry.trim().split(":", limit = 2)
+            if (parts.size == 2) parts[0].trim() to parts[1].trim() else null
+        }
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val ch = channelManager.channels[channelId] as? com.forge.os.domain.channels.WhatsAppChannel
+            ?: return "Error: channel is not a WhatsApp channel"
+        val res = ch.sendInteractive(to, body, buttons)
+        return if (res.success) "✅ Interactive message sent" else "❌ ${res.detail}"
+    }
+
+    private fun whatsappSendTemplate(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: phone number required"
+        val templateName = args["template_name"]?.toString() ?: return "Error: template_name required"
+        val languageCode = args["language_code"]?.toString() ?: "en_US"
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val ch = channelManager.channels[channelId] as? com.forge.os.domain.channels.WhatsAppChannel
+            ?: return "Error: channel is not a WhatsApp channel"
+        val res = ch.sendTemplate(to, templateName, languageCode)
+        return if (res.success) "✅ Template sent" else "❌ ${res.detail}"
+    }
+
+    private suspend fun whatsappReact(args: Map<String, Any>): String {
+        val to = args["to"]?.toString() ?: return "Error: phone number required"
+        val messageId = args["message_id"]?.toString()?.toLongOrNull() ?: return "Error: message_id required"
+        val emoji = args["emoji"]?.toString() ?: return "Error: emoji required"
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val res = channelManager.reactToMessage(channelId, to, messageId, emoji)
+        return if (res.success) "✅ Reaction sent" else "❌ ${res.detail}"
+    }
+
+    private fun whatsappGetProfile(args: Map<String, Any>): String {
+        val channelId = resolveChannelId(args, "whatsapp") ?: return "Error: no WhatsApp channel configured"
+        val ch = channelManager.channels[channelId] as? com.forge.os.domain.channels.WhatsAppChannel
+            ?: return "Error: channel is not a WhatsApp channel"
+        return ch.getProfile()
+    }
+
+    // ─── Channel Learning tool implementations ────────────────────────────────
+
+    private fun channelUserProfile(args: Map<String, Any>): String {
+        val senderId = args["sender_id"]?.toString()
+            ?: return "Error: sender_id required (the chat_id / user_id / phone number of the person)"
+        val platform = args["platform"]?.toString()
+            ?: channelManager.list().firstOrNull { it.enabled }?.type
+            ?: return "Error: platform required (telegram, discord, slack, whatsapp)"
+        val summary = learningEngine.buildProfileSummary(senderId, platform)
+            ?: return "No profile learned yet for $senderId on $platform. " +
+                "Enable 'Learn About User' on the channel and exchange a few messages."
+        return summary
+    }
+
+    private fun channelForgetUser(args: Map<String, Any>): String {
+        val senderId = args["sender_id"]?.toString()
+            ?: return "Error: sender_id required"
+        val platform = args["platform"]?.toString()
+            ?: return "Error: platform required"
+        val keyPrefix = "user_profile:${platform}:${senderId}"
+        val factKeys = listOf("name", "location", "role", "topics", "style", "active_time") +
+            (0..4).map { "pref_$it" }
+        var deleted = 0
+        factKeys.forEach { fact ->
+            if (memoryManager.forgetFact("$keyPrefix:$fact")) deleted++
+        }
+        return if (deleted > 0) "✅ Cleared $deleted profile facts for $senderId on $platform"
+        else "No profile found for $senderId on $platform"
+    }
+
+    /** Resolve a channel id by type. Checks explicit channel_id arg first,
+     *  then channel display name, then falls back to the first enabled channel
+     *  of the given type. */
+    private fun resolveChannelId(args: Map<String, Any>, type: String): String? {
+        val explicit = args["channel_id"]?.toString()?.takeIf { it.isNotBlank() }
+        if (explicit != null) return explicit
+        val byName = args["channel"]?.toString()?.takeIf { it.isNotBlank() }
+        if (byName != null) {
+            return channelManager.list().firstOrNull {
+                it.type == type && it.displayName.equals(byName, ignoreCase = true)
+            }?.id
+        }
+        return channelManager.list().firstOrNull { it.type == type && it.enabled }?.id
+    }
     //
     // These tools surface "the chat the agent is currently talking to" and
     // make the per-channel allow-list (ChannelConfig.allowedChatIds) writable
@@ -2581,7 +3451,6 @@ To use Composio:
         val port = runCatching { server.port() }.getOrDefault(8789)
         val toolCount = runCatching { getDefinitions().size }.getOrDefault(0)
         val channels = runCatching { channelManager.list() }.getOrDefault(emptyList())
-        val tgCount = channels.count { it.type == "telegram" }
         return buildString {
             appendLine("# Forge OS — agentic on-device LLM operating system")
             appendLine()
@@ -2600,8 +3469,13 @@ To use Composio:
             appendLine("  on-screen tab.")
             appendLine("- Git over HTTPS (`git_init`, `git_clone`, `git_commit`, `git_push`, …).")
             appendLine("- File / browser downloads (`file_download`, `browser_download`).")
-            appendLine("- Multi-channel messaging (Telegram today; see the `telegram_*` and")
-            appendLine("  `channel_*` tools).")
+            appendLine("- Multi-channel messaging: Telegram, Discord, Slack, WhatsApp.")
+            appendLine("  Add channels via `channel_add_telegram/discord/slack/whatsapp`.")
+            appendLine("  Send via `channel_send` (generic) or platform-specific tools")
+            appendLine("  (`telegram_*`, `discord_*`, `slack_*`, `whatsapp_*`).")
+            appendLine("  When auto-reply is on, inbound messages trigger a full agent run")
+            appendLine("  automatically — you don't need to call channel_send for the reply.")
+            appendLine("  Use `channel_list` to see configured channels and their ids.")
             appendLine("- Plugin host (`plugin_*`) and MCP client (tools prefixed `mcp.`).")
             appendLine("- Sub-agent delegation, notifications, screen-shotting, project hosting.")
             appendLine()
@@ -2627,19 +3501,102 @@ To use Composio:
             appendLine()
             appendLine("## Channels currently configured")
             if (channels.isEmpty()) {
-                appendLine("- (none yet — use `channel_add_telegram` to wire a bot)")
+                appendLine("- (none yet — use `channel_add_telegram`, `channel_add_discord`,")
+                appendLine("  `channel_add_slack`, or `channel_add_whatsapp` to wire a bot)")
+                appendLine()
+                appendLine("### How to add each platform")
+                appendLine("**Telegram**: `channel_add_telegram` — needs `bot_token` from @BotFather.")
+                appendLine("**Discord**:  `channel_add_discord`  — needs `bot_token` from discord.com/developers.")
+                appendLine("             Enable intents: Message Content, Server Members, Guilds, DMs.")
+                appendLine("             Invite bot to server with Send Messages + Read History + Manage Roles.")
+                appendLine("**Slack**:    `channel_add_slack`    — needs `bot_token` (xoxb-) AND `app_token` (xapp-).")
+                appendLine("             Enable Socket Mode. Scopes: chat:write, files:write, reactions:write,")
+                appendLine("             users:read, channels:read, channels:history.")
+                appendLine("**WhatsApp**: `channel_add_whatsapp` — needs `access_token` + `phone_number_id`")
+                appendLine("             from Meta Developer Console. After adding, configure the webhook URL")
+                appendLine("             shown in the response at developers.facebook.com → Webhooks.")
             } else {
                 channels.forEach { c ->
-                    appendLine("- [${c.id}] ${c.displayName} (${c.type}) " +
-                        if (c.enabled) "enabled" else "disabled")
+                    appendLine("- [${c.id}] ${c.displayName} (${c.type}) ${if (c.enabled) "✓ enabled" else "✗ disabled"} autoReply=${c.autoReply}${if (c.learnFromConversations) " learning=ON" else ""}")
                 }
-                if (tgCount > 0) {
+                appendLine()
+                appendLine("### Channel tool quick-reference")
+                appendLine("- `channel_list`   — list all channels with ids")
+                appendLine("- `channel_send`   — send text to any channel (uses channel display name or id)")
+                appendLine("- `channel_toggle` — enable/disable a channel")
+                appendLine()
+                val tgChannels = channels.filter { it.type == "telegram" }
+                val dcChannels = channels.filter { it.type == "discord" }
+                val slChannels = channels.filter { it.type == "slack" }
+                val waChannels = channels.filter { it.type == "whatsapp" }
+                if (tgChannels.isNotEmpty()) {
+                    appendLine("### Telegram (${tgChannels.size} channel${if (tgChannels.size > 1) "s" else ""})")
+                    appendLine("- `telegram_main_chat`         — get the chat id of whoever is talking to you right now")
+                    appendLine("- `telegram_list_chats`        — list recent senders (chat ids + names)")
+                    appendLine("- `telegram_get_history`       — last N messages for a chat (use before replying for context)")
+                    appendLine("- `telegram_send_voice`        — send OGG/Opus voice note")
+                    appendLine("- `telegram_send_file`         — send photo/video/document")
+                    appendLine("- `telegram_reply`             — quote-reply to a specific message_id")
+                    appendLine("- `telegram_react`             — add emoji reaction to a message")
+                    appendLine("- `telegram_send_to_bot`       — send to another bot (@username)")
+                    appendLine("- `telegram_send_poll`         — create a poll (regular or quiz)")
+                    appendLine("- `telegram_allow_chat`/`telegram_deny_chat` — manage the allow-list")
+                    appendLine("- `channel_add_telegram`       — register a new Telegram bot")
+                    appendLine("  IMPORTANT: When auto-reply fires, your final response text is sent")
+                    appendLine("  automatically. Only call `channel_send` for unsolicited/extra messages.")
+                    appendLine("  Use `telegram_main_chat` to get the current chat id if you don't have it.")
+                }
+                if (dcChannels.isNotEmpty()) {
                     appendLine()
-                    appendLine("Telegram quick-ref: `telegram_main_chat` returns the chat id")
-                    appendLine("of the conversation that called you, `telegram_list_chats`")
-                    appendLine("enumerates recent senders, `telegram_allow_chat` /")
-                    appendLine("`telegram_deny_chat` manage the per-channel allow-list, and")
-                    appendLine("`telegram_send_voice` posts an OGG/Opus voice note.")
+                    appendLine("### Discord (${dcChannels.size} channel${if (dcChannels.size > 1) "s" else ""})")
+                    appendLine("- `discord_send`          — send text to a Discord channel id")
+                    appendLine("- `discord_send_embed`    — send a rich embed card (title + description + color)")
+                    appendLine("- `discord_send_file`     — upload photo/video/document")
+                    appendLine("- `discord_add_reaction`  — add emoji reaction to a message snowflake id")
+                    appendLine("- `discord_create_thread` — create a thread from a message")
+                    appendLine("- `discord_manage_roles`  — add/remove a role from a guild member")
+                    appendLine("- `discord_list_members`  — list guild members (up to 100)")
+                    appendLine("- `discord_list_channels` — list all channels in a guild")
+                    appendLine("- `discord_pin_message`   — pin a message")
+                    appendLine("- `discord_delete_message`— delete a message")
+                    appendLine("- `channel_add_discord`   — register a new Discord bot")
+                    appendLine("  NOTE: `to` param is always the Discord channel snowflake id (18-digit number).")
+                    appendLine("  Use `discord_list_channels` with guild_id to find channel ids.")
+                    appendLine("  Streaming works via message edits — enabled by default.")
+                }
+                if (slChannels.isNotEmpty()) {
+                    appendLine()
+                    appendLine("### Slack (${slChannels.size} channel${if (slChannels.size > 1) "s" else ""})")
+                    appendLine("- `slack_send`             — post to a Slack channel id (C...) or DM (D...)")
+                    appendLine("- `slack_send_ephemeral`   — send a message only one user can see")
+                    appendLine("- `slack_reply_thread`     — reply in a thread (needs channel + thread_ts)")
+                    appendLine("- `slack_send_file`        — upload a file to a channel")
+                    appendLine("- `slack_add_reaction`     — add emoji reaction (name without colons, e.g. thumbsup)")
+                    appendLine("- `slack_list_channels`    — list channels the bot is in")
+                    appendLine("- `slack_get_history`      — get recent messages from a channel")
+                    appendLine("- `slack_delete_message`   — delete a message by ts")
+                    appendLine("- `channel_add_slack`      — register a new Slack bot (needs bot + app token)")
+                    appendLine("  NOTE: `to` param is the Slack channel id (C...) or user id (U...).")
+                    appendLine("  Use `slack_list_channels` to find channel ids.")
+                    appendLine("  Thread replies: use `slack_reply_thread` with the parent message's `thread_ts`.")
+                    appendLine("  Streaming works via chat.update — enabled by default.")
+                }
+                if (waChannels.isNotEmpty()) {
+                    appendLine()
+                    appendLine("### WhatsApp (${waChannels.size} channel${if (waChannels.size > 1) "s" else ""})")
+                    appendLine("- `whatsapp_send`             — send text message")
+                    appendLine("- `whatsapp_send_media`       — send image/video/audio/document")
+                    appendLine("- `whatsapp_send_location`    — send a location pin (lat/lon)")
+                    appendLine("- `whatsapp_send_contact`     — send a contact card")
+                    appendLine("- `whatsapp_send_interactive` — send message with up to 3 reply buttons")
+                    appendLine("- `whatsapp_send_template`    — send a pre-approved template message")
+                    appendLine("- `whatsapp_react`            — react to a message with an emoji")
+                    appendLine("- `whatsapp_get_profile`      — get the WhatsApp Business profile")
+                    appendLine("- `channel_add_whatsapp`      — register a new WhatsApp channel")
+                    appendLine("  NOTE: `to` param is always the recipient's phone number in E.164 format")
+                    appendLine("  (e.g. 15551234567 — country code + number, no + or spaces).")
+                    appendLine("  WhatsApp does NOT support streaming — replies are sent as a single message.")
+                    appendLine("  Inbound messages arrive via webhook — ForgeHttpServer must be reachable.")
                 }
             }
             appendLine()
@@ -2668,6 +3625,40 @@ To use Composio:
      *    wrapping single-key salvage; otherwise an empty map is returned and
      *    the failure is logged so the user can see WHY parsing failed.
      */
+    /**
+     * Parse the JSON string returned by python_runner.py and format it for the user.
+     */
+    private fun formatPythonResult(json: String): String {
+        return try {
+            val element = Json.parseToJsonElement(json).jsonObject
+            val success = element["success"]?.jsonPrimitive?.booleanOrNull ?: false
+            val output = element["output"]?.jsonPrimitive?.contentOrNull ?: ""
+            val error = element["error"]?.jsonPrimitive?.contentOrNull ?: ""
+            val truncated = element["truncated"]?.jsonPrimitive?.booleanOrNull ?: false
+
+            if (!success && output.isBlank() && error.isBlank()) {
+                return "❌ Python execution failed with no output."
+            }
+
+            buildString {
+                if (output.isNotBlank()) {
+                    appendLine(output)
+                    if (truncated) appendLine("\n[... Output truncated due to length ...]")
+                }
+                if (error.isNotBlank()) {
+                    if (output.isNotBlank()) appendLine("\n" + "─".repeat(20) + "\n")
+                    appendLine("⚠️ STDERR:")
+                    appendLine(error)
+                }
+                if (output.isBlank() && error.isBlank()) {
+                    appendLine("(Command completed with no output)")
+                }
+            }.trim()
+        } catch (e: Exception) {
+            "❌ Failed to parse result: ${e.message}\nRaw: $json"
+        }
+    }
+
     private fun parseArgs(json: String): Map<String, Any> {
         if (json.isBlank()) return emptyMap()
         val root: JsonObject = try {
@@ -2831,8 +3822,16 @@ To use Composio:
             )
         )
         return res.fold(
-            onSuccess = { f -> "✓ saved ${f.length()} bytes -> workspace/${rel}" },
-            onFailure = { e -> "❌ ${e.message}" },
+            onSuccess = { f -> 
+                ToolResult(
+                    toolCallId = "", 
+                    toolName = "web_screenshot", 
+                    output = "✓ saved ${f.length()} bytes -> workspace/${rel}",
+                    attachmentPath = rel,
+                    attachmentMime = "image/png"
+                ) 
+            },
+            onFailure = { e -> ToolResult("", "web_screenshot", "❌ ${e.message}", isError = true) },
         )
     }
 
@@ -2929,6 +3928,13 @@ To use Composio:
             params("key" to "string:Unique key", "content" to "string:Content to remember",
                    "tags" to "string:Comma-separated tags"),
             required = listOf("key", "content")),
+        tool("memory_update", "Update an existing fact in long-term memory",
+            params("key" to "string:Existing key", "content" to "string:New content",
+                   "tags" to "string:Optional new tags"),
+            required = listOf("key", "content")),
+        tool("memory_delete", "Forget a fact from long-term memory",
+            params("key" to "string:Key to delete"),
+            required = listOf("key")),
         tool("memory_recall", "Semantic search across all memory tiers",
             params("query" to "string:Natural language search query"), required = listOf("query")),
         tool("semantic_recall_facts", "Vector search across long-term facts",
@@ -2942,6 +3948,8 @@ To use Composio:
             params("name" to "string:Skill name"), required = listOf("name")),
         tool("memory_list_skills", "List all stored skills and their descriptions", emptyMap()),
         tool("memory_summary", "Get a summary of all memory tiers", params()),
+        tool("memory_list", "List all memory nodes (facts, skills, daily log) for memory transparency",
+            params("days" to "string:Recent days for log entries (default 7)")),
         tool("memory_store_image",
             "Tag a workspace image and index it in semantic memory so it can be " +
             "recalled by description later. Pass a workspace-relative `path` and " +
@@ -2967,8 +3975,19 @@ To use Composio:
                    "payload" to "string:Python code, shell command, or natural-language prompt",
                    "task_type" to "string:PYTHON | SHELL | PROMPT (default PROMPT)",
                    "model" to "string:Optional model override (e.g. 'gpt-4o', 'claude-3-5-sonnet')",
+                   "report_to" to "string:Optional routing for job output ('main' for current chat, or channel name e.g. 'Telegram')",
                    "tags" to "string:Optional comma-separated tags"),
             required = listOf("name", "schedule", "payload")),
+        tool("cron_update", "Modify an existing cron job",
+            params("id" to "string:Existing job id",
+                   "name" to "string:New label",
+                   "schedule" to "string:New schedule expression",
+                   "payload" to "string:New payload",
+                   "task_type" to "string:PYTHON | SHELL | PROMPT",
+                   "model" to "string:Optional model override",
+                   "report_to" to "string:Optional destination",
+                   "tags" to "string:Optional tags"),
+            required = listOf("id")),
         tool("cron_list", "List all scheduled cron jobs", params()),
         tool("cron_remove", "Remove a scheduled cron job by id", params("id" to "string:Job id")),
         tool("cron_run_now", "Execute a cron job immediately", params("id" to "string:Job id")),
@@ -3117,6 +4136,15 @@ To use Composio:
         // persists across calls. Cookies are shared with the on-screen Browser
         // tab via Android's global cookie jar, so logging into a site once on
         // the visible tab automatically gives the agent the same session.
+        tool("browser_execute_macro",
+            "Execute a previously recorded macro (a sequence of browser interactions) " +
+            "by passing the macro's EXACT name. WHEN TO USE: if a repetitive browser " +
+            "task has been mapped to a macro by the user or by you, this tool will " +
+            "replay those interactions automatically. Optionally pass 'variables' " +
+            "to dynamically replace {{variableName}} placeholders inside the macro.",
+            params("name" to "string:The exact name of the registered macro",
+                   "variables" to "string:Optional JSON object mapping variable names to replacement values"),
+            required = listOf("name")),
         tool("browser_navigate",
             "Load a URL in the agent's persistent off-screen browser and wait " +
             "for the page to finish loading. WHEN TO USE: any time you need to " +
@@ -3203,6 +4231,14 @@ To use Composio:
             "List up to [limit] anchor links on the current page as " +
             "`href<TAB>visible-text` lines. Useful for crawling.",
             params("limit" to "string:Optional cap (default 100)")),
+        tool("browser_snapshot",
+            "Take a screenshot of the CURRENT headless browser state (no navigation). " +
+            "Returns a vision-ready snapshot path and a text summary of the active page.",
+            params("out_path" to "string:Optional workspace path for PNG")),
+        tool("env_get",
+            "Retrieve a system environment variable (e.g. 'OPENAI_API_KEY') by its key name.",
+            params("key" to "string:Variable name (case-insensitive)"),
+            required = listOf("key")),
         tool("browser_click_at",
             "Click at specific (x, y) screen coordinates in CSS pixels. " +
             "Use when CSS selectors are missing or unreliable.",
@@ -3264,6 +4300,7 @@ To use Composio:
                    "action" to "string:NOTIFY | RUN_TOOL | RUN_PYTHON | PROMPT_AGENT (default NOTIFY)",
                    "payload" to "string:For RUN_TOOL use 'tool_name|{json_args}'; for RUN_PYTHON, code; for PROMPT_AGENT, prompt",
                    "model" to "string:Optional model override (e.g. 'gpt-4o', 'claude-3-opus')",
+                   "report_to" to "string:Optional routing for action output ('main', or channel name)",
                    "repeat_ms" to "string:Optional repeat interval in ms"),
             required = listOf("label")),
         tool("alarm_list", "List all scheduled alarms.", params()),
@@ -3300,19 +4337,20 @@ To use Composio:
         tool("doctor_fix", "Attempt an automated fix for a specific check id.",
             params("id" to "string:Check id from doctor_check"), required = listOf("id")),
         // ─── NEW: Channels ───────────────────────────────────────────────────
-        tool("channel_list", "List configured messaging channels.", params()),
+        tool("channel_list", "List all configured messaging channels with their ids, types, and status. Call this first when you need to find a channel id.", params()),
         tool("channel_send",
-            "Send an outbound text message through a channel (Telegram). " +
-            "Telegram messages are sent in the channel's configured parse_mode " +
-            "(HTML by default — Markdown in `text` is auto-converted). NOTE: when " +
-            "the agent is replying to an inbound chat message you do NOT need to " +
-            "call this — the auto-reply pipeline sends your final assistant text " +
-            "back to the chat for you. Only call channel_send to push an unsolicited " +
-            "message to a different chat (e.g. a notification).",
-            params("channel" to "string:Channel display name (case-insensitive)",
-                   "channel_id" to "string:Channel id (alternative to channel)",
-                   "to" to "string:Recipient id (chat_id for Telegram)",
-                   "text" to "string:Message body (Markdown is OK in HTML mode)"),
+            "Send an outbound text message through any channel (Telegram, Discord, Slack, WhatsApp). " +
+            "Text is formatted using the channel's configured parse_mode. " +
+            "WHEN TO USE: push an unsolicited message or notification to a chat. " +
+            "WHEN NOT TO USE: when auto-reply is active and you are already responding " +
+            "to an inbound message — your final assistant text is sent automatically, " +
+            "calling this would cause a duplicate. " +
+            "For platform-specific features (embeds, threads, buttons, voice) use the " +
+            "platform-specific tools (discord_*, slack_*, telegram_*, whatsapp_*) instead.",
+            params("channel" to "string:Channel display name (case-insensitive) — use channel_list to find it",
+                   "channel_id" to "string:Channel id (alternative to channel name)",
+                   "to" to "string:Recipient id — chat_id for Telegram, channel snowflake for Discord, channel id (C...) for Slack, E.164 phone number for WhatsApp",
+                   "text" to "string:Message body"),
             required = listOf("to", "text")),
         tool("telegram_send_voice",
             "Send an OGG/Opus voice note through a Telegram channel. `path` is " +
@@ -3417,11 +4455,307 @@ To use Composio:
             "API?', or whenever you need to remind yourself of the environment.",
             params(),
             required = emptyList()),
-        tool("channel_add_telegram", "Register a new Telegram bot channel.",
+        tool("channel_add_telegram", "Register a new Telegram bot channel. Get the bot_token from @BotFather on Telegram (/newbot). Auto-reply starts immediately after adding.",
             params("name" to "string:Display name",
                    "bot_token" to "string:Telegram bot token from @BotFather",
-                   "default_chat_id" to "string:Optional default chat id"),
+                   "default_chat_id" to "string:Optional default chat id",
+                   "scoped_memory" to "boolean:If true, this channel gets its own private memory vault isolated from the main agent memory",
+                   "learn_from_conversations" to "boolean:If true, agent passively learns about the user from every message (name, interests, preferences, style). Best for personal channels."),
             required = listOf("bot_token")),
+        tool("telegram_send_to_bot",
+            "Send a private message to another bot. Use its @username as the `to` " +
+            "parameter. Requires 'Bot-to-Bot Communication Mode' to be enabled " +
+            "on both sides via @BotFather.",
+            params("channel" to "string:Channel display name (optional)",
+                   "channel_id" to "string:Channel id (optional)",
+                   "to" to "string:The other bot's @username",
+                   "text" to "string:Message body (Markdown OK)"),
+            required = listOf("to", "text")),
+        tool("telegram_send_poll",
+            "Create and send a rich poll. Supports media attachments, membership " +
+            "checks, and geographic restrictions.",
+            params("channel" to "string:Channel display name (optional)",
+                   "channel_id" to "string:Channel id (optional)",
+                   "to" to "string:Recipient chat id",
+                   "question" to "string:Poll question text",
+                   "options" to "string:Comma-separated poll options (min 2, max 10)",
+                   "type" to "string:regular | quiz (default regular)",
+                   "is_anonymous" to "boolean:True for anonymous poll (default true)",
+                   "allows_multiple_answers" to "boolean:If true, users can pick multiple options (default false)",
+                   "media_path" to "string:Optional workspace-relative path to a photo/sticker for the poll",
+                   "must_join_channel_id" to "string:Optional Telegram channel username/ID users must join to participate",
+                   "country_codes" to "string:Optional comma-separated ISO country codes to restrict participation"),
+            required = listOf("to", "question", "options")),
+
+        // ─── Discord ──────────────────────────────────────────────────────────
+        tool("channel_add_discord",
+            "Register a new Discord bot channel. " +
+            "Get the bot_token from discord.com/developers/applications → Bot → Reset Token. " +
+            "Enable Privileged Gateway Intents: Message Content, Server Members. " +
+            "Invite the bot to your server with: Send Messages, Read Message History, Add Reactions, Manage Roles permissions. " +
+            "After adding, the bot connects via Gateway WebSocket and starts receiving messages.",
+            params("name" to "string:Display name",
+                   "bot_token" to "string:Discord bot token from the Developer Portal",
+                   "guild_id" to "string:Optional server/guild ID to restrict to one server",
+                   "learn_from_conversations" to "boolean:If true, agent learns about users from messages"),
+            required = listOf("bot_token")),
+        tool("discord_send",
+            "Send a text message to a Discord channel. `to` is the Discord channel id.",
+            params("channel_id" to "string:Forge channel id (optional, auto-detected)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Discord channel id to send to",
+                   "text" to "string:Message body (Discord markdown supported)"),
+            required = listOf("to", "text")),
+        tool("discord_send_embed",
+            "Send a rich embed card to a Discord channel.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Discord channel id",
+                   "title" to "string:Embed title",
+                   "description" to "string:Embed body text (up to 4000 chars)"),
+            required = listOf("to", "description")),
+        tool("discord_send_file",
+            "Upload and send a file, photo, or video to a Discord channel.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Discord channel id",
+                   "path" to "string:Workspace-relative or absolute file path",
+                   "caption" to "string:Optional message text alongside the file"),
+            required = listOf("to", "path")),
+        tool("discord_add_reaction",
+            "Add an emoji reaction to a Discord message.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Discord channel id containing the message",
+                   "message_id" to "string:Discord message id (snowflake)",
+                   "reaction" to "string:Unicode emoji or custom emoji in format name:id"),
+            required = listOf("to", "message_id", "reaction")),
+        tool("discord_create_thread",
+            "Create a thread from an existing Discord message.",
+            params("forge_channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "discord_channel_id" to "string:Discord channel id containing the message",
+                   "message_id" to "string:Discord message id to thread from",
+                   "name" to "string:Thread name (max 100 chars)"),
+            required = listOf("discord_channel_id", "message_id", "name")),
+        tool("discord_manage_roles",
+            "Add or remove a role from a guild member.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "guild_id" to "string:Discord server/guild id",
+                   "user_id" to "string:Discord user id",
+                   "role_id" to "string:Discord role id",
+                   "add" to "boolean:true to add, false to remove (default true)"),
+            required = listOf("guild_id", "user_id", "role_id")),
+        tool("discord_list_members",
+            "List members of a Discord guild (up to 100).",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "guild_id" to "string:Discord server/guild id",
+                   "limit" to "string:Max members to return (default 100)"),
+            required = listOf("guild_id")),
+        tool("discord_list_channels",
+            "List all channels in a Discord guild.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "guild_id" to "string:Discord server/guild id"),
+            required = listOf("guild_id")),
+        tool("discord_pin_message",
+            "Pin a message in a Discord channel.",
+            params("forge_channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "discord_channel_id" to "string:Discord channel id",
+                   "message_id" to "string:Discord message id to pin"),
+            required = listOf("discord_channel_id", "message_id")),
+        tool("discord_delete_message",
+            "Delete a message from a Discord channel.",
+            params("forge_channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "discord_channel_id" to "string:Discord channel id",
+                   "message_id" to "string:Discord message id to delete"),
+            required = listOf("discord_channel_id", "message_id")),
+
+        // ─── Slack ────────────────────────────────────────────────────────────
+        tool("channel_add_slack",
+            "Register a new Slack bot channel using Socket Mode (no public URL needed). " +
+            "Setup: api.slack.com/apps → Create App → Socket Mode (enable, generate xapp- token) → " +
+            "OAuth & Permissions → add scopes: chat:write, files:write, reactions:write, users:read, channels:read, channels:history → " +
+            "Install to workspace → copy xoxb- bot token. " +
+            "Both tokens are required.",
+            params("name" to "string:Display name",
+                   "bot_token" to "string:Bot User OAuth Token (xoxb-...)",
+                   "app_token" to "string:App-Level Token for Socket Mode (xapp-...)",
+                   "learn_from_conversations" to "boolean:If true, agent learns about users from messages"),
+            required = listOf("bot_token", "app_token")),
+        tool("slack_send",
+            "Send a message to a Slack channel or DM.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Slack channel id (e.g. C01234) or user id (U01234)",
+                   "text" to "string:Message body (Slack mrkdwn supported)"),
+            required = listOf("to", "text")),
+        tool("slack_send_ephemeral",
+            "Send an ephemeral message visible only to one user in a channel.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "channel" to "string:Slack channel id",
+                   "user_id" to "string:Slack user id who will see the message",
+                   "text" to "string:Message body"),
+            required = listOf("channel", "user_id", "text")),
+        tool("slack_reply_thread",
+            "Reply to a specific message thread in Slack.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "channel" to "string:Slack channel id",
+                   "thread_ts" to "string:Timestamp of the parent message (e.g. 1234567890.123456)",
+                   "text" to "string:Reply text"),
+            required = listOf("channel", "thread_ts", "text")),
+        tool("slack_send_file",
+            "Upload and share a file in a Slack channel.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "channel" to "string:Slack channel id",
+                   "path" to "string:Workspace-relative or absolute file path",
+                   "caption" to "string:Optional initial comment"),
+            required = listOf("channel", "path")),
+        tool("slack_add_reaction",
+            "Add an emoji reaction to a Slack message.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "channel" to "string:Slack channel id",
+                   "message_id" to "string:Message id (stored as long, ts with dot stripped)",
+                   "reaction" to "string:Emoji name without colons (e.g. thumbsup)"),
+            required = listOf("channel", "message_id", "reaction")),
+        tool("slack_get_user_info",
+            "Get basic info about a Slack user by their user id.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "user_id" to "string:Slack user id (U...)"),
+            required = listOf("user_id")),
+        tool("slack_list_channels",
+            "List channels the bot is a member of.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "limit" to "string:Max channels to return (default 100)")),
+        tool("slack_get_history",
+            "Retrieve recent messages from a Slack channel.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "channel" to "string:Slack channel id",
+                   "limit" to "string:Number of messages (default 20, max 100)"),
+            required = listOf("channel")),
+        tool("slack_delete_message",
+            "Delete a message from a Slack channel.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "channel" to "string:Slack channel id",
+                   "ts" to "string:Message timestamp (e.g. 1234567890.123456)"),
+            required = listOf("channel", "ts")),
+
+        // ─── WhatsApp ─────────────────────────────────────────────────────────
+        tool("channel_add_whatsapp",
+            "Register a new WhatsApp Business channel via the official Cloud API. " +
+            "Setup: developers.facebook.com → Create App (Business) → Add WhatsApp product → " +
+            "register a phone number → verify it → copy Access Token and Phone Number ID. " +
+            "After adding, this tool returns the webhook URL — paste it into Meta Console → Webhooks " +
+            "and use the verify_token shown. Subscribe to the 'messages' webhook field. " +
+            "NOTE: WhatsApp does not support streaming; replies are sent as a single message. " +
+            "The device must be reachable from Meta's servers for inbound messages to work.",
+            params("name" to "string:Display name",
+                   "access_token" to "string:Meta access token from Developer Console",
+                   "phone_number_id" to "string:WhatsApp Business phone number ID",
+                   "verify_token" to "string:Webhook verify token (your choice, default forge_wa)",
+                   "learn_from_conversations" to "boolean:If true, agent learns about users from messages"),
+            required = listOf("access_token", "phone_number_id")),
+        tool("whatsapp_send",
+            "Send a text message via WhatsApp.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Recipient phone number in E.164 format (e.g. 15551234567)",
+                   "text" to "string:Message body"),
+            required = listOf("to", "text")),
+        tool("whatsapp_send_media",
+            "Send an image, video, audio, or document via WhatsApp.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Recipient phone number",
+                   "path" to "string:Workspace-relative or absolute file path",
+                   "caption" to "string:Optional caption (not supported for audio)"),
+            required = listOf("to", "path")),
+        tool("whatsapp_send_location",
+            "Send a location pin via WhatsApp.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Recipient phone number",
+                   "latitude" to "string:Latitude (decimal degrees)",
+                   "longitude" to "string:Longitude (decimal degrees)",
+                   "name" to "string:Optional location name",
+                   "address" to "string:Optional address text"),
+            required = listOf("to", "latitude", "longitude")),
+        tool("whatsapp_send_contact",
+            "Send a contact card via WhatsApp.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Recipient phone number",
+                   "name" to "string:Contact's full name",
+                   "phone" to "string:Contact's phone number"),
+            required = listOf("to", "name", "phone")),
+        tool("whatsapp_send_interactive",
+            "Send an interactive message with up to 3 reply buttons.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Recipient phone number",
+                   "body" to "string:Message body text",
+                   "buttons" to "string:Comma-separated id:title pairs (e.g. yes:Yes,no:No,maybe:Maybe)"),
+            required = listOf("to", "body", "buttons")),
+        tool("whatsapp_send_template",
+            "Send a pre-approved WhatsApp message template.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Recipient phone number",
+                   "template_name" to "string:Approved template name",
+                   "language_code" to "string:Language code (default en_US)"),
+            required = listOf("to", "template_name")),
+        tool("whatsapp_react",
+            "React to a WhatsApp message with an emoji.",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)",
+                   "to" to "string:Recipient phone number",
+                   "message_id" to "string:Message id to react to",
+                   "emoji" to "string:Emoji character"),
+            required = listOf("to", "message_id", "emoji")),
+        tool("whatsapp_get_profile",
+            "Get the WhatsApp Business profile (about, address, description, etc.).",
+            params("channel_id" to "string:Forge channel id (optional)",
+                   "channel" to "string:Forge channel display name (optional)")),
+
+        // ─── Channel Learning ─────────────────────────────────────────────────
+        tool("channel_user_profile",
+            "Show everything the agent has learned about a specific person from channel " +
+            "conversations — their name, location, role, topic interests, communication " +
+            "style, and stated preferences. Requires 'Learn About User' to be enabled on " +
+            "the channel. Use this before replying to give a more personalised response, " +
+            "or when the user asks 'do you know anything about me?'.",
+            params("sender_id" to "string:The person's id on the platform (chat_id for Telegram, user snowflake for Discord, user id for Slack, phone number for WhatsApp)",
+                   "platform" to "string:telegram | discord | slack | whatsapp"),
+            required = listOf("sender_id")),
+        tool("channel_forget_user",
+            "Delete all learned profile facts about a specific person. Use when the user " +
+            "asks to be forgotten or when the profile is stale/incorrect.",
+            params("sender_id" to "string:The person's platform id",
+                   "platform" to "string:telegram | discord | slack | whatsapp"),
+            required = listOf("sender_id", "platform")),
+
+        // ─── Phase R: Directives & Rules ─────────────────────────────────────
+        tool("directive_add", "Create a new mandatory behavioral rule for the agent.",
+            params("content" to "string:The rule text",
+                   "category" to "string:Behavior/Security/Formatting",
+                   "scope" to "string:Scope (global or a specific channelId)")),
+        tool("directive_list", "List all custom agent rules and their enabled status.", params()),
+        tool("directive_toggle", "Enable or disable a directive.",
+            params("id" to "string:Directive ID", "enabled" to "boolean:True or False")),
+        tool("directive_delete", "Permanently remove a directive.", params("id" to "string:Directive ID")),
+
         // ─── Phase Q: Agent Control Plane ────────────────────────────────────
         tool("control_list",
             "List every toggleable agent capability with its current ON/OFF state, " +

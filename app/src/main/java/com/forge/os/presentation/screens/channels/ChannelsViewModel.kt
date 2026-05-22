@@ -30,21 +30,69 @@ class ChannelsViewModel @Inject constructor(
             _channels.value = manager.list()
         }
     }
-
     fun addTelegram(
         displayName: String,
         botToken: String,
-        defaultChatId: String,
-        autoReply: Boolean = true,
-        parseMode: String = "HTML",
+        defaultChatId: String = "",
         allowedChatIds: String = "",
         purpose: String = "personal",
+        systemPromptSuffix: String = "",
+        scopedMemory: Boolean = false,
+        streamingEnabled: Boolean = true,
+        guestModeEnabled: Boolean = false,
+        botToBotEnabled: Boolean = false,
+        businessAutomationEnabled: Boolean = false,
+        richPollsEnabled: Boolean = true,
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             manager.createTelegram(
                 displayName, botToken, defaultChatId,
-                autoReply, parseMode, allowedChatIds, purpose,
+                allowedChatIds, purpose, systemPromptSuffix, scopedMemory,
+                streamingEnabled, guestModeEnabled, botToBotEnabled,
+                businessAutomationEnabled, richPollsEnabled
             )
+            refresh()
+        }
+    }
+
+    fun addDiscord(
+        displayName: String,
+        botToken: String,
+        guildId: String = "",
+        allowedChatIds: String = "",
+        purpose: String = "personal",
+        streamingEnabled: Boolean = true,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            manager.createDiscord(displayName, botToken, guildId, allowedChatIds, purpose, streamingEnabled = streamingEnabled)
+            refresh()
+        }
+    }
+
+    fun addSlack(
+        displayName: String,
+        botToken: String,
+        appToken: String,
+        allowedChatIds: String = "",
+        purpose: String = "personal",
+        streamingEnabled: Boolean = true,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            manager.createSlack(displayName, botToken, appToken, allowedChatIds, purpose, streamingEnabled = streamingEnabled)
+            refresh()
+        }
+    }
+
+    fun addWhatsApp(
+        displayName: String,
+        accessToken: String,
+        phoneNumberId: String,
+        verifyToken: String = "forge_wa",
+        allowedChatIds: String = "",
+        purpose: String = "personal",
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            manager.createWhatsApp(displayName, accessToken, phoneNumberId, verifyToken, allowedChatIds, purpose)
             refresh()
         }
     }
@@ -75,6 +123,41 @@ class ChannelsViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(200); refresh()
         }
+    }
+
+    fun setStreamingEnabled(cfg: ChannelConfig, enabled: Boolean) {
+        manager.updateConfig(cfg.id) { it.copy(streamingEnabled = enabled) }
+        viewModelScope.launch(Dispatchers.IO) { delayAndRefresh() }
+    }
+
+    fun setGuestModeEnabled(cfg: ChannelConfig, enabled: Boolean) {
+        manager.updateConfig(cfg.id) { it.copy(guestModeEnabled = enabled) }
+        viewModelScope.launch(Dispatchers.IO) { delayAndRefresh() }
+    }
+
+    fun setBotToBotEnabled(cfg: ChannelConfig, enabled: Boolean) {
+        manager.updateConfig(cfg.id) { it.copy(botToBotEnabled = enabled) }
+        viewModelScope.launch(Dispatchers.IO) { delayAndRefresh() }
+    }
+
+    fun setBusinessAutomationEnabled(cfg: ChannelConfig, enabled: Boolean) {
+        manager.updateConfig(cfg.id) { it.copy(businessAutomationEnabled = enabled) }
+        viewModelScope.launch(Dispatchers.IO) { delayAndRefresh() }
+    }
+
+    fun setRichPollsEnabled(cfg: ChannelConfig, enabled: Boolean) {
+        manager.updateConfig(cfg.id) { it.copy(richPollsEnabled = enabled) }
+        viewModelScope.launch(Dispatchers.IO) { delayAndRefresh() }
+    }
+
+    fun setLearningEnabled(cfg: ChannelConfig, enabled: Boolean) {
+        manager.updateConfig(cfg.id) { it.copy(learnFromConversations = enabled) }
+        viewModelScope.launch(Dispatchers.IO) { delayAndRefresh() }
+    }
+
+    private suspend fun delayAndRefresh() {
+        kotlinx.coroutines.delay(200)
+        refresh()
     }
 
     fun remove(id: String) {
