@@ -1157,7 +1157,6 @@ class ToolRegistry @Inject constructor(
                             }
                         }
                     }
-                    } else "Unknown tool: $toolName"
                 }
 
                 // ─── Phase 1: Project Management (Delegated to ProjectToolProvider) ─
