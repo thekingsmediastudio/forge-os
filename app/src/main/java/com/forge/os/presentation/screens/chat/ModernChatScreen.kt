@@ -493,15 +493,36 @@ private fun EmptyState() {
             ) {
                 QuickActionChip(
                     icon = Icons.Outlined.Code,
-                    label = "Code Review"
+                    label = "Code Review",
+                    onAction = { prompt ->
+                        inputText = prompt
+                        if (!isLoading) {
+                            viewModel.send(prompt)
+                            inputText = ""
+                        }
+                    }
                 )
                 QuickActionChip(
                     icon = Icons.Outlined.Folder,
-                    label = "Projects"
+                    label = "Projects",
+                    onAction = { prompt ->
+                        inputText = prompt
+                        if (!isLoading) {
+                            viewModel.send(prompt)
+                            inputText = ""
+                        }
+                    }
                 )
                 QuickActionChip(
                     icon = Icons.Outlined.Memory,
-                    label = "Memory"
+                    label = "Memory",
+                    onAction = { prompt ->
+                        inputText = prompt
+                        if (!isLoading) {
+                            viewModel.send(prompt)
+                            inputText = ""
+                        }
+                    }
                 )
             }
         }
@@ -511,12 +532,22 @@ private fun EmptyState() {
 @Composable
 private fun QuickActionChip(
     icon: ImageVector,
-    label: String
+    label: String,
+    onAction: (String) -> Unit
 ) {
     Surface(
         modifier = Modifier.clip(RoundedCornerShape(12.dp)),
         color = ModernSurface,
-        onClick = { /* TODO: Handle quick action */ }
+        onClick = { 
+            // Send a pre-filled prompt based on the quick action
+            val prompt = when (label) {
+                "Code Review" -> "Review the code in my current project and suggest improvements"
+                "Projects" -> "Show me my projects and their current status"
+                "Memory" -> "What do you remember about our recent conversations?"
+                else -> label
+            }
+            onAction(prompt)
+        }
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
