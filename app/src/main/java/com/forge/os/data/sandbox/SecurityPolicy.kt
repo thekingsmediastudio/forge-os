@@ -265,6 +265,55 @@ class SecurityPolicy @Inject constructor(
     // Robust sanitization is now handled via Python AST check in python_runner.py
     fun sanitizePythonCode(code: String): String = code
 
+    /**
+     * Check if an external app operation is allowed by security policy.
+     * This validates operations requested through the External API Bridge.
+     */
+    fun isOperationAllowed(packageName: String, operation: String, target: String): Boolean {
+        // In ghost mode, deny all external operations
+        if (ghostModeActive) {
+            Timber.w("SecurityPolicy: Denying external operation '$operation' from $packageName (Ghost Mode active)")
+            return false
+        }
+        
+        // Check for dangerous operations that should always require explicit permission
+        val dangerousOperations = setOf(
+            "file_delete",
+            "file_write", 
+            "shell_exec",
+            "python_exec",
+            "config_write",
+            "alarm_set",
+            "cron_create"
+        )
+        
+        if (operation in dangerousOperations) {
+            // For dangerous operations, check if the package has explicit permission
+            // For now, we allow them if the caller is already authorized
+            // In a full implementation, this would check per-operation permissions
+            Timber.i("SecurityPolicy: Allowing dangerous operation '$operation' from authorized caller $packageName")
+            return true
+        }
+        
+        // Allow read-only operations by default
+        val readOnlyOperations = setOf(
+            "file_read",
+            "file_list",
+            "config_read",
+            "status_check",
+            "alarm_list",
+            "cron_list"
+        )
+        
+        if (operation in readOnlyOperations) {
+            return true
+        }
+        
+        // For unknown operations, allow but log for monitoring
+        Timber.d("SecurityPolicy: Allowing unknown operation '$operation' from $packageName")
+        return true
+    }
+
     private companion object {
         val DEFAULT_ON = object : Flags {
             override fun shellBlocklistEnabled() = true

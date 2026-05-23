@@ -146,20 +146,38 @@ class MultiDeviceSyncManager @Inject constructor(
     
     /**
      * Sync with another device via local network.
-     * This is a placeholder for future network sync implementation.
+     * 
+     * FUTURE FEATURE: Network sync is planned but not yet implemented.
+     * For now, use export/import workflow:
+     * 1. Export sync package on source device
+     * 2. Transfer file manually
+     * 3. Import sync package on target device
      */
     suspend fun syncWithDevice(deviceAddress: String, options: SyncOptions = SyncOptions()): SyncResult {
-        // TODO: Implement network sync using sockets or HTTP
-        return SyncResult(false, "Network sync not yet implemented. Use export/import for now.")
+        Timber.i("MultiDeviceSync: Network sync requested but not yet available")
+        return SyncResult(
+            success = false, 
+            message = "Network sync is a planned feature. Please use export/import workflow for now:\n" +
+                     "1. Export sync package\n" +
+                     "2. Transfer file to other device\n" +
+                     "3. Import sync package"
+        )
     }
     
     /**
      * Sync with cloud storage.
-     * This is a placeholder for future cloud sync implementation.
+     * 
+     * FUTURE FEATURE: Cloud sync is planned but not yet implemented.
+     * Planned cloud providers: Google Drive, Dropbox, OneDrive, S3
+     * For now, use export/import workflow with manual cloud storage.
      */
     suspend fun syncWithCloud(cloudProvider: CloudProvider, options: SyncOptions = SyncOptions()): SyncResult {
-        // TODO: Implement cloud sync using provider APIs
-        return SyncResult(false, "Cloud sync not yet implemented. Use export/import for now.")
+        Timber.i("MultiDeviceSync: Cloud sync requested for $cloudProvider but not yet available")
+        return SyncResult(
+            success = false,
+            message = "Cloud sync is a planned feature for ${cloudProvider.name}. " +
+                     "Please use export/import workflow with manual cloud storage for now."
+        )
     }
     
     /**

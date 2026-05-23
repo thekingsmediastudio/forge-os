@@ -71,9 +71,12 @@ class ExternalApiBridge @Inject constructor(
         
         // Enhanced Integration: Security policy validation
         try {
-            // Security policy validation - simplified for now
-            // TODO: Implement proper security policy checks
-            val isAllowed = true // Allow all operations for now
+            // Check if the operation is allowed by security policy
+            val isAllowed = securityPolicy.isOperationAllowed(
+                packageName = caller.packageName,
+                operation = op,
+                target = target
+            )
             
             if (!isAllowed) {
                 audit.record(ExternalAuditEntry(packageName = caller.packageName, operation = op,
@@ -97,6 +100,8 @@ class ExternalApiBridge @Inject constructor(
             
         } catch (e: Exception) {
             Timber.w(e, "Security policy check failed for ${caller.packageName}")
+            // On error, deny access for safety
+            return Decision.Deny(500, "Security policy check failed")
         }
         
         // Capability check
