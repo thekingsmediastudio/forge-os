@@ -44,7 +44,7 @@ class ForgeRelay @Inject constructor(
 
     fun readConfig(): String {
         return try {
-            val config = configRepository.get()
+            val config = runBlocking { configRepository.get() }
             kotlinx.serialization.json.Json { prettyPrint = true }.encodeToString(
                 com.forge.os.domain.config.ForgeConfig.serializer(),
                 config

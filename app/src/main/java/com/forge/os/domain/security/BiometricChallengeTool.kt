@@ -25,8 +25,7 @@ class BiometricChallengeTool @Inject constructor(
 
         val reason = args["reason"] ?: "Agent is performing a high-risk operation."
         
-        // Use the special route key 'BIOMETRIC' which the UI intercepts 
-        // to show a system biometric prompt instead of a text input.
+        // Request biometric authentication through the user input broker
         val response = userInputBroker.awaitResponse(
             question = reason
         )

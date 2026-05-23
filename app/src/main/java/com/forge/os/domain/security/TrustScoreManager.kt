@@ -31,13 +31,6 @@ class TrustScoreManager @Inject constructor(
     private val _vigilanceLevel = MutableStateFlow(VigilanceLevel.NORMAL)
     val vigilanceLevel: StateFlow<VigilanceLevel> = _vigilanceLevel
 
-    enum class VigilanceLevel {
-        LOW,      // High Trust: Relaxed security
-        NORMAL,   // Moderate Trust: Standard security
-        HIGH,     // Low Trust: Strict confirmations, increased snatch sensitivity
-        PARANOID  // Zero Trust: Partial lockdown, Ghost Mode ready
-    }
-
     /** Re-calculate the global trust score based on all available environment data. */
     fun calculateCurrentTrust(): Int {
         if (!configRepository.get().environmentCalibration.trustEngineEnabled) {

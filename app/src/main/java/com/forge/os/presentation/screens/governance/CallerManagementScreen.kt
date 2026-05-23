@@ -62,8 +62,7 @@ fun CallerManagementScreen(
                     }
                 }
 
-                items(callers.size, key = { callers[it].packageName }) { index ->
-                    val caller = callers[index]
+                items(callers, key = { it.packageName }) { caller ->
                     ForgeCard(padding = PaddingValues(16.dp)) {
                         Column {
                             ForgeListRow(

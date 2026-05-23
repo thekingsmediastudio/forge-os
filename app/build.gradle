@@ -171,6 +171,9 @@ dependencies {
     
     // Biometric authentication
     implementation 'androidx.biometric:biometric:1.1.0'
+    
+    // AI / ML - Gemini AI SDK for on-device inference
+    implementation 'com.google.ai.client.generativeai:generativeai:0.1.2'
 
     // Networking
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
@@ -198,9 +201,6 @@ dependencies {
 
     // Image loading for the file viewer (Phase C)
     implementation 'io.coil-kt:coil-compose:2.5.0'
-
-    // Gemini AI SDK for on-device AI (Gemini Nano)
-    implementation 'com.google.ai.client.generativeai:generativeai:0.2.2'
 
     // Logging
     implementation 'com.jakewharton.timber:timber:5.0.1'

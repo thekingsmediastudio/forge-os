@@ -13,6 +13,8 @@ import com.forge.os.domain.agent.AgentEvent
 import com.forge.os.domain.agent.ReActAgent
 import com.forge.os.domain.cron.TaskType
 import com.forge.os.domain.security.ProviderSpec
+import com.forge.os.domain.security.VigilanceLevel
+import com.forge.os.domain.sensor.EnvironmentCalibrationEngine
 import dagger.Lazy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -115,7 +117,7 @@ class SentinelManager @Inject constructor(
                 Timber.w("Sentinel: Snatch detected! Current Trust: $currentTrust, Vigilance: $vigilance")
                 
                 // If we are in a low trust/high vigilance state, trigger GHOST MODE
-                if (currentTrust < 30 || vigilance == com.forge.os.domain.security.TrustScoreManager.VigilanceLevel.PARANOID) {
+                if (currentTrust < 30 || vigilance == VigilanceLevel.PARANOID) {
                     Timber.e("SENTINEL: TRUST COMPROMISED. TRIGGERING GHOST PROTOCOL.")
                     sandboxManager.triggerGhostMode()
                 }

@@ -1,5 +1,6 @@
 package com.forge.os.domain.security
 
+import com.forge.os.domain.config.ModelCapabilities
 import javax.inject.Inject
 import javax.inject.Singleton
 

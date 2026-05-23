@@ -1,7 +1,7 @@
 package com.forge.os.domain.memory
 
 import android.content.Context
-import com.forge.os.domain.projects.ProjectManager
+import com.forge.os.domain.projects.ProjectsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import timber.log.Timber
@@ -13,7 +13,7 @@ import javax.inject.Singleton
 class WorkspaceIndexer @Inject constructor(
     @ApplicationContext private val context: Context,
     private val workspaceIndex: WorkspaceIndex,
-    private val projectManager: ProjectManager
+    private val projectsRepository: ProjectsRepository
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var indexJob: Job? = null
@@ -37,7 +37,7 @@ class WorkspaceIndexer @Inject constructor(
 
     private suspend fun performIndexingScan() {
         Timber.i("WorkspaceIndexer: Starting full scan...")
-        val projects = projectManager.listProjects()
+        val projects = projectsRepository.list()
         
         for (project in projects) {
             val projectDir = File(workspaceRoot, project.slug)

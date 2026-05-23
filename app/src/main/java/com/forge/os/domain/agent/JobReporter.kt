@@ -45,7 +45,7 @@ class JobReporter @Inject constructor(
     }
 
     private suspend fun sendToChannel(channelName: String, toolName: String, output: String) {
-        val channels = channelManager.listChannels()
+        val channels = channelManager.list()
         val channel = channels.firstOrNull { it.displayName.equals(channelName, ignoreCase = true) }
         if (channel == null) {
             Timber.w("JobReporter: Channel '$channelName' not found for reporting $toolName")

@@ -23,6 +23,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1108,7 +1109,7 @@ class ChannelManager @Inject constructor(
                 if (cfg.streamingEnabled) {
                     val partials = kotlinx.coroutines.channels.Channel<String>(capacity = kotlinx.coroutines.channels.Channel.CONFLATED)
                     val streamingJob = scope.launch {
-                        ch.streamFormatted(chatId, kotlinx.coroutines.flow.consumeAsFlow(partials), cfg.parseMode, msg.guestQueryId, msg.businessConnectionId)
+                        ch.streamFormatted(chatId, partials.receiveAsFlow(), cfg.parseMode, msg.guestQueryId, msg.businessConnectionId)
                     }
                     
                     withContext(InputRoute(routeKey)) {

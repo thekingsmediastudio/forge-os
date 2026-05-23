@@ -113,7 +113,7 @@ fun BriefingScreen(
                     }
                 }
 
-                val neuralEvents = (state.recentAgentActions.map { "AGENT" to it.action } + 
+                val neuralEvents = (state.recentAgentActions.map { "AGENT" to it } + 
                                    state.backgroundLogs.map { "SYSTEM" to it.label })
                                    .take(10)
 

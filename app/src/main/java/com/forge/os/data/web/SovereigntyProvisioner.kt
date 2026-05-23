@@ -21,15 +21,13 @@ class SovereigntyProvisioner @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     @SuppressLint("SetJavaScriptEnabled")
-    private val masterWebView: WebView by lazy {
-        WebView(context).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.databaseEnabled = true
-            settings.loadWithOverviewMode = true
-            settings.useWideViewPort = true
-            settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 ForgeOS/Sovereign"
-        }
+    private val masterWebView: WebView = WebView(context).apply {
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.databaseEnabled = true
+        settings.loadWithOverviewMode = true
+        settings.useWideViewPort = true
+        settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 ForgeOS/Sovereign"
     }
 
     private var currentParent: ViewGroup? = null
