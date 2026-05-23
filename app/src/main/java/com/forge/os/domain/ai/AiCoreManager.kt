@@ -1,9 +1,10 @@
 package com.forge.os.domain.ai
 
 import android.content.Context
-import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.GenerateContentResponse
-import com.google.ai.client.generativeai.type.content
+// TODO: Add Gemini AI SDK dependency to build.gradle
+// import com.google.ai.client.generativeai.GenerativeModel
+// import com.google.ai.client.generativeai.type.GenerateContentResponse
+// import com.google.ai.client.generativeai.type.content
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -74,18 +75,24 @@ class AiCoreManager @Inject constructor(
      * The GenerativeModel instance for Gemini Nano.
      * Note: Documentation suggests that for on-device Nano via the AI SDK,
      * the modelName "gemini-nano" is used.
+     * TODO: Uncomment when Gemini SDK is added
      */
+    /*
     private val generativeModel by lazy {
         GenerativeModel(
             modelName = "gemini-nano",
             apiKey = "local-no-key" // Local inference typically doesn't need a key
         )
     }
+    */
 
     /**
      * Generate content using the local Gemini Nano model.
+     * TODO: Implement when Gemini SDK is added
      */
     suspend fun generateContent(prompt: String): String {
+        return "AICore not yet implemented - Gemini SDK dependency required"
+        /*
         return try {
             val response = generativeModel.generateContent(prompt)
             response.text ?: "No response from local model."
@@ -93,12 +100,16 @@ class AiCoreManager @Inject constructor(
             Timber.e(e, "AiCore generateContent failed")
             "Local Error: ${e.message}"
         }
+        */
     }
 
     /**
      * Stream content from the local model.
+     * TODO: Implement when Gemini SDK is added
      */
     fun streamContent(prompt: String): Flow<String> = flow {
+        emit("AICore streaming not yet implemented - Gemini SDK dependency required")
+        /*
         try {
             generativeModel.generateContentStream(prompt).collect { chunk ->
                 chunk.text?.let { emit(it) }
@@ -107,5 +118,6 @@ class AiCoreManager @Inject constructor(
             Timber.e(e, "AiCore streamContent failed")
             emit("Local Error: ${e.message}")
         }
+        */
     }
 }

@@ -30,6 +30,14 @@ data class MacroEvent(
     val url: String?
 )
 
+// InteractionEvent used for recording browser interactions
+data class InteractionEvent(
+    val type: String,
+    val selector: String? = null,
+    val value: String? = null,
+    val url: String? = null
+)
+
 @Singleton
 class MacroManager @Inject constructor(
     @ApplicationContext private val context: Context

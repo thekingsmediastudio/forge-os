@@ -5,9 +5,11 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
@@ -276,7 +278,7 @@ fun ForgeCard(
             .then(
                 if (onClick != null) Modifier.clickable(
                     interactionSource = interactionSource,
-                    indication = ripple(color = Colors.Accent.copy(alpha = 0.1f)),
+                    indication = rememberRipple(color = Colors.Accent.copy(alpha = 0.1f)),
                     onClick = onClick
                 ) else Modifier
             )

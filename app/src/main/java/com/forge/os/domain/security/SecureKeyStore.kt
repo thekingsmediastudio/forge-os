@@ -30,6 +30,7 @@ enum class ApiKeyProvider(
     MISTRAL    ("Mistral",       "key_mistral",    "https://api.mistral.ai/v1/",                              ProviderSchema.OPENAI,    "mistral-small-latest"),
     TOGETHER   ("Together AI",   "key_together",   "https://api.together.xyz/v1/",                            ProviderSchema.OPENAI,    "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
     CEREBRAS   ("Cerebras",      "key_cerebras",   "https://api.cerebras.ai/v1/",                             ProviderSchema.OPENAI,    "llama3.1-70b"),
+    ELEVENLABS ("ElevenLabs",    "key_elevenlabs", "https://api.elevenlabs.io/v1/",                           ProviderSchema.OPENAI,    "eleven_monolingual_v1"),
     FORGE_BRIDGE("Forge Bridge", "key_forge_bridge","http://127.0.0.1:8745/api/v1/",                           ProviderSchema.FORGE_BRIDGE, "auto");
 }
 
@@ -132,5 +133,15 @@ class SecureKeyStore @Inject constructor(
     fun clearAll() {
         ApiKeyProvider.entries.forEach { deleteKey(it) }
         Timber.w("All API keys cleared")
+    }
+
+    /**
+     * Get all stored secrets as a map of provider name to key value.
+     * Used by environment variable tools.
+     */
+    fun getAllSecrets(): Map<String, String> {
+        return ApiKeyProvider.entries.mapNotNull { provider ->
+            getKey(provider)?.let { provider.name to it }
+        }.toMap()
     }
 }

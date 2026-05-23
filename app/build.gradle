@@ -168,6 +168,9 @@ dependencies {
 
     // Security / Keystore
     implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    
+    // Biometric authentication
+    implementation 'androidx.biometric:biometric:1.1.0'
 
     // Networking
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'

@@ -349,7 +349,11 @@ class TelegramChannel(
         businessConnectionId: String?
     ): OutgoingResult {
         if (!config.streamingEnabled) {
-            return sendFormatted(to, textFlow.lastOrNull() ?: "", parseMode, guestQueryId, businessConnectionId)
+            // Collect all text from flow and use the last value
+            val allText = buildString {
+                textFlow.collect { append(it) }
+            }
+            return sendFormatted(to, allText, parseMode, guestQueryId, businessConnectionId)
         }
 
         val token = botToken()

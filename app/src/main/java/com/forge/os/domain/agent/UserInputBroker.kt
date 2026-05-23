@@ -18,6 +18,11 @@ import javax.inject.Singleton
 data class PendingQuestion(val routeKey: String, val question: String)
 
 /**
+ * Alias for PendingQuestion - used by UI components for interaction requests.
+ */
+typealias InteractionRequest = PendingQuestion
+
+/**
  * Coordinates mid-run user input requests between the agent loop (ToolRegistry)
  * and whichever surface is currently driving the agent (the in-app chat,
  * a Telegram chat, etc.).

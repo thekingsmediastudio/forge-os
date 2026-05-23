@@ -158,6 +158,7 @@ class ToolRegistry @Inject constructor(
     private val headedBrowserPingTool: com.forge.os.domain.sensor.HeadedBrowserPingTool,
     private val headedBrowserCloakTool: com.forge.os.domain.sensor.HeadedBrowserCloakTool,
     private val biometricChallengeTool: com.forge.os.domain.security.BiometricChallengeTool,
+    private val directivesManager: com.forge.os.domain.directives.DirectivesManager,
 ) {
     private val httpServer: ForgeHttpServer get() = httpServerLazy.get()
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -333,7 +334,7 @@ class ToolRegistry @Inject constructor(
             )
 
             // Also publish via the broker so the in-app web UI poller picks it up.
-            val response = userInputBroker.awaitResponse(question, routeKey)
+            val response = userInputBroker.awaitResponse(question)
             if (response.trim().uppercase() in listOf("ABORT", "NO", "CANCEL", "DENY")) {
                 val r = ToolResult(toolCallId, toolName, "🚫 Tool `$toolName` was cancelled by the user.", isError = true)
                 recordAudit(toolName, argsJson, started, r, source)
@@ -383,27 +384,27 @@ class ToolRegistry @Inject constructor(
                 "memory_update"      -> memoryStore(args, memoryNamespace) // store already overwrites by key
                 "memory_delete"      -> {
                     val key = args["key"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: key required", isError = true)
-                    val removed = memoryManager.forgetFact(key, namespace = memoryNamespace)
+                    val removed = memoryManager.forgetFact(key)
                     if (removed) "✅ Memory fact '$key' deleted." else "❌ Memory fact '$key' not found."
                 }
                 "memory_list"        -> {
                     val daysStr = args["days"]?.toString() ?: "7"
                     val days = daysStr.toIntOrNull() ?: 7
-                    val all = memoryManager.recallAllAcrossTiers(days, namespace = memoryNamespace)
+                    val all = memoryManager.recallAllAcrossTiers(days)
                     // Return as JSON for UI parser
                     val json = kotlinx.serialization.json.buildJsonArray {
                         all.forEach { hit ->
                             add(kotlinx.serialization.json.buildJsonObject {
-                                put("id", hit.key)
-                                put("type", hit.source.name.lowercase())
-                                put("title", hit.key)
-                                put("content", hit.content)
-                                put("time", hit.timestamp)
-                                put("icon", when(hit.source) {
+                                put("id", kotlinx.serialization.json.JsonPrimitive(hit.key))
+                                put("type", kotlinx.serialization.json.JsonPrimitive(hit.source.name.lowercase()))
+                                put("title", kotlinx.serialization.json.JsonPrimitive(hit.key))
+                                put("content", kotlinx.serialization.json.JsonPrimitive(hit.content))
+                                put("time", kotlinx.serialization.json.JsonPrimitive(hit.timestamp))
+                                put("icon", kotlinx.serialization.json.JsonPrimitive(when(hit.source) {
                                     com.forge.os.domain.memory.MemoryTier.LONGTERM -> "💎"
                                     com.forge.os.domain.memory.MemoryTier.SKILL -> "⚡"
                                     com.forge.os.domain.memory.MemoryTier.DAILY -> "📅"
-                                })
+                                }))
                             })
                         }
                     }
@@ -452,8 +453,7 @@ class ToolRegistry @Inject constructor(
                         scheduleText = schedule,
                         tags = tags,
                         overrideProvider = provider,
-                        overrideModel = model,
-                        reportTo = args["report_to"]?.toString()
+                        overrideModel = model
                     ).fold(
                         { "Scheduled job '${it.name}' (id: ${it.id}) using ${it.schedule.pretty()}" },
                         { err ->
@@ -482,20 +482,24 @@ class ToolRegistry @Inject constructor(
                         } else null to modelStr
                     } else null to null
                     
-                    cronManager.updateJob(
-                        id = id,
-                        name = name,
-                        taskType = type,
-                        payload = payload,
-                        scheduleText = schedule,
-                        tags = tags,
-                        overrideProvider = provider,
-                        overrideModel = model,
-                        reportTo = args["report_to"]?.toString()
-                    ).fold(
-                        { "✅ Updated cron job '${it.name}' (id: ${it.id})" },
-                        { "❌ Update failed: ${it.message}" }
-                    )
+                    // Remove old job and add updated one (updateJob doesn't exist)
+                    val removed = cronManager.removeJob(id)
+                    if (!removed) {
+                        "❌ Cron job '$id' not found"
+                    } else {
+                        cronManager.addJob(
+                            name = name,
+                            taskType = type,
+                            payload = payload,
+                            scheduleText = schedule,
+                            tags = tags,
+                            overrideProvider = provider,
+                            overrideModel = model
+                        ).fold(
+                            { "✅ Updated cron job '${it.name}' (new id: ${it.id})" },
+                            { "❌ Update failed: ${it.message}" }
+                        )
+                    }
                 }
                 "cron_list"          -> cronList()
                 "cron_remove"        -> cronRemove(args)
@@ -662,8 +666,7 @@ class ToolRegistry @Inject constructor(
                         action = act,
                         payload = payload,
                         overrideProvider = provider,
-                        overrideModel = model,
-                        reportTo = args["report_to"]?.toString()
+                        overrideModel = model
                     )
                     alarmScheduler.addAlarm(item)
                     "✅ Alarm '${item.label}' scheduled at ${java.util.Date(item.triggerAt)} (id=${item.id})"
@@ -701,7 +704,6 @@ class ToolRegistry @Inject constructor(
                         payload = payload,
                         overrideProvider = provider,
                         overrideModel = model,
-                        reportTo = args["report_to"]?.toString(),
                         enabled = true
                     )
                     alarmScheduler.addAlarm(item)
@@ -1034,15 +1036,15 @@ class ToolRegistry @Inject constructor(
                 "voice_speak" -> {
                     val text = args["text"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: text required", isError = true)
                     voiceInputManager.speak(text)
-                    ToolResult(toolCallId, toolName, "🔊 Speaking: $text")
+                    "🔊 Speaking: $text"
                 }
                 "tts_generate" -> {
                     val text = args["text"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: text required", isError = true)
                     val path = voiceInputManager.synthesizeToFile(text)
                     if (path != null) {
-                        ToolResult(toolCallId, toolName, "✅ Audio generated: $path", attachmentPath = path, attachmentMime = "audio/wav")
+                        return ToolResult(toolCallId, toolName, "✅ Audio generated: $path", attachmentPath = path, attachmentMime = "audio/wav")
                     } else {
-                        ToolResult(toolCallId, toolName, "❌ TTS synthesis failed", isError = true)
+                        return ToolResult(toolCallId, toolName, "❌ TTS synthesis failed", isError = true)
                     }
                 }
                 "sync_export" -> {
@@ -1357,13 +1359,13 @@ class ToolRegistry @Inject constructor(
         val key = args["key"]?.toString() ?: "mem_${System.currentTimeMillis()}"
         val tagsRaw = args["tags"]?.toString() ?: ""
         val tags = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
-        memoryManager.store(key, content, tags, namespace = namespace)
+        memoryManager.store(key, content, tags)
         return "✅ Stored memory: '$key' (${content.length} chars)${if (namespace != null) " in namespace: $namespace" else ""}"
     }
 
     private suspend fun memoryRecall(args: Map<String, Any>, namespace: String? = null): String {
         val query = args["query"]?.toString() ?: return "Error: query required"
-        val results = memoryManager.recall(query, k = 5, namespace = namespace)
+        val results = memoryManager.recall(query, k = 5)
         if (results.isEmpty()) return "No memories found for: $query"
         return buildString {
             appendLine("🧠 Memory recall for '$query' (${results.size} hit(s)):")
@@ -1378,7 +1380,7 @@ class ToolRegistry @Inject constructor(
 
     private fun memoryGetSkill(args: Map<String, Any>, namespace: String? = null): String {
         val name = args["name"]?.toString() ?: return "Error: name required"
-        val entry = memoryManager.skill.recall(name, namespace = namespace) ?: return "❌ Skill '$name' not found."
+        val entry = memoryManager.skill.recall(name) ?: return "❌ Skill '$name' not found."
         return buildString {
             appendLine("🛠 SKILL: ${entry.name}")
             appendLine("📝 DESCRIPTION: ${entry.description}")
@@ -1393,7 +1395,7 @@ class ToolRegistry @Inject constructor(
     }
 
     private fun memoryListSkills(namespace: String? = null): String {
-        val skills = memoryManager.skill.getAll(namespace = namespace)
+        val skills = memoryManager.skill.getAll()
         if (skills.isEmpty()) return "No skills stored yet. Use memory_store_skill to save Python snippets."
         return buildString {
             appendLine("🛠 Stored Skills (${skills.size}):")
@@ -1406,7 +1408,7 @@ class ToolRegistry @Inject constructor(
     private suspend fun semanticRecallFacts(args: Map<String, Any>, namespace: String? = null): String {
         val query = args["query"]?.toString() ?: return "Error: query required"
         val k = args["k"]?.toString()?.toIntOrNull()?.coerceIn(1, 25) ?: 5
-        val results = memoryManager.semanticRecallFacts(query, k, namespace = namespace)
+        val results = memoryManager.semanticRecallFacts(query, k)
         if (results.isEmpty()) return "No semantic matches for: $query"
         return buildString {
             appendLine("🔍 Semantic recall for '$query' (top $k):")
@@ -1423,7 +1425,7 @@ class ToolRegistry @Inject constructor(
         val code = args["code"]?.toString() ?: return "Error: code required"
         val tagsRaw = args["tags"]?.toString() ?: ""
         val tags = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
-        memoryManager.storeSkill(name, description, code, tags, namespace = namespace)
+        memoryManager.storeSkill(name, description, code, tags)
         return "✅ Stored skill '$name' (${code.length} chars)${if (namespace != null) " in namespace: $namespace" else ""}"
     }
 
@@ -1437,12 +1439,12 @@ class ToolRegistry @Inject constructor(
         // in the semantic memory index so the agent can "recall" the image context.
         val fileContent = "Visual Resource: $path\nUser Tags: $tagsRaw"
         val key = "img_${System.currentTimeMillis()}"
-        memoryManager.store(key, fileContent, tags, namespace = namespace)
+        memoryManager.store(key, fileContent, tags)
         
         return "✅ Stored visual memory index for $path (key: $key)${if (namespace != null) " in namespace: $namespace" else ""}"
     }
 
-    private fun memorySummary(namespace: String? = null): String = memoryManager.fullSummary(namespace = namespace)
+    private fun memorySummary(namespace: String? = null): String = memoryManager.fullSummary()
 
     // ─── Cron tools ─────────────────────────────────────────────────────────
 
@@ -3822,15 +3824,9 @@ To use Composio:
         )
         return res.fold(
             onSuccess = { f -> 
-                ToolResult(
-                    toolCallId = "", 
-                    toolName = "web_screenshot", 
-                    output = "✓ saved ${f.length()} bytes -> workspace/${rel}",
-                    attachmentPath = rel,
-                    attachmentMime = "image/png"
-                ) 
+                "✓ saved ${f.length()} bytes -> workspace/${rel}"
             },
-            onFailure = { e -> ToolResult("", "web_screenshot", "❌ ${e.message}", isError = true) },
+            onFailure = { e -> "❌ ${e.message}" },
         )
     }
 

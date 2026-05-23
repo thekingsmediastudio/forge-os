@@ -32,7 +32,8 @@ class HapticFeedbackManager @Inject constructor(
         SUCCESS,        // Quick double pulse
         ERROR,          // Heavy triple pulse
         THINKING_START, // Gradual ramp up
-        HEARTBEAT       // Thump-thump
+        HEARTBEAT,      // Thump-thump
+        HEAVY_PULSE     // Strong single pulse for alerts
     }
 
     fun trigger(pattern: Pattern) {
@@ -45,6 +46,7 @@ class HapticFeedbackManager @Inject constructor(
             Pattern.ERROR -> vibrate(longArrayOf(0, 100, 50, 100, 50, 100), intArrayOf(0, 255, 0, 255, 0, 255))
             Pattern.THINKING_START -> vibrate(longArrayOf(0, 200), intArrayOf(0, 100))
             Pattern.HEARTBEAT -> vibrate(longArrayOf(0, 40, 120, 40), intArrayOf(0, 180, 0, 120))
+            Pattern.HEAVY_PULSE -> vibrate(longArrayOf(0, 150), intArrayOf(0, 255))
         }
     }
 

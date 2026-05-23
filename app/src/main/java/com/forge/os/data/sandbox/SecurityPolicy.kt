@@ -28,6 +28,8 @@ class SecurityPolicy @Inject constructor(
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
+    @Volatile private var ghostModeActive = false
+
     interface Flags {
         fun shellBlocklistEnabled(): Boolean
         fun pythonImportGuardEnabled(): Boolean
@@ -39,6 +41,19 @@ class SecurityPolicy @Inject constructor(
 
     /** Wired by the AppModule once the AgentControlPlane is constructed. */
     fun setFlagsProvider(flags: Flags) { this.flags = flags }
+
+    /** Set ghost mode active state - when true, additional security restrictions apply */
+    fun setGhostModeActive(active: Boolean) {
+        ghostModeActive = active
+        if (active) {
+            Timber.e("SecurityPolicy: Ghost Mode ACTIVATED - Enhanced security restrictions in effect")
+        } else {
+            Timber.i("SecurityPolicy: Ghost Mode deactivated")
+        }
+    }
+
+    /** Check if ghost mode is currently active */
+    fun isGhostModeActive(): Boolean = ghostModeActive
 
     private val blockedShellPatterns = listOf(
         Regex("""rm\s+-rf\s+/\s*""", RegexOption.IGNORE_CASE),

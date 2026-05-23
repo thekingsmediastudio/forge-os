@@ -125,6 +125,22 @@ class ConversationRepository @Inject constructor(
         if (id != null) load(id)?.let { return it }
         return newConversation()
     }
+
+    /** Append an assistant message to the current conversation */
+    fun appendAssistantMessage(content: String, toolName: String? = null) {
+        val conv = loadOrCreateCurrent()
+        val newMessage = StoredChatMessage(
+            id = "msg-${System.currentTimeMillis()}",
+            role = "assistant",
+            content = content,
+            toolName = toolName
+        )
+        val updated = conv.copy(
+            messages = conv.messages + newMessage,
+            updatedAt = System.currentTimeMillis()
+        )
+        save(updated)
+    }
 }
 
 // ─── Mapping helpers (UI <-> persistence) ───────────────────────────────────

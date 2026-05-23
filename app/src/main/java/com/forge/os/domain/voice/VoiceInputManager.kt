@@ -245,6 +245,36 @@ class VoiceInputManager @Inject constructor(
     }
     
     /**
+     * Synthesize text to an audio file.
+     * Returns the file path if successful, null otherwise.
+     */
+    fun synthesizeToFile(text: String): String? {
+        if (!ttsInitialized) {
+            Timber.w("TTS not initialized, cannot synthesize to file")
+            return null
+        }
+        
+        return try {
+            val outputDir = context.filesDir
+            val outputFile = java.io.File(outputDir, "tts_${System.currentTimeMillis()}.wav")
+            
+            val utteranceId = UUID.randomUUID().toString()
+            val result = textToSpeech?.synthesizeToFile(text, null, outputFile, utteranceId)
+            
+            if (result == TextToSpeech.SUCCESS) {
+                Timber.i("TTS: Synthesized to file: ${outputFile.absolutePath}")
+                outputFile.absolutePath
+            } else {
+                Timber.w("TTS: Failed to synthesize to file")
+                null
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "TTS: Error synthesizing to file")
+            null
+        }
+    }
+    
+    /**
      * Check if TTS is available and initialized.
      */
     fun isTTSAvailable(): Boolean = ttsInitialized

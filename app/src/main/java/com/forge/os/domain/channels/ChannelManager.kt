@@ -1249,6 +1249,36 @@ class ChannelManager @Inject constructor(
         if (replyJobs[sessionKey]?.isCompleted == true) replyJobs.remove(sessionKey)
     }
 
+    /** Get a channel by its display name (case-insensitive) */
+    fun getChannelByName(displayName: String): Channel? {
+        return channels.values.firstOrNull { 
+            it.config.displayName.equals(displayName, ignoreCase = true) 
+        }
+    }
+
+    /** Send a message to a specific channel by ID and chat ID */
+    suspend fun sendMessage(channelId: String, message: String) {
+        val ch = channels[channelId] ?: run {
+            Timber.w("ChannelManager: sendMessage - channel $channelId not found")
+            return
+        }
+        // Extract chat ID from the message or use default
+        val chatId = ch.config.configJson.let { json ->
+            // Try to extract defaultChatId from config
+            runCatching {
+                val regex = """"defaultChatId"\s*:\s*"([^"]+)"""".toRegex()
+                regex.find(json)?.groupValues?.get(1)
+            }.getOrNull() ?: ""
+        }
+        
+        if (chatId.isBlank()) {
+            Timber.w("ChannelManager: sendMessage - no default chat ID for channel $channelId")
+            return
+        }
+        
+        send(channelId, chatId, message)
+    }
+
     companion object {
         private const val MAX_HISTORY = 20
     }

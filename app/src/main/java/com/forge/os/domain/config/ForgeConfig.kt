@@ -31,6 +31,8 @@ data class ForgeConfig(
     val prefetchSettings: PrefetchSettings = PrefetchSettings(),
     val intelligenceUpgrades: IntelligenceUpgrades = IntelligenceUpgrades(),
     val forgeBridge: ForgeBridgeSettings = ForgeBridgeSettings(),
+    val environmentCalibration: EnvironmentCalibration = EnvironmentCalibration(),
+    val sovereignty: SovereigntySettings = SovereigntySettings(),
 )
 
 /**
@@ -427,4 +429,48 @@ data class CostBudgetConfig(
     val dailyLimitUsd: Double = 1.0,
     val ecoProvider: String = "GROQ",
     val ecoModel: String = "llama-3.3-70b-versatile",
+)
+
+
+/**
+ * SafeZone represents a GPS-based geofence where Forge increases trust.
+ */
+@Serializable
+data class SafeZone(
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radiusMeters: Float = 100f
+)
+
+/**
+ * Environment calibration settings for trust scoring and sensor-based security.
+ */
+@Serializable
+data class EnvironmentCalibration(
+    val trustEngineEnabled: Boolean = false,
+    val acousticSensesEnabled: Boolean = false,
+    val safeZones: List<SafeZone> = emptyList()
+)
+
+/**
+ * Sovereignty settings for biometric authentication and security features.
+ */
+@Serializable
+data class SovereigntySettings(
+    val enabled: Boolean = false,
+    val biometricGateEnabled: Boolean = false
+)
+
+/**
+ * Model capabilities for security and feature gating.
+ */
+data class ModelCapabilities(
+    val hasVision: Boolean = false,
+    val hasAudioInput: Boolean = false,
+    val hasAudioOutput: Boolean = false,
+    val hasToolCalling: Boolean = true,
+    val isLocal: Boolean = false,
+    val supportsStreaming: Boolean = true,
+    val maxTokens: Int = 4096
 )

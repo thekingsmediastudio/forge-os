@@ -160,7 +160,7 @@ class SlackChannel(
                     Timber.w("SlackChannel: apps.connections.open failed: $body")
                     return null
                 }
-                root["url"]?.jsonPrimitive?.content
+                root?.get("url")?.jsonPrimitive?.content
             }
         } catch (e: Exception) {
             Timber.w(e, "SlackChannel: openConnection failed")
