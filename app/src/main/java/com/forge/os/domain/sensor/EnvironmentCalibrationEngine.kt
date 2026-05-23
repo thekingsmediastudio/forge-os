@@ -26,6 +26,7 @@ import kotlin.math.sqrt
  */
 @Singleton
 class EnvironmentCalibrationEngine @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val configRepository: ConfigRepository,
     private val hapticManager: com.forge.os.domain.haptic.HapticFeedbackManager,
     private val sentinelManager: dagger.Lazy<com.forge.os.domain.sentinel.SentinelManager>,

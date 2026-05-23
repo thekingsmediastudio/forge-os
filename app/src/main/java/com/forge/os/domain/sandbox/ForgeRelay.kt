@@ -8,7 +8,9 @@ import javax.inject.Singleton
 
 @Singleton
 class ForgeRelay @Inject constructor(
-    private val toolRegistry: ToolRegistry
+    private val toolRegistry: ToolRegistry,
+    private val configRepository: com.forge.os.domain.config.ConfigRepository,
+    private val configMutationEngine: com.forge.os.domain.config.ConfigMutationEngine
 ) {
     companion object {
         @JvmStatic

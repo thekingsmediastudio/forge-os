@@ -3,6 +3,7 @@ package com.forge.os.presentation.components
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.forge.os.domain.agent.InteractionRequest
 import com.forge.os.domain.agent.UserInputBroker

@@ -903,14 +903,12 @@ class ChannelManager @Inject constructor(
                     sender = "user",
                     text = msg.text,
                     timestamp = System.currentTimeMillis(),
-                    sessionId = msg.fromId,
-                    namespace = memoryNamespace // Phase S: add namespace to index entry
+                    sessionId = msg.fromId
                 )
             )
             memoryManager.logEvent(
                 role = "user",
-                content = msg.text,
-                namespace = memoryNamespace
+                content = msg.text
             )
         }
 
@@ -1049,8 +1047,7 @@ class ChannelManager @Inject constructor(
                     userMessage = prompt,
                     history = history.toList(),
                     spec = activeSpec,
-                    currentChannel = cfg.type,
-                    memoryNamespace = memoryNamespace
+                    currentChannel = cfg.type
                 ).collect { event ->
                     when (event) {
                         is AgentEvent.Thinking -> sessionStore.record(
@@ -1119,22 +1116,24 @@ class ChannelManager @Inject constructor(
                             userMessage = prompt,
                             history = history.toList(),
                             spec = spec,
-                            currentChannel = cfg.type,
-                            memoryNamespace = memoryNamespace
+                            currentChannel = cfg.type
                         ).collect { event ->
                             when (event) {
                                 is AgentEvent.Thinking -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.Thinking, content = event.text))
                                 is AgentEvent.ToolCall -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.ToolCall, content = event.args, toolName = event.name))
                                 is AgentEvent.ToolResult -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.ToolResult, content = event.result.take(2_000), toolName = event.name, isError = event.isError))
-                                is AgentEvent.PartialResponse -> {
-                                    finalText = event.text
-                                    partials.send(event.text)
-                                }
                                 is AgentEvent.Response -> {
                                     finalText = event.text
                                     partials.send(event.text)
                                 }
                                 is AgentEvent.Error -> sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.AgentError, content = event.message, isError = true))
+                                is AgentEvent.CostApprovalRequired -> {
+                                    // Handle cost approval - for now just log it
+                                    sessionStore.record(cfg.id, cfg.type, chatId, msg.fromName, SessionEvent(kind = SessionEvent.Kind.AgentError, content = "Cost approval required", isError = false))
+                                }
+                                AgentEvent.Done -> {
+                                    // Agent finished
+                                }
                             }
                         }
                     }
@@ -1156,7 +1155,7 @@ class ChannelManager @Inject constructor(
                     ),
                 )
                 finalText = ""
-                runOnce(null) { finalText = it }
+                runOnce(null, onText = { finalText = it })
             }
         } catch (e: ApiCallException) {
             sessionStore.record(

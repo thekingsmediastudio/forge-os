@@ -48,6 +48,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
+import java.io.File
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -609,12 +610,12 @@ class ToolRegistry @Inject constructor(
                 // ─── Phase 3: Hybrid Python Execution ──────────────────────────────
                 "python_run_remote"  -> pythonRunRemote(args)
                 // ─── Phase T: Senses ────────────────────────────────────────────────
-                "mark_safe_zone"     -> markSafeZoneTool.execute(args)
-                "restore_protocol"   -> restoreProtocolTool.execute(args)
-                "manifest_to_hub"    -> manifestToHubTool.execute(args)
-                "headed_browser_ping" -> headedBrowserPingTool.execute(args)
-                "headed_browser_cloak" -> headedBrowserCloakTool.execute(args)
-                "request_biometric_auth" -> biometricChallengeTool.execute(args)
+                "mark_safe_zone"     -> markSafeZoneTool.execute(args.mapValues { it.value?.toString() ?: "" })
+                "restore_protocol"   -> restoreProtocolTool.execute(args.mapValues { it.value?.toString() ?: "" })
+                "manifest_to_hub"    -> manifestToHubTool.execute(args.mapValues { it.value?.toString() ?: "" })
+                "headed_browser_ping" -> headedBrowserPingTool.execute(args.mapValues { it.value?.toString() ?: "" })
+                "headed_browser_cloak" -> headedBrowserCloakTool.execute(args.mapValues { it.value?.toString() ?: "" })
+                "request_biometric_auth" -> biometricChallengeTool.execute(args.mapValues { it.value?.toString() ?: "" })
                 // ─── Alarms ────────────────────────────────────────────────────────
                 "alarm_set"          -> {
                     val label = args["label"]?.toString() ?: "Alarm"

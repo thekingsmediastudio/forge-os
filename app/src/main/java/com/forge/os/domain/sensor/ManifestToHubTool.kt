@@ -35,8 +35,7 @@ class ManifestToHubTool @Inject constructor(
 
         // Block the agent until the user signals completion
         val response = userInputBroker.awaitResponse(
-            "I have manifested the browser so you can solve this: $reason\nReply 'DONE' when you want me to cloak and resume background work.",
-            "BROWSER_INTERVENTION"
+            "I have manifested the browser so you can solve this: $reason\nReply 'DONE' when you want me to cloak and resume background work."
         )
 
         headedBrowserManager.setAgentActive(false)

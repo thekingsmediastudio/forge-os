@@ -115,7 +115,7 @@ class SentinelManager @Inject constructor(
                 Timber.w("Sentinel: Snatch detected! Current Trust: $currentTrust, Vigilance: $vigilance")
                 
                 // If we are in a low trust/high vigilance state, trigger GHOST MODE
-                if (currentTrust < 30 || vigilance == com.forge.os.domain.security.VigilanceLevel.PARANOID) {
+                if (currentTrust < 30 || vigilance == com.forge.os.domain.security.TrustScoreManager.VigilanceLevel.PARANOID) {
                     Timber.e("SENTINEL: TRUST COMPROMISED. TRIGGERING GHOST PROTOCOL.")
                     sandboxManager.triggerGhostMode()
                 }

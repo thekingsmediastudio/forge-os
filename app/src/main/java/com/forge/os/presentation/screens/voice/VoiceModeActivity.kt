@@ -9,7 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.forge.os.presentation.theme.ForgeOSTheme
+import com.forge.os.presentation.theme.ForgeTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -23,7 +23,7 @@ class VoiceModeActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         
         setContent {
-            ForgeOSTheme {
+            ForgeTheme {
                 VoiceModeScreen(
                     onClose = { finish() }
                 )

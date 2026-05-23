@@ -26,6 +26,8 @@ data class PulseUiState(
     val budgetEnabled: Boolean = false,
     val activeCronCount: Int = 0,
     val activeAgentCount: Int = 0,
+    val projectCount: Int = 0,
+    val recentAgentActions: List<String> = emptyList(),
     val backgroundLogs: List<com.forge.os.domain.debug.BackgroundTaskLog> = emptyList(),
     val lastRefresh: Long = System.currentTimeMillis()
 )

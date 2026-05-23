@@ -448,8 +448,12 @@ data class SafeZone(
  */
 @Serializable
 data class EnvironmentCalibration(
+    val enabled: Boolean = false,
     val trustEngineEnabled: Boolean = false,
     val acousticSensesEnabled: Boolean = false,
+    val pocketDetectionEnabled: Boolean = false,
+    val snatchDetectionEnabled: Boolean = false,
+    val testMode: Boolean = false,
     val safeZones: List<SafeZone> = emptyList()
 )
 

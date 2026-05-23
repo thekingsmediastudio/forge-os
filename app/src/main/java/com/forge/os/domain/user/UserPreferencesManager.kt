@@ -252,6 +252,7 @@ class UserPreferencesManager @Inject constructor(
 data class UserPreferences(
     val uiPreferences: UIPreferences = UIPreferences(),
     val voicePreferences: VoicePreferences = VoicePreferences(),
+    val securityPreferences: SecurityPreferences = SecurityPreferences(),
     val rememberedProjects: List<RememberedProject> = emptyList(),
     val interactionPatterns: Map<String, Int> = emptyMap(),
     val customShortcuts: Map<String, String> = emptyMap(),
@@ -268,6 +269,12 @@ data class UIPreferences(
 )
 
 @Serializable
+data class SecurityPreferences(
+    val biometricLockEnabled: Boolean = false,
+    val lockedScreens: List<String> = emptyList()
+)
+
+@Serializable
 data class RememberedProject(
     val name: String,
     val path: String,
@@ -280,7 +287,7 @@ data class VoicePreferences(
     val enabled: Boolean = true,
     val provider: String = "system", // "system", "openai", "elevenlabs"
     val apiKey: String? = null,
-    val voice: String = "alloy", // For neural TTS providers
+    val voiceId: String = "alloy", // For neural TTS providers
     val speed: Float = 1.0f,
     val pitch: Float = 1.0f
 )

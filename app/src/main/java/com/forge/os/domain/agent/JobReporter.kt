@@ -45,7 +45,8 @@ class JobReporter @Inject constructor(
     }
 
     private suspend fun sendToChannel(channelName: String, toolName: String, output: String) {
-        val channel = channelManager.getChannelByName(channelName)
+        val channels = channelManager.listChannels()
+        val channel = channels.firstOrNull { it.displayName.equals(channelName, ignoreCase = true) }
         if (channel == null) {
             Timber.w("JobReporter: Channel '$channelName' not found for reporting $toolName")
             // Fallback to main chat so the result isn't lost?

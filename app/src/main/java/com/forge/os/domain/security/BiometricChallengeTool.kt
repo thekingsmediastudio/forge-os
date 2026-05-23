@@ -28,8 +28,7 @@ class BiometricChallengeTool @Inject constructor(
         // Use the special route key 'BIOMETRIC' which the UI intercepts 
         // to show a system biometric prompt instead of a text input.
         val response = userInputBroker.awaitResponse(
-            question = reason,
-            explicitRouteKey = "BIOMETRIC"
+            question = reason
         )
         
         return if (response == "SUCCESS") {
