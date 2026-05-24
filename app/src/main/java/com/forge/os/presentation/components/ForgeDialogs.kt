@@ -36,6 +36,7 @@ import com.forge.os.presentation.theme.ForgeTokens.Type
    SHARED INTERNAL — Glass dialog container
    ══════════════════════════════════════════════════════════════════════════ */
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ForgeDialogContainer(
     onDismiss: () -> Unit,
