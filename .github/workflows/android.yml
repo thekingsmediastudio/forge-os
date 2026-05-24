@@ -40,12 +40,13 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
-      # Temporarily disabled due to storage quota - re-enable after cleaning old artifacts
-      # - name: Upload APK
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: app-debug-apk
-      #     path: app/build/outputs/apk/debug/*.apk
-      #     if-no-files-found: error
-      #     compression-level: 9
-      #     retention-days: 1  # Reduced from 30 to save storage
+      
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 1  # Only keep for 1 day to save storage
