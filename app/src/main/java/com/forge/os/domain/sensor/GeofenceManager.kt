@@ -8,6 +8,7 @@ import android.location.LocationManager
 import android.os.Bundle
 import com.forge.os.domain.config.ConfigRepository
 import com.forge.os.domain.config.SafeZone
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
@@ -16,7 +17,7 @@ import kotlin.math.*
 
 @Singleton
 class GeofenceManager @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
     private val configRepository: ConfigRepository
 ) {
     private val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
