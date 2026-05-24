@@ -20,14 +20,21 @@ import javax.inject.Singleton
 class SovereigntyProvisioner @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-    @SuppressLint("SetJavaScriptEnabled")
-    private val masterWebView: WebView = WebView(context).apply {
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.databaseEnabled = true
-        settings.loadWithOverviewMode = true
-        settings.useWideViewPort = true
-        settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 ForgeOS/Sovereign"
+    private var _masterWebView: WebView? = null
+    
+    private fun ensureWebView(): WebView {
+        _masterWebView?.let { return it }
+        val w = WebView(context).apply {
+            @SuppressLint("SetJavaScriptEnabled")
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.databaseEnabled = true
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = true
+            settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 ForgeOS/Sovereign"
+        }
+        _masterWebView = w
+        return w
     }
 
     private var currentParent: ViewGroup? = null
@@ -37,9 +44,10 @@ class SovereigntyProvisioner @Inject constructor(
      * Detaches it from any previous parent first.
      */
     fun dockToUI(newParent: ViewGroup) {
-        masterWebView.post {
-            masterWebView.parent?.let { (it as ViewGroup).removeView(masterWebView) }
-            newParent.addView(masterWebView, ViewGroup.LayoutParams(
+        newParent.post {
+            val wv = ensureWebView()
+            wv.parent?.let { (it as ViewGroup).removeView(wv) }
+            newParent.addView(wv, ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             ))
@@ -52,12 +60,13 @@ class SovereigntyProvisioner @Inject constructor(
      * Undocks the master WebView from the UI, preparing it for background work.
      */
     fun undockFromUI() {
-        masterWebView.post {
-            masterWebView.parent?.let { (it as ViewGroup).removeView(masterWebView) }
+        val wv = _masterWebView ?: return
+        wv.post {
+            wv.parent?.let { (it as ViewGroup).removeView(wv) }
             currentParent = null
             Timber.i("Sovereign WebView CLOAKED to background.")
         }
     }
 
-    fun getMasterWebView(): WebView = masterWebView
+    fun getMasterWebView(): WebView? = _masterWebView
 }

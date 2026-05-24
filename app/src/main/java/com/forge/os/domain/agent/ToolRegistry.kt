@@ -154,12 +154,12 @@ class ToolRegistry @Inject constructor(
     private val aiApiManager: com.forge.os.data.api.AiApiManager,
     private val macroManager: com.forge.os.data.browser.MacroManager,
     private val secureKeyStore: com.forge.os.domain.security.SecureKeyStore,
-    private val markSafeZoneTool: com.forge.os.domain.sensor.MarkSafeZoneTool,
-    private val restoreProtocolTool: com.forge.os.domain.sensor.RestoreProtocolTool,
-    private val manifestToHubTool: com.forge.os.domain.sensor.ManifestToHubTool,
-    private val headedBrowserPingTool: com.forge.os.domain.sensor.HeadedBrowserPingTool,
-    private val headedBrowserCloakTool: com.forge.os.domain.sensor.HeadedBrowserCloakTool,
-    private val biometricChallengeTool: com.forge.os.domain.security.BiometricChallengeTool,
+    private val markSafeZoneTool: Lazy<com.forge.os.domain.sensor.MarkSafeZoneTool>,
+    private val restoreProtocolTool: Lazy<com.forge.os.domain.sensor.RestoreProtocolTool>,
+    private val manifestToHubTool: Lazy<com.forge.os.domain.sensor.ManifestToHubTool>,
+    private val headedBrowserPingTool: Lazy<com.forge.os.domain.sensor.HeadedBrowserPingTool>,
+    private val headedBrowserCloakTool: Lazy<com.forge.os.domain.sensor.HeadedBrowserCloakTool>,
+    private val biometricChallengeTool: Lazy<com.forge.os.domain.security.BiometricChallengeTool>,
     private val directivesManager: com.forge.os.domain.directives.DirectivesManager,
 ) {
     private val httpServer: ForgeHttpServer get() = httpServerLazy.get()
@@ -611,12 +611,12 @@ class ToolRegistry @Inject constructor(
                 // ─── Phase 3: Hybrid Python Execution ──────────────────────────────
                 "python_run_remote"  -> pythonRunRemote(args)
                 // ─── Phase T: Senses ────────────────────────────────────────────────
-                "mark_safe_zone"     -> markSafeZoneTool.execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
-                "restore_protocol"   -> restoreProtocolTool.execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
-                "manifest_to_hub"    -> manifestToHubTool.execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
-                "headed_browser_ping" -> headedBrowserPingTool.execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
-                "headed_browser_cloak" -> headedBrowserCloakTool.execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
-                "request_biometric_auth" -> biometricChallengeTool.execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
+                "mark_safe_zone"     -> markSafeZoneTool.get().execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
+                "restore_protocol"   -> restoreProtocolTool.get().execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
+                "manifest_to_hub"    -> manifestToHubTool.get().execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
+                "headed_browser_ping" -> headedBrowserPingTool.get().execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
+                "headed_browser_cloak" -> headedBrowserCloakTool.get().execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
+                "request_biometric_auth" -> biometricChallengeTool.get().execute(args.mapValues { it.value?.toString() ?: "" } as Map<String, String>)
                 // ─── Alarms ────────────────────────────────────────────────────────
                 "alarm_set"          -> {
                     val label = args["label"]?.toString() ?: "Alarm"
