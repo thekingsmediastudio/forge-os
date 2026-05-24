@@ -108,7 +108,7 @@ fun DirectivesScreen(
         var text by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            containerColor = Colors.PanelBackground,
+            containerColor = Colors.BgSurface,
             title = { 
                 Text(
                     "NEW DIRECTIVE", 

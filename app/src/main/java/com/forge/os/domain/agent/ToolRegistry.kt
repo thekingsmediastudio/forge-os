@@ -2146,7 +2146,7 @@ class ToolRegistry @Inject constructor(
                 when (event.type) {
                     "navigate" -> event.url?.let { headlessBrowser.navigate(it) } ?: "missing url"
                     "click" -> event.selector?.let { headlessBrowser.click(it) } ?: "missing selector"
-                    "input" -> event.selector?.let { headlessBrowser.type(it, event.value ?: "") } ?: "missing selector"
+                    "input" -> event.selector?.let { headlessBrowser.fillField(it, event.value ?: "") } ?: "missing selector"
                     else -> "unknown event type ${event.type}"
                 }
             } catch (e: Exception) {
