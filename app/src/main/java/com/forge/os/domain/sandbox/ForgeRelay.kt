@@ -1,6 +1,7 @@
 package com.forge.os.domain.sandbox
 
 import com.forge.os.domain.agent.ToolRegistry
+import com.forge.os.domain.config.ConfigMutationResult
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import javax.inject.Inject
@@ -57,10 +58,12 @@ class ForgeRelay @Inject constructor(
     fun writeConfig(path: String, valueJson: String): Boolean {
         return try {
             runBlocking {
-                // We use the mutation engine for safety
-                configMutationEngine.mutate(path, valueJson)
+                // Use the config mutation engine to safely update config
+                val result = configMutationEngine.processConfigRequest(
+                    userRequest = "set $path to $valueJson"
+                )
+                result is ConfigMutationResult.Success
             }
-            true
         } catch (e: Exception) {
             Timber.e(e, "ForgeRelay: failed to write config $path")
             false

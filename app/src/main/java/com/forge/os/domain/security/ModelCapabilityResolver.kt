@@ -21,26 +21,14 @@ class ModelCapabilityResolver @Inject constructor() {
     fun resolve(spec: ProviderSpec): ModelCapabilities {
         return when (spec) {
             is ProviderSpec.Builtin -> {
-                val base = spec.provider.capabilities
                 val modelId = spec.model ?: spec.provider.defaultModel
-                
-                // If the provider already says it supports everything, just trust it.
-                if (base.hasVision && base.hasAudioInput && base.hasAudioOutput) return base
-                
-                // Otherwise, use heuristics based on the specific model ID.
-                val heuristics = guessFromModelId(modelId)
-                ModelCapabilities(
-                    hasVision = base.hasVision || heuristics.hasVision,
-                    hasAudioInput = base.hasAudioInput || heuristics.hasAudioInput,
-                    hasAudioOutput = base.hasAudioOutput || heuristics.hasAudioOutput,
-                    hasToolCalling = base.hasToolCalling && heuristics.hasToolCalling,
-                    isLocal = base.isLocal
-                )
+                // Use heuristics based on the provider and model ID
+                guessFromModelId(modelId)
             }
             is ProviderSpec.Custom -> {
-                // High-fidelity: Prefer model-specific overrides if they exist for this model ID.
+                // For custom endpoints, use heuristics based on model ID
                 val modelId = spec.model ?: spec.endpoint.defaultModel
-                spec.endpoint.modelOverrides[modelId] ?: spec.endpoint.capabilities
+                guessFromModelId(modelId)
             }
         }
     }

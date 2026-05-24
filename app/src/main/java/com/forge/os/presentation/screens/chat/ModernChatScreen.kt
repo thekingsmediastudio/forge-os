@@ -124,7 +124,10 @@ fun ModernChatScreen(
             // Messages Area
             Box(modifier = Modifier.weight(1f)) {
                 if (messages.isEmpty()) {
-                    EmptyState()
+                    EmptyState(
+                        onSendMessage = { prompt -> viewModel.send(prompt) },
+                        isLoading = isLoading
+                    )
                 } else {
                     LazyColumn(
                         state = listState,
@@ -440,7 +443,10 @@ private fun ModernHeader(
 }
 
 @Composable
-private fun EmptyState() {
+private fun EmptyState(
+    onSendMessage: (String) -> Unit,
+    isLoading: Boolean
+) {
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -495,10 +501,8 @@ private fun EmptyState() {
                     icon = Icons.Outlined.Code,
                     label = "Code Review",
                     onAction = { prompt ->
-                        inputText = prompt
                         if (!isLoading) {
-                            viewModel.send(prompt)
-                            inputText = ""
+                            onSendMessage(prompt)
                         }
                     }
                 )
@@ -506,10 +510,8 @@ private fun EmptyState() {
                     icon = Icons.Outlined.Folder,
                     label = "Projects",
                     onAction = { prompt ->
-                        inputText = prompt
                         if (!isLoading) {
-                            viewModel.send(prompt)
-                            inputText = ""
+                            onSendMessage(prompt)
                         }
                     }
                 )
@@ -517,10 +519,8 @@ private fun EmptyState() {
                     icon = Icons.Outlined.Memory,
                     label = "Memory",
                     onAction = { prompt ->
-                        inputText = prompt
                         if (!isLoading) {
-                            viewModel.send(prompt)
-                            inputText = ""
+                            onSendMessage(prompt)
                         }
                     }
                 )

@@ -1073,9 +1073,6 @@ class ChannelManager @Inject constructor(
                                 toolName = event.name, isError = event.isError,
                             ),
                         )
-                        is AgentEvent.PartialResponse -> {
-                            // Handled by the collector if onStream is provided
-                        }
                         is AgentEvent.Response -> onText(event.text)
                         is AgentEvent.Error -> sessionStore.record(
                             channelId = cfg.id, channelType = cfg.type,
