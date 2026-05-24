@@ -77,7 +77,7 @@ fun AppGrantScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Colors.Surface, RoundedCornerShape(12.dp))
+                    .background(Colors.BgSurface, RoundedCornerShape(12.dp))
                     .border(1.dp, Colors.Border, RoundedCornerShape(12.dp))
                     .padding(16.dp),
                 contentAlignment = Alignment.Center

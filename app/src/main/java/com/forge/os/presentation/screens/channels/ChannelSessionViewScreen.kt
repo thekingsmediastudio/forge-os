@@ -172,7 +172,7 @@ private fun EventRow(e: SessionEvent) {
     val (bg, fg, label) = when (e.kind) {
         SessionEvent.Kind.IncomingText,
         SessionEvent.Kind.IncomingAttachment ->
-            Triple(Colors.Surface, Colors.TextPrimary, "← ${e.kind.name}")
+            Triple(Colors.BgSurface, Colors.TextPrimary, "← ${e.kind.name}")
         SessionEvent.Kind.OutgoingText,
         SessionEvent.Kind.OutgoingVoice,
         SessionEvent.Kind.OutgoingAttachment ->
@@ -189,7 +189,7 @@ private fun EventRow(e: SessionEvent) {
         SessionEvent.Kind.AgentError ->
             Triple(Color(0xFF330000), Colors.Error, "⚠️ error")
         SessionEvent.Kind.Info ->
-            Triple(Colors.Surface, Colors.TextDim, "i")
+            Triple(Colors.BgSurface, Colors.TextDim, "i")
     }
     
     ForgeCard(

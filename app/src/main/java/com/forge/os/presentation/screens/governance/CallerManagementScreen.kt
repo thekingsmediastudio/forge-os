@@ -78,7 +78,7 @@ fun CallerManagementScreen(
                                 caller.permissions.forEach { p ->
                                     Box(
                                         modifier = Modifier
-                                            .background(Colors.Surface, RoundedCornerShape(6.dp))
+                                            .background(Colors.BgSurface, RoundedCornerShape(6.dp))
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
                                         Text(p, color = Colors.TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)

@@ -70,7 +70,7 @@ fun PanelBackground(
 ) {
     Surface(
         modifier = modifier,
-        color = ForgeTokens.Colors.Surface,
+        color = ForgeTokens.Colors.BgSurface,
         shape = RoundedCornerShape(12.dp)
     ) {
         Box(modifier = Modifier.padding(16.dp)) {
