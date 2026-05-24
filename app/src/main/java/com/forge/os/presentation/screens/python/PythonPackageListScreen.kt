@@ -56,8 +56,8 @@ fun PythonPackageListScreen(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Filter units...", color = Colors.TextMuted, fontSize = 13.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, null, tint = Colors.TextMuted, modifier = Modifier.size(18.dp)) },
+                    placeholder = { Text("Filter units...", color = Colors.TextSecondary, fontSize = 13.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = Colors.TextSecondary, modifier = Modifier.size(18.dp)) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = Colors.Accent,
@@ -117,7 +117,7 @@ fun PythonPackageListScreen(
                     if (filteredPackages.isEmpty() && searchQuery.isNotBlank()) {
                         item {
                             Box(Modifier.fillMaxWidth().padding(top = 64.dp), contentAlignment = Alignment.Center) {
-                                Text("NO MATCHING UNITS FOUND", color = Colors.TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("NO MATCHING UNITS FOUND", color = Colors.TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

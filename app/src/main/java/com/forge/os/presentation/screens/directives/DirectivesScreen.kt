@@ -55,12 +55,12 @@ fun DirectivesScreen(
                             Icons.Default.Rule,
                             null,
                             modifier = Modifier.size(64.dp),
-                            tint = Colors.TextMuted.copy(alpha = 0.2f)
+                            tint = Colors.TextSecondary.copy(alpha = 0.2f)
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
                             "NO ACTIVE PROTOCOLS",
-                            color = Colors.TextMuted,
+                            color = Colors.TextSecondary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace,
@@ -130,7 +130,7 @@ fun DirectivesScreen(
                         value = text,
                         onValueChange = { text = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("e.g. Always respond in Dutch...", color = Colors.TextMuted) },
+                        placeholder = { Text("e.g. Always respond in Dutch...", color = Colors.TextSecondary) },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Colors.Accent,
                             unfocusedBorderColor = Colors.Border,
@@ -151,7 +151,7 @@ fun DirectivesScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) {
-                    Text("CANCEL", color = Colors.TextMuted)
+                    Text("CANCEL", color = Colors.TextSecondary)
                 }
             }
         )
@@ -180,7 +180,7 @@ private fun DirectiveItem(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = rule.content,
-                    color = if (rule.enabled) Colors.TextPrimary else Colors.TextMuted,
+                    color = if (rule.enabled) Colors.TextPrimary else Colors.TextSecondary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     lineHeight = 20.sp
@@ -212,7 +212,7 @@ private fun DirectiveItem(
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Colors.Accent,
                     checkedTrackColor = Colors.Accent.copy(alpha = 0.5f),
-                    uncheckedThumbColor = Colors.TextMuted,
+                    uncheckedThumbColor = Colors.TextSecondary,
                     uncheckedTrackColor = Colors.Border
                 )
             )

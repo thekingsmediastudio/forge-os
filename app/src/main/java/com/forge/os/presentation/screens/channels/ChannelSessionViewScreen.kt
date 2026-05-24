@@ -125,7 +125,7 @@ fun ChannelSessionViewScreen(
                         OutlinedTextField(
                             value = manualText,
                             onValueChange = { manualText = it },
-                            placeholder = { Text("Directive Response...", color = Colors.TextMuted, fontSize = 13.sp) },
+                            placeholder = { Text("Directive Response...", color = Colors.TextSecondary, fontSize = 13.sp) },
                             modifier = Modifier.weight(1f),
                             singleLine = false,
                             colors = OutlinedTextFieldDefaults.colors(

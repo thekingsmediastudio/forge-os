@@ -6,6 +6,7 @@ import com.forge.os.data.api.ParameterProperty
 import com.forge.os.data.api.ToolDefinition
 import com.forge.os.data.android.AndroidController
 import com.forge.os.data.browser.BrowserSessionManager
+import com.forge.os.data.browser.MacroEvent
 import com.forge.os.data.mcp.McpClient
 import com.forge.os.data.sandbox.SandboxManager
 import com.forge.os.data.server.ForgeHttpServer
