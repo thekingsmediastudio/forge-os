@@ -104,41 +104,51 @@ fun ModernHeader(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = ModernSurface,
-        shadowElevation = 2.dp
+        shadowElevation = 1.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBackClick != null) {
-                IconButton(
+                Surface(
                     onClick = onBackClick,
+                    color = ModernSurfaceHover,
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(
-                        Icons.Default.ArrowBack,
-                        "Back",
-                        tint = ModernTextPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            "Back",
+                            tint = ModernTextPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(12.dp))
             }
             
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,
                     color = ModernTextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 22.sp,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 if (subtitle != null) {
                     Text(
                         subtitle,
                         color = ModernTextSecondary,
-                        fontSize = 12.sp
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
             }
@@ -157,13 +167,15 @@ fun ModernCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val shape = RoundedCornerShape(16.dp)
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         color = ModernSurface,
-        shape = RoundedCornerShape(12.dp),
-        shadowElevation = 1.dp
+        shape = shape,
+        shadowElevation = 1.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, ModernBorder.copy(alpha = 0.6f))
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -211,7 +223,7 @@ fun ModernButton(
             modifier = modifier,
             enabled = enabled,
             colors = colors,
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(14.dp)
         ) {
             ButtonContent(icon, text)
         }
@@ -228,7 +240,7 @@ fun ModernButton(
             modifier = modifier,
             enabled = enabled,
             colors = colors,
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(14.dp)
         ) {
             ButtonContent(icon, text)
         }
@@ -280,7 +292,7 @@ fun ModernTextField(
             unfocusedLabelColor = ModernTextSecondary,
             cursorColor = ModernAccent
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(14.dp)
     )
 }
 
