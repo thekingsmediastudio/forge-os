@@ -1,5 +1,6 @@
 package com.forge.os.presentation.screens.hub
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -268,12 +270,30 @@ private fun ModernModuleTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "tileScale"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (isPressed) ModernAccent.copy(alpha = 0.5f) else forgePalette.borderSoft,
+        animationSpec = tween(150),
+        label = "tileBorder"
+    )
+
     Surface(
-        onClick = onClick,
-        modifier = modifier,
+        onClick = {
+            isPressed = true
+            onClick()
+        },
+        modifier = modifier.scale(scale),
         color = ModernSurface,
         shape = RoundedCornerShape(18.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, forgePalette.borderSoft)
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
     ) {
         Column(
             modifier = Modifier.padding(18.dp),

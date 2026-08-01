@@ -608,3 +608,289 @@ fun AnimatedGradientBackground() {
             )
     )
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UI-7: Polish & Micro-interactions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pressable card with scale animation on press
+ */
+@Composable
+fun PressableCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = ModernSurface,
+    borderColor: Color = ModernBorder,
+    cornerRadius: Dp = 12.dp,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "cardScale"
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (isPressed) 2.dp else 4.dp,
+        animationSpec = tween(150),
+        label = "cardElevation"
+    )
+
+    Card(
+        modifier = modifier
+            .scale(scale)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) {
+                isPressed = true
+                onClick()
+            },
+        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+        shape = RoundedCornerShape(cornerRadius),
+        elevation = CardDefaults.cardElevation(defaultElevation = elevation)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            content = content
+        )
+    }
+}
+
+/**
+ * Animated button with color transition on press
+ */
+@Composable
+fun AnimatedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    backgroundColor: Color = ModernAccent,
+    pressedColor: Color = ModernAccentHover,
+    contentColor: Color = Color.White,
+    cornerRadius: Dp = 8.dp,
+    content: @Composable RowScope.() -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    val bgColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> backgroundColor.copy(alpha = 0.5f)
+            isPressed -> pressedColor
+            else -> backgroundColor
+        },
+        animationSpec = tween(150),
+        label = "buttonColor"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "buttonScale"
+    )
+
+    Button(
+        onClick = {
+            isPressed = true
+            onClick()
+        },
+        modifier = modifier.scale(scale),
+        enabled = enabled,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = bgColor,
+            contentColor = contentColor,
+            disabledContainerColor = backgroundColor.copy(alpha = 0.5f),
+            disabledContentColor = contentColor.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(cornerRadius),
+        content = content
+    )
+}
+
+/**
+ * Typing indicator with animated dots
+ */
+@Composable
+fun TypingIndicator(
+    modifier: Modifier = Modifier,
+    dotColor: Color = ModernTextSecondary
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "typing")
+    
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        repeat(3) { index ->
+            val alpha by infiniteTransition.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(600, delayMillis = index * 200),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "dot$index"
+            )
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(dotColor.copy(alpha = alpha), CircleShape)
+            )
+        }
+    }
+}
+
+/**
+ * Pulsing badge for status indicators
+ */
+@Composable
+fun PulsingBadge(
+    color: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 8.dp
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .scale(scale)
+            .background(color.copy(alpha = alpha), CircleShape)
+    )
+}
+
+/**
+ * Shimmer loading placeholder
+ */
+@Composable
+fun ShimmerPlaceholder(
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 8.dp
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "shimmer")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shimmerAlpha"
+    )
+
+    Box(
+        modifier = modifier
+            .background(
+                ModernSurfaceHover.copy(alpha = alpha),
+                RoundedCornerShape(cornerRadius)
+            )
+    )
+}
+
+/**
+ * Animated checkmark for success states
+ */
+@Composable
+fun AnimatedCheckmark(
+    modifier: Modifier = Modifier,
+    color: Color = ModernSuccess,
+    size: Dp = 24.dp
+) {
+    var visible by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(Unit) {
+        visible = true
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        ) + fadeIn(),
+        modifier = modifier
+    ) {
+        Text(
+            "✓",
+            color = color,
+            fontSize = (size.value * 0.8).sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
+ * Shake animation modifier for error states
+ */
+@Composable
+fun Modifier.shake(enabled: Boolean): Modifier {
+    val offset by animateFloatAsState(
+        targetValue = if (enabled) 0f else 0f,
+        animationSpec = if (enabled) {
+            keyframes {
+                durationMillis = 400
+                0f at 0
+                (-10f) at 50
+                10f at 100
+                (-8f) at 150
+                8f at 200
+                (-5f) at 250
+                5f at 300
+                0f at 400
+            }
+        } else {
+            tween(0)
+        },
+        label = "shake"
+    )
+    return this.then(Modifier.offset(x = offset.dp))
+}
+
+/**
+ * Fade in animation for content appearing
+ */
+@Composable
+fun FadeInContent(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(300)) + 
+                expandVertically(animationSpec = tween(300)),
+        exit = fadeOut(animationSpec = tween(200)) +
+               shrinkVertically(animationSpec = tween(200)),
+        modifier = modifier
+    ) {
+        content()
+    }
+}

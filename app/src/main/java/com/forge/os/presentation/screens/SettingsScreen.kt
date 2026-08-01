@@ -25,7 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.forge.os.domain.security.ApiKeyProvider
 import com.forge.os.domain.security.KeyStatus
 import com.forge.os.domain.security.ProviderSchema
@@ -1353,6 +1355,8 @@ private fun SettingsToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+    
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -1363,7 +1367,10 @@ private fun SettingsToggleRow(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = { newValue ->
+                haptic.performHapticFeedback(HapticFeedbackType.Toggle)
+                onCheckedChange(newValue)
+            },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = ModernAccent,

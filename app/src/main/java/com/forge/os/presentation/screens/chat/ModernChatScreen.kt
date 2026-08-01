@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -1630,20 +1631,44 @@ private fun ModernInputBar(
                     .padding(bottom = 2.dp)
             )
 
-            // Send button — ember circle when active
+            // Send button — ember circle when active with press animation
+            val sendEnabled = value.isNotBlank() && enabled
+            val sendBgColor by animateColorAsState(
+                targetValue = if (sendEnabled) ModernAccent else ModernSurfaceHover,
+                animationSpec = tween(200),
+                label = "sendBg"
+            )
+            val sendIconColor by animateColorAsState(
+                targetValue = if (sendEnabled) forgePalette.onAccent else ModernTextSecondary,
+                animationSpec = tween(200),
+                label = "sendIcon"
+            )
+            var sendPressed by remember { mutableStateOf(false) }
+            val sendScale by animateFloatAsState(
+                targetValue = if (sendPressed) 0.85f else 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessHigh
+                ),
+                label = "sendScale"
+            )
             Surface(
                 modifier = Modifier
                     .size(36.dp)
+                    .scale(sendScale)
                     .clip(CircleShape)
-                    .clickable(enabled = value.isNotBlank() && enabled) { onSend() },
-                color = if (value.isNotBlank() && enabled) ModernAccent else ModernSurfaceHover,
+                    .clickable(enabled = sendEnabled) {
+                        sendPressed = true
+                        onSend()
+                    },
+                color = sendBgColor,
                 shape = CircleShape,
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Filled.ArrowUpward,
                         "Send",
-                        tint = if (value.isNotBlank() && enabled) forgePalette.onAccent else ModernTextSecondary,
+                        tint = sendIconColor,
                         modifier = Modifier.size(18.dp)
                     )
                 }
