@@ -28,3 +28,8 @@ Thumbs.db
 __pycache__/
 *.pyc
 .blackboxcli/
+
+# Debug/crash logs
+crash_log*.txt
+builderror.txt
+videos/

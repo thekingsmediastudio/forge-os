@@ -394,7 +394,7 @@ private fun PersonalityField(
                 unfocusedTextColor = palette.textPrimary,
                 cursorColor = palette.orange
             ),
-            textStyle = androidx.compose.ui.text.TextStyle(,
+            textStyle = androidx.compose.ui.text.TextStyle(
                 fontSize = 13.sp
             ),
             modifier = Modifier.fillMaxWidth()

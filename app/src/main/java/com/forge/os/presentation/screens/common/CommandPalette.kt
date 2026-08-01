@@ -70,7 +70,7 @@ fun CommandPalette(
                     focusedTextColor = palette.textPrimary,
                     unfocusedTextColor = palette.textPrimary
                 ),
-                textStyle = LocalTextStyle.current.copy(, fontSize = 14.sp),
+                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 shape = RoundedCornerShape(8.dp)
             )

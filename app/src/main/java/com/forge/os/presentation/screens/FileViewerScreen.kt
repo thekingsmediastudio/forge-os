@@ -100,7 +100,7 @@ fun FileViewerScreen(
 private fun TextEditor(state: FileViewerState, onChange: (String) -> Unit) {
     val lang = remember(state.name) { languageFor(state.name) }
     val highlighted = rememberHighlighted(state.text, lang)
-    val mono = TextStyle(, fontSize = 13.sp)
+    val mono = TextStyle(fontSize = 13.sp)
     Column(modifier = Modifier.fillMaxSize()) {
         // Read-only colored layer underneath; editable BasicTextField on top with transparent text
         // would be ideal, but for simplicity we fall back to the editable field with a visible
@@ -179,7 +179,7 @@ private fun BinaryViewer(state: FileViewerState) {
                 .padding(12.dp)) {
             Text(
                 state.hexPreview,
-                style = TextStyle(, fontSize = 12.sp))
+                style = TextStyle(fontSize = 12.sp))
         }
     }
 }

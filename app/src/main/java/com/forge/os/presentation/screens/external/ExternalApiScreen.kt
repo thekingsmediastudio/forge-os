@@ -443,7 +443,7 @@ private fun GrantDialog(
                             },
                             singleLine = false,
                             modifier = Modifier.fillMaxWidth(),
-                            textStyle = androidx.compose.ui.text.TextStyle(, fontSize = 11.sp,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp,
                                 color = ForgeOsPalette.TextPrimary))
                     }
                 }

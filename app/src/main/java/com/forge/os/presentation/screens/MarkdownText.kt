@@ -102,7 +102,7 @@ fun MarkdownText(
                         Text("• ", color = Orange, fontSize = baseFontSize.sp)
                         ClickableText(
                             text = annotated,
-                            style = androidx.compose.ui.text.TextStyle(,
+                            style = androidx.compose.ui.text.TextStyle(
                                 fontSize = baseFontSize.sp,
                                 lineHeight = (baseFontSize + 5).sp),
                             onClick = { offset ->
@@ -126,7 +126,7 @@ fun MarkdownText(
                         Text("${seg.number}. ", color = Orange, fontSize = baseFontSize.sp)
                         ClickableText(
                             text = annotated,
-                            style = androidx.compose.ui.text.TextStyle(,
+                            style = androidx.compose.ui.text.TextStyle(
                                 fontSize = baseFontSize.sp,
                                 lineHeight = (baseFontSize + 5).sp),
                             onClick = { offset ->
@@ -158,7 +158,7 @@ fun MarkdownText(
                         val annotated = buildInlineAnnotated(seg.content, baseFontSize, baseColor)
                         ClickableText(
                             text = annotated,
-                            style = androidx.compose.ui.text.TextStyle(,
+                            style = androidx.compose.ui.text.TextStyle(
                                 fontSize = baseFontSize.sp,
                                 lineHeight = (baseFontSize + 5).sp),
                             onClick = { offset ->
@@ -441,7 +441,7 @@ fun buildInlineAnnotated(text: String, baseFontSize: Float, baseColor: Color): A
                         "***" -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontStyle = FontStyle.Italic, color = baseColor)) { append(inner) }
                         "**"  -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = baseColor)) { append(inner) }
                         "*"   -> withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = baseColor)) { append(inner) }
-                        "`"   -> withStyle(SpanStyle(,
+                        "`"   -> withStyle(SpanStyle(
                             background = Color(0xFF1e1e2e),
                             color = Color(0xFF89dceb),
                             fontSize = (baseFontSize - 1).sp)) { append(inner) }
