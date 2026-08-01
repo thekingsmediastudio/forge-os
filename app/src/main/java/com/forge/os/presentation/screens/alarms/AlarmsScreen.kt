@@ -111,7 +111,7 @@ private fun SessionRow(s: AlarmSession) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(if (s.success) "✓" else "✗",
-                color = if (s.success) ForgeOsPalette.Orange else androidx.compose.ui.graphics.forgePalette.danger, fontSize = 14.sp)
+                color = if (s.success) ForgeOsPalette.Orange else ForgeOsPalette.Danger, fontSize = 14.sp)
             Spacer(Modifier.width(6.dp))
             Text(s.label, color = ForgeOsPalette.TextPrimary, fontSize = 12.sp,
                 modifier = Modifier.weight(1f))
@@ -123,7 +123,7 @@ private fun SessionRow(s: AlarmSession) {
             Text(s.output.take(400), color = ForgeOsPalette.TextPrimary, fontSize = 10.sp)
         }
         s.error?.let {
-            Text("error: $it", color = androidx.compose.ui.graphics.forgePalette.danger, fontSize = 10.sp)
+            Text("error: $it", color = ForgeOsPalette.Danger, fontSize = 10.sp)
         }
     }
 }
@@ -159,7 +159,7 @@ private fun AlarmRow(a: AlarmItem, vm: AlarmsViewModel) {
                 color = ForgeOsPalette.Orange, fontSize = 10.sp)
         }
         TextButton(onClick = { vm.remove(a.id) }) {
-            Text("Delete", color = androidx.compose.ui.graphics.forgePalette.danger, fontSize = 11.sp)
+            Text("Delete", color = ForgeOsPalette.Danger, fontSize = 11.sp)
         }
     }
 }

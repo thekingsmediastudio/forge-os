@@ -192,7 +192,7 @@ fun VoiceModeOverlay(
                 AnimatedVisibility(visible = state.error != null) {
                     Text(
                         state.error ?: "",
-                        color = forgePalette.danger,
+                        color = Color(0xFFef4444),
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(bottom = 8.dp))

@@ -48,7 +48,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 private val Bg        = Color(0xFF0d0d0d)
 private val Surface   = Color(0xFF141414)
 private val Border    = Color(0xFF2a2a2a)
-private val AccentRed = forgePalette.danger
+private val AccentRed = Color(0xFFef4444)
 private val TextPri   = Color(0xFFf5f5f5)
 private val TextSec   = Color(0xFF888888)
 private val Amber     = Color(0xFFf59e0b)
