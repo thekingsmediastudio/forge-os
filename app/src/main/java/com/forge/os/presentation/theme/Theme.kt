@@ -4,6 +4,7 @@ import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -14,6 +15,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
@@ -26,7 +29,9 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = ForgeOnSurface,
     onSurfaceVariant = ForgeOnSurfaceVariant,
     error = ForgeError,
-    onPrimary = ForgeOnSurface
+    onPrimary = ForgeOnSurface,
+    surfaceVariant = ForgeSurfaceVariant,
+    outline = ForgeOnSurfaceVariant,
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -39,7 +44,18 @@ private val LightColorScheme = lightColorScheme(
     onSurface = ForgeLightOnSurface,
     onSurfaceVariant = ForgeLightOnSurfaceVariant,
     error = ForgeError,
-    onPrimary = ForgeOnSurface
+    onPrimary = ForgeLightOnSurface,
+    surfaceVariant = ForgeLightSurfaceVariant,
+    outline = ForgeLightOnSurfaceVariant,
+)
+
+/** Material 3 shape tokens — generous rounding for a sleek, modern look. */
+private val ForgeShapes = Shapes(
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(24.dp),
 )
 
 @Composable
@@ -77,6 +93,7 @@ fun ForgeTheme(
         MaterialTheme(
             colorScheme = colorScheme,
             typography = ForgeTypography,
+            shapes = ForgeShapes,
             content = content
         )
     }
