@@ -42,7 +42,8 @@ class SettingsViewModel @Inject constructor(
     private val customEndpoints: CustomEndpointRepository,
     private val namedSecrets: NamedSecretRegistry,
     private val configRepository: ConfigRepository,
-    private val backupManager: BackupManager
+    private val backupManager: BackupManager,
+    private val forgeApiServer: com.forge.os.data.api.ForgeApiServer
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = configRepository.themeMode
@@ -92,6 +93,24 @@ class SettingsViewModel @Inject constructor(
 
     private val _reasoningEnabled = MutableStateFlow(true)
     val reasoningEnabled: StateFlow<Boolean> = _reasoningEnabled
+
+    // ── API Server ────────────────────────────────────────────────────────────
+    val apiServerState: StateFlow<com.forge.os.data.api.ForgeApiServer.ServerState> = forgeApiServer.serverState
+
+    fun startApiServer() {
+        forgeApiServer.start()
+        _saveMessage.value = "✅ API server started on port ${forgeApiServer.serverState.value.port}"
+    }
+
+    fun stopApiServer() {
+        forgeApiServer.stop()
+        _saveMessage.value = "⏹️ API server stopped"
+    }
+
+    fun regenerateApiToken() {
+        val newToken = forgeApiServer.regenerateToken()
+        _saveMessage.value = "🔑 New token generated"
+    }
 
     // ── API Keys ──────────────────────────────────────────────────────────────
     // NOTE: these MutableStateFlow declarations MUST appear before the `init`

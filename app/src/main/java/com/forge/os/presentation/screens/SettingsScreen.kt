@@ -72,6 +72,7 @@ fun SettingsScreen(
     val visionEnabled by viewModel.visionEnabled.collectAsState()
     val reasoningEnabled by viewModel.reasoningEnabled.collectAsState()
     val backupLoading by viewModel.backupLoading.collectAsState()
+    val apiServerState by viewModel.apiServerState.collectAsState()
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
     var showAddSecretDialog by remember { mutableStateOf(false) }
@@ -425,6 +426,17 @@ fun SettingsScreen(
                 item { SectionHeader(title = "PERMISSIONS") }
                 item {
                     PermissionsCard()
+                }
+
+                // ── API Server ───────────────────────────────────────────
+                item { SectionHeader(title = "API SERVER") }
+                item {
+                    ApiServerCard(
+                        state = apiServerState,
+                        onStart = { viewModel.startApiServer() },
+                        onStop = { viewModel.stopApiServer() },
+                        onRegenerateToken = { viewModel.regenerateApiToken() }
+                    )
                 }
 
                 // ── About ────────────────────────────────────────────────
@@ -1763,6 +1775,158 @@ private fun PermissionGroupRow(
                     ) {
                         Text("Grant ${group.name} Permissions", fontSize = 12.sp)
                     }
+                }
+            }
+        }
+    }
+}
+
+// ── API Server Card ─────────────────────────────────────────────────────────
+
+@Composable
+private fun ApiServerCard(
+    state: com.forge.os.data.api.ForgeApiServer.ServerState,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onRegenerateToken: () -> Unit
+) {
+    var showToken by remember { mutableStateOf(false) }
+
+    ModernCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        Icons.Outlined.Api,
+                        contentDescription = null,
+                        tint = ModernAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        "Python SDK Server",
+                        color = ModernTextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                StatusBadge(
+                    status = if (state.running) "Running" else "Stopped",
+                    color = if (state.running) forgePalette.success else forgePalette.textMuted
+                )
+            }
+
+            Text(
+                "Allow external Python scripts to call Forge tools via local HTTP API.",
+                color = ModernTextSecondary,
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+
+            if (state.running) {
+                HorizontalDivider(color = forgePalette.divider, thickness = 0.5.dp)
+
+                // Connection info
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Host", color = ModernTextSecondary, fontSize = 11.sp)
+                        Text("127.0.0.1:${state.port}", color = ModernTextPrimary, fontSize = 13.sp)
+                    }
+                }
+
+                // Token
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Auth Token", color = ModernTextSecondary, fontSize = 11.sp)
+                        Text(
+                            if (showToken) state.token else "••••••••••••••••",
+                            color = ModernTextPrimary,
+                            fontSize = 13.sp
+                        )
+                    }
+                    IconButton(onClick = { showToken = !showToken }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            if (showToken) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            "Toggle token visibility",
+                            tint = ModernTextSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // SDK usage hint
+                Surface(
+                    color = ModernAccent.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            "Python SDK Usage:",
+                            color = ModernAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "from forge_sdk import ForgeClient\n" +
+                            "client = ForgeClient(token=\"${state.token.take(8)}...\")\n" +
+                            "result = client.call_tool(\"file_list\", path=\".\")",
+                            color = ModernTextSecondary,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onRegenerateToken,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ModernTextSecondary)
+                    ) {
+                        Text("Regenerate Token", fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = onStop,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = forgePalette.danger)
+                    ) {
+                        Text("Stop Server", fontSize = 12.sp, color = Color.White)
+                    }
+                }
+            } else {
+                if (state.error != null) {
+                    Surface(
+                        color = forgePalette.danger.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            "Error: ${state.error}",
+                            color = forgePalette.danger,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = onStart,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = ModernAccent)
+                ) {
+                    Text("Start API Server", fontSize = 13.sp, color = Color.White)
                 }
             }
         }

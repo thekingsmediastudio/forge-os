@@ -5,6 +5,7 @@ import com.forge.os.data.api.ToolDefinition
 import com.forge.os.domain.agent.ToolProvider
 import com.forge.os.domain.agent.params
 import com.forge.os.domain.agent.tool
+import com.forge.os.domain.sandbox.PythonPackageManager
 import com.forge.os.domain.workspace.WorkspaceLayout
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,7 +13,8 @@ import javax.inject.Singleton
 @Singleton
 class FileToolProvider @Inject constructor(
     private val sandboxManager: SandboxManager,
-    private val namedSecretRegistry: com.forge.os.domain.security.NamedSecretRegistry
+    private val namedSecretRegistry: com.forge.os.domain.security.NamedSecretRegistry,
+    private val pythonPackageManager: PythonPackageManager
 ) : ToolProvider {
 
     override fun getTools(): List<ToolDefinition> = listOf(
@@ -173,7 +175,7 @@ class FileToolProvider @Inject constructor(
     }
 
     private suspend fun pythonRun(args: Map<String, Any>): String {
-        val code = args["code"]?.toString() ?: return "Error: code required"
+        val userCode = args["code"]?.toString() ?: return "Error: code required"
         val secretNamesRaw = args["secret_names"]?.toString() ?: ""
         val env = if (secretNamesRaw.isNotBlank()) {
             val names = secretNamesRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
@@ -193,6 +195,11 @@ class FileToolProvider @Inject constructor(
             }
             map.ifEmpty { null }
         } else null
+
+        // Prepend sys.path bootstrap so user-installed packages in python_packages/ are importable
+        val bootstrap = pythonPackageManager.getSysPathBootstrap()
+        val code = bootstrap + "\n\n" + userCode
+
         return sandboxManager.executePython(code, env = env).getOrElse { "❌ python failed: ${it.message}" }
     }
 
@@ -208,29 +215,8 @@ class FileToolProvider @Inject constructor(
     }
 
     private suspend fun pythonPackages(): String {
-        // Use importlib.metadata (stdlib, not blocked) to list installed distributions.
-        // subprocess and pip are blocked by the AST security check, so we must avoid them.
-        val code = """
-import sys
-try:
-    import importlib.metadata as _meta
-    dists = sorted(_meta.distributions(), key=lambda d: (d.metadata.get('Name') or '').lower())
-    seen = set()
-    for d in dists:
-        name = d.metadata.get('Name') or ''
-        version = d.metadata.get('Version') or ''
-        key = name.lower()
-        if name and key not in seen:
-            seen.add(key)
-            print(f"{name}=={version}")
-    if not seen:
-        print("(no distributions found via importlib.metadata)")
-except Exception as e:
-    print(f"importlib.metadata unavailable: {e}")
-    print("Loaded modules (sys.modules):")
-    for m in sorted(sys.modules.keys()):
-        print(f"  {m}")
-""".trimIndent()
+        // Use PythonPackageManager to generate code that shows both built-in and user-installed packages
+        val code = pythonPackageManager.buildListPackagesCode()
         return sandboxManager.executePython(code).getOrElse { "❌ python failed: ${it.message}" }
     }
 
@@ -242,29 +228,18 @@ except Exception as e:
         // '==', '!=', '~=', '[', ']', spaces (separating multiple packages), and digits.
         val sanitised = packages.replace(Regex("[^A-Za-z0-9_.\\-\\[\\]=><!~, ]"), "")
         if (sanitised.isBlank()) return "❌ Error: no valid package names after sanitisation"
-        // Build a minimal Python snippet that calls pip via its internal API.
-        // Using pip._internal avoids subprocess (which is blocked by the AST security check
-        // on user-supplied python_run code). This code is trusted tool-generated code, not
-        // user-supplied, but we stay safe by not importing subprocess at all.
+
         val pkgList = sanitised.split(Regex("\\s+")).filter { it.isNotBlank() }
-            .joinToString(", ") { "\"${it.replace("\"", "")}\"" }
-        val code = """
-import sys
-_pkgs = [$pkgList]
-try:
-    from pip._internal.cli.main import main as _pip_main
-    _rc = _pip_main(['install', '--quiet'] + _pkgs)
-    if _rc == 0:
-        print("✅ Installed: " + ", ".join(_pkgs))
-    else:
-        print("❌ pip exited with code " + str(_rc))
-except ImportError:
-    print("❌ pip is not available in this Python environment.")
-    print("💡 In Chaquopy, packages must be declared in build.gradle under pip { install '...' }.")
-    print("   Runtime pip install is only possible if pip was included in the Chaquopy build config.")
-except Exception as _e:
-    print("❌ pip install failed: " + str(_e))
-""".trimIndent()
-        return sandboxManager.executePython(code).getOrElse { "❌ python failed: ${it.message}" }
+
+        // Use PythonPackageManager to build install code targeting python_packages/ folder
+        val code = pythonPackageManager.buildPipInstallCode(pkgList)
+        val result = sandboxManager.executePython(code).getOrElse { "❌ python failed: ${it.message}" }
+
+        // If install succeeded, record in manifest
+        if (result.contains("✅ Installed")) {
+            pythonPackageManager.recordInstalled(pkgList)
+        }
+
+        return result
     }
 }
