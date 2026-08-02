@@ -63,9 +63,9 @@ import com.forge.os.data.browser.BrowserHistoryEntry
 import com.forge.os.data.browser.BrowserSessionManager
 import com.forge.os.data.browser.NavigationCommand
 import com.forge.os.presentation.theme.forgePalette
-import com.forge.os.presentation.screens.browser.BrowserNavBar
 import com.forge.os.presentation.screens.browser.BrowserAddressBar
 import com.forge.os.presentation.screens.browser.BrowserTabStrip
+import com.forge.os.presentation.screens.browser.BrowserTabUi
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.ReadOnlyComposable
@@ -79,8 +79,6 @@ private val Bg: Color
     @Composable @ReadOnlyComposable get() = forgePalette.bg
 private val Surface: Color
     @Composable @ReadOnlyComposable get() = forgePalette.surface
-private val Surface2: Color
-    @Composable @ReadOnlyComposable get() = forgePalette.surface2
 private val TextPrimary: Color
     @Composable @ReadOnlyComposable get() = forgePalette.textPrimary
 private val TextMuted: Color
@@ -235,10 +233,10 @@ fun BrowserScreen(
             .background(Bg)
             .statusBarsPadding()
     ) {
-        // ── Phase 3: New Chrome-like Tab Strip ───────────────────────────
+        // ── Tab Strip ────────────────────────────────────────────────────
         BrowserTabStrip(
             tabs = tabs.map { tab ->
-                com.forge.os.presentation.screens.browser.BrowserTab(
+                BrowserTabUi(
                     id = tab.id,
                     title = tab.title.ifBlank { tab.url.removePrefix("https://").removePrefix("http://").take(24) },
                     url = tab.url,
@@ -248,12 +246,13 @@ fun BrowserScreen(
             onTabSelect = { tabId -> viewModel.switchTab(tabId) },
             onTabClose = { tabId -> viewModel.closeTab(tabId) },
             onNewTab = { viewModel.newTab() },
+            onBack = onNavigateBack,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(36.dp)
         )
 
-        // ── Phase 3: New Chrome-like Address Bar ─────────────────────────
+        // ── Combined Address + Nav Bar ───────────────────────────────────
         BrowserAddressBar(
             url = addressBarText,
             onUrlChange = { addressBarText = it },
@@ -262,13 +261,7 @@ fun BrowserScreen(
                 webViewRef?.loadUrl(target)
             },
             isSecure = currentUrl.startsWith("https"),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-
-        // ── Phase 3: New Chrome-like Navigation Bar ──────────────────────
-        BrowserNavBar(
+            isLoading = isLoading,
             canGoBack = webViewRef?.canGoBack() == true,
             canGoForward = webViewRef?.canGoForward() == true,
             isBookmarked = viewModel.isBookmarked(currentUrl),
@@ -280,33 +273,31 @@ fun BrowserScreen(
                 viewModel.toggleBookmark(currentUrl, title)
             },
             onMenuClick = { showMenu = true },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
+            modifier = Modifier.fillMaxWidth()
         )
 
-        // ── Menu (for find, bookmarks, history, clear) ───────────────────
+        // ── Overflow menu ────────────────────────────────────────────────
         Box {
             if (showMenu) {
                 DropdownMenu(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false },
-                    modifier = Modifier.background(Surface)) {
+                    modifier = Modifier.background(forgePalette.surface, RoundedCornerShape(12.dp))) {
                     DropdownMenuItem(
-                        text = { Text("Find in page", color = TextPrimary) },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Orange) },
+                        text = { Text("Find in page", color = forgePalette.textPrimary, fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = forgePalette.orange, modifier = Modifier.size(18.dp)) },
                         onClick = { showMenu = false; findVisible = true })
                     DropdownMenuItem(
-                        text = { Text("Bookmarks (${bookmarks.size})", color = TextPrimary) },
-                        leadingIcon = { Icon(Icons.Filled.Bookmark, contentDescription = null, tint = Orange) },
+                        text = { Text("Bookmarks (${bookmarks.size})", color = forgePalette.textPrimary, fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Filled.Bookmark, contentDescription = null, tint = forgePalette.orange, modifier = Modifier.size(18.dp)) },
                         onClick = { showMenu = false; showBookmarks = true })
                     DropdownMenuItem(
-                        text = { Text("History", color = TextPrimary) },
-                        leadingIcon = { Icon(Icons.Filled.History, contentDescription = null, tint = Orange) },
+                        text = { Text("History", color = forgePalette.textPrimary, fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Filled.History, contentDescription = null, tint = forgePalette.orange, modifier = Modifier.size(18.dp)) },
                         onClick = { showMenu = false; showHistory = true })
                     DropdownMenuItem(
-                        text = { Text("Clear session…", color = TextPrimary) },
-                        leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null, tint = TextMuted) },
+                        text = { Text("Clear session…", color = forgePalette.danger, fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null, tint = forgePalette.danger, modifier = Modifier.size(18.dp)) },
                         onClick = { showMenu = false; showClearDialog = true })
                 }
             }
@@ -317,7 +308,7 @@ fun BrowserScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Surface)
+                    .background(forgePalette.surface)
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -336,21 +327,21 @@ fun BrowserScreen(
                     },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    placeholder = { Text("Find in page", color = TextMuted, fontSize = 13.sp) },
-                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, color = TextPrimary),
+                    placeholder = { Text("Find in page", color = forgePalette.textMuted, fontSize = 13.sp) },
+                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, color = forgePalette.textPrimary),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Orange,
-                        unfocusedBorderColor = Surface2,
-                        focusedContainerColor = Bg,
-                        unfocusedContainerColor = Bg)
+                        focusedBorderColor = forgePalette.orange,
+                        unfocusedBorderColor = forgePalette.surface2,
+                        focusedContainerColor = forgePalette.bg,
+                        unfocusedContainerColor = forgePalette.bg)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(findCounter, color = TextMuted, fontSize = 11.sp)
+                Text(findCounter, color = forgePalette.textMuted, fontSize = 11.sp)
                 IconButton(onClick = { webViewRef?.findNext(false) }) {
-                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Previous", tint = TextPrimary)
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Previous", tint = forgePalette.textPrimary)
                 }
                 IconButton(onClick = { webViewRef?.findNext(true) }) {
-                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Next", tint = TextPrimary)
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Next", tint = forgePalette.textPrimary)
                 }
                 IconButton(onClick = {
                     findVisible = false
@@ -358,7 +349,7 @@ fun BrowserScreen(
                     findCounter = ""
                     webViewRef?.clearMatches()
                 }) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close find", tint = TextMuted)
+                    Icon(Icons.Filled.Close, contentDescription = "Close find", tint = forgePalette.textMuted)
                 }
             }
         }
