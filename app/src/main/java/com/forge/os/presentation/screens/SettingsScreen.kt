@@ -1368,7 +1368,7 @@ private fun SettingsToggleRow(
         Switch(
             checked = checked,
             onCheckedChange = { newValue ->
-                haptic.performHapticFeedback(HapticFeedbackType.Toggle)
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onCheckedChange(newValue)
             },
             colors = SwitchDefaults.colors(
