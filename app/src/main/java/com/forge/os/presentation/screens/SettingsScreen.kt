@@ -316,6 +316,34 @@ fun SettingsScreen(
                 item { SectionHeader(title = "FEATURES") }
                 item { WishlistFeaturesCard() }
 
+                // ── Memory Channels ──────────────────────────────────────
+                item { SectionHeader(title = "MEMORY CHANNELS") }
+                item {
+                    val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
+                    val channelsEnabled by channelVm.channelsEnabled.collectAsState()
+                    
+                    SettingsToggleRow(
+                        icon = Icons.Outlined.Folder,
+                        title = "Enable channels",
+                        subtitle = "Separate memory by context (Work, Personal, etc.)",
+                        checked = channelsEnabled,
+                        onCheckedChange = { channelVm.setChannelsEnabled(it) }
+                    )
+                }
+                item {
+                    val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
+                    val channelsEnabled by channelVm.channelsEnabled.collectAsState()
+                    
+                    if (channelsEnabled) {
+                        SettingsNavRow(
+                            icon = Icons.Outlined.ManageAccounts,
+                            title = "Manage channels",
+                            subtitle = "Create, edit, and organize your channels",
+                            onClick = { /* TODO: Navigate to channel list */ }
+                        )
+                    }
+                }
+
                 // ── Help & Tutorials ─────────────────────────────────────
                 item { SectionHeader(title = "HELP & TUTORIALS") }
                 item {

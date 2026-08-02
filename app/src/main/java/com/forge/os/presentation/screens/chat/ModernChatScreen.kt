@@ -93,6 +93,12 @@ fun ModernChatScreen(
     val selectedSpec by viewModel.selectedSpec.collectAsState()
     val voiceVm: com.forge.os.presentation.screens.voice.VoiceInputViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     
+    // Channel state
+    val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
+    val channelsEnabled by channelVm.channelsEnabled.collectAsState()
+    val currentChannel by channelVm.currentChannel.collectAsState()
+    val channels by channelVm.channels.collectAsState()
+    
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     var inputText by remember { mutableStateOf("") }
@@ -137,6 +143,10 @@ fun ModernChatScreen(
                 onNavigateToSettings = onNavigateToSettings,
                 onVoiceMode = { showVoiceMode = true },
                 onClearChat = { viewModel.clearMessages() },
+                channelsEnabled = channelsEnabled,
+                currentChannel = currentChannel,
+                channels = channels,
+                onChannelSelect = { channelVm.switchChannel(it.id) },
             )
             
             // Messages Area
@@ -288,6 +298,10 @@ private fun ModernHeader(
     onNavigateToSettings: () -> Unit = {},
     onVoiceMode: () -> Unit = {},
     onClearChat: () -> Unit = {},
+    channelsEnabled: Boolean = false,
+    currentChannel: com.forge.os.domain.channel.Channel = com.forge.os.domain.channel.Channel.GENERAL,
+    channels: List<com.forge.os.domain.channel.Channel> = emptyList(),
+    onChannelSelect: (com.forge.os.domain.channel.Channel) -> Unit = {},
 ) {
     var showModelMenu by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
@@ -346,6 +360,16 @@ private fun ModernHeader(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
+            }
+
+            // Channel switcher (when enabled)
+            if (channelsEnabled) {
+                com.forge.os.presentation.components.ChannelSwitcher(
+                    currentChannel = currentChannel,
+                    channels = channels,
+                    onChannelSelect = onChannelSelect
+                )
+                Spacer(Modifier.width(8.dp))
             }
 
             // Model pill with status dot
