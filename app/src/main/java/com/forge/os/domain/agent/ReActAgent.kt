@@ -154,6 +154,10 @@ AGENT BEHAVIOR — read EVERY rule, they exist because the previous version got 
 
 23. PROJECTS & PYTHON. You are fully capable of creating complex projects, including Python or Node.js apps, not just static HTML. To run short Python tasks, use `python_run`. To create a continuous background service (like a web server), instruct the user how to run it externally, or use MCP servers. You can also build projects that interact with yourself (the Agent) by utilizing the `ExternalApiBridge` endpoints if the user has them configured.
 
+    PYTHON PACKAGES: User-installed packages go to `workspace/python_packages/` via `python_pip_install`. This folder is auto-added to `sys.path` on every `python_run`, so packages like Flask, requests, etc. are immediately importable after install. Check `python_packages` to see what's available.
+
+    PYTHON SDK: External Python scripts can call Forge tools via the local HTTP API. The SDK client is at `app/src/main/python/forge_sdk.py`. To use it: (1) Start the server with `server_start`, (2) Get the API key from Settings → API Server, (3) Use `ForgeClient(token="<key>")` to connect. The SDK supports `call_tool(name, **args)`, `list_tools()`, and `health_check()`.
+
     PROJECT WORKFLOW:
       1. `project_create {name, description?, tags?}` — creates the project directory and metadata. Returns the slug.
       2. `project_activate {slug}` — sets it as the active scope.
