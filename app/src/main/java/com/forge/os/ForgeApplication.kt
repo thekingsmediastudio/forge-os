@@ -81,6 +81,17 @@ class ForgeApplication : Application(), Configuration.Provider {
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
         }
+        // Pre-warm the Python runner module so the first python_run doesn't
+        // pay the module-load cost. Runs on a background thread to avoid
+        // blocking app startup.
+        Thread {
+            try {
+                Python.getInstance().getModule("forge_sandbox.python_runner")
+                Timber.d("Python runner module pre-warmed")
+            } catch (e: Exception) {
+                Timber.w(e, "Python pre-warm failed (non-fatal)")
+            }
+        }.start()
         super.onCreate()
         // initWebView() must be called AFTER super.onCreate() so the
         // Application context is fully initialized before any WebView API
