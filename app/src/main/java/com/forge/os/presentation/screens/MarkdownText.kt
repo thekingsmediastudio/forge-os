@@ -55,13 +55,13 @@ fun MarkdownText(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF0d1117), RoundedCornerShape(6.dp))
+                            .background(forgePalette.surfaceSunken, RoundedCornerShape(6.dp))
                             .padding(8.dp)
                             .horizontalScroll(rememberScrollState())
                     ) {
                         Text(
                             seg.code,
-                            color = Color(0xFF79c0ff),
+                            color = forgePalette.info,
                             fontSize = (baseFontSize - 1).sp,
                             lineHeight = (baseFontSize + 4).sp
                         )
@@ -73,7 +73,7 @@ fun MarkdownText(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             buildInlineAnnotated(seg.content, baseFontSize, baseColor),
-                            color = Color(0xFFa0a0a0),
+                            color = forgePalette.textMuted,
                             fontSize = baseFontSize.sp,
                             lineHeight = (baseFontSize + 5).sp,
                             fontStyle = FontStyle.Italic
@@ -207,9 +207,9 @@ private fun MarkdownTable(table: MdSegment.Table, baseFontSize: Float, baseColor
     }
 
     val borderColor = forgePalette.borderSoft
-    val headerBg   = Color(0xFF1a1a2e)
-    val rowBg      = Color(0xFF0f0f1a)
-    val altRowBg   = Color(0xFF141420)
+    val headerBg   = forgePalette.surface2
+    val rowBg      = forgePalette.surface
+    val altRowBg   = forgePalette.surfaceSunken
 
     Box(
         Modifier
@@ -361,7 +361,9 @@ fun parseMarkdownSegments(text: String): List<MdSegment> {
     return result
 }
 
+@Composable
 fun buildInlineAnnotated(text: String, baseFontSize: Float, baseColor: Color): AnnotatedString {
+    val palette = forgePalette
     return buildAnnotatedString {
         var remaining = text
         while (remaining.isNotEmpty()) {
@@ -414,7 +416,7 @@ fun buildInlineAnnotated(text: String, baseFontSize: Float, baseColor: Color): A
                     val url   = m.groupValues[2]
                     pushStringAnnotation("URL", url)
                     withStyle(SpanStyle(
-                        color = Color(0xFF60A5FA),
+                        color = palette.info,
                         textDecoration = TextDecoration.Underline)) { append(label) }
                     pop()
                     remaining = remaining.substring(m.range.last + 1)
@@ -424,7 +426,7 @@ fun buildInlineAnnotated(text: String, baseFontSize: Float, baseColor: Color): A
                     val url = m.value
                     pushStringAnnotation("URL", url)
                     withStyle(SpanStyle(
-                        color = Color(0xFF60A5FA),
+                        color = palette.info,
                         textDecoration = TextDecoration.Underline)) { append(url) }
                     pop()
                     remaining = remaining.substring(m.range.last + 1)
@@ -442,10 +444,10 @@ fun buildInlineAnnotated(text: String, baseFontSize: Float, baseColor: Color): A
                         "**"  -> withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = baseColor)) { append(inner) }
                         "*"   -> withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = baseColor)) { append(inner) }
                         "`"   -> withStyle(SpanStyle(
-                            background = Color(0xFF1e1e2e),
-                            color = Color(0xFF89dceb),
+                            background = palette.surfaceSunken,
+                            color = palette.info,
                             fontSize = (baseFontSize - 1).sp)) { append(inner) }
-                        "~~"  -> withStyle(SpanStyle(color = Color(0xFF666666), textDecoration = TextDecoration.LineThrough)) { append(inner) }
+                        "~~"  -> withStyle(SpanStyle(color = palette.textDim, textDecoration = TextDecoration.LineThrough)) { append(inner) }
                     }
                     remaining = afterMarker.substring(endIdx + marker.length)
                 }
