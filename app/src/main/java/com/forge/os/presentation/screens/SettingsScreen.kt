@@ -316,6 +316,20 @@ fun SettingsScreen(
                 item { SectionHeader(title = "FEATURES") }
                 item { WishlistFeaturesCard() }
 
+                // ── Help & Tutorials ─────────────────────────────────────
+                item { SectionHeader(title = "HELP & TUTORIALS") }
+                item {
+                    val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
+                    SettingsNavRow(
+                        icon = Icons.Outlined.School,
+                        title = "Replay tutorials",
+                        subtitle = "Show interface guides again",
+                        onClick = {
+                            tutorialVm.tutorialManager.resetAllTutorials()
+                        }
+                    )
+                }
+
                 // ── Routing & Security ───────────────────────────────────
                 item { SectionHeader(title = "ROUTING & SECURITY") }
                 item {

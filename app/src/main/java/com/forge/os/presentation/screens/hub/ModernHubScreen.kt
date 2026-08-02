@@ -88,6 +88,20 @@ fun ModernHubScreen(
 ) {
     var query by remember { mutableStateOf("") }
     val pluginTiles by viewModel.pluginTiles.collectAsState()
+    
+    // Tutorial state
+    val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
+    val tutorialManager = tutorialVm.tutorialManager
+    var showTutorial by remember { mutableStateOf(false) }
+    var tutorialStep by remember { mutableIntStateOf(0) }
+    
+    // Check if tutorial should be shown
+    LaunchedEffect(Unit) {
+        if (tutorialManager.shouldShowHubTutorial()) {
+            kotlinx.coroutines.delay(500)
+            showTutorial = true
+        }
+    }
 
     val q = query.trim().lowercase()
     val visibleBuiltins = if (q.isEmpty()) MODULES else MODULES.filter {
@@ -261,6 +275,45 @@ fun ModernHubScreen(
             }
         }
         
+        // Tutorial Overlay
+        if (showTutorial) {
+            val tutorialSteps = listOf(
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Welcome to Hub",
+                    description = "This is your control center. All Forge OS modules are organized here by category.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.CENTER
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Search",
+                    description = "Quickly find any module by typing in the search bar.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Module Tiles",
+                    description = "Tap any tile to open that module. Tiles are grouped by category: Core, Agent, Data, Companion, Tools, and Advanced.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Plugin Tiles",
+                    description = "Your installed plugins appear here with their custom icons and actions.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
+                )
+            )
+            
+            com.forge.os.presentation.components.CoachMarkOverlay(
+                steps = tutorialSteps,
+                currentStep = tutorialStep,
+                onNext = { tutorialStep++ },
+                onSkip = {
+                    showTutorial = false
+                    tutorialManager.markHubTutorialShown()
+                },
+                onDone = {
+                    showTutorial = false
+                    tutorialManager.markHubTutorialShown()
+                }
+            )
+        }
     }
 }
 

@@ -99,6 +99,19 @@ fun ModernChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showVoiceMode by remember { mutableStateOf(false) }
     
+    // Tutorial state
+    val tutorialManager: com.forge.os.domain.tutorial.TutorialManager = androidx.hilt.navigation.compose.hiltViewModel<com.forge.os.presentation.screens.chat.TutorialViewModel>().tutorialManager
+    var showTutorial by remember { mutableStateOf(false) }
+    var tutorialStep by remember { mutableIntStateOf(0) }
+    
+    // Check if tutorial should be shown on first launch
+    LaunchedEffect(Unit) {
+        if (tutorialManager.shouldShowChatTutorial()) {
+            kotlinx.coroutines.delay(500) // Wait for UI to settle
+            showTutorial = true
+        }
+    }
+    
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -215,6 +228,51 @@ fun ModernChatScreen(
         if (showVoiceMode) {
             com.forge.os.presentation.screens.voice.VoiceModeOverlay(
                 onDismiss = { showVoiceMode = false }
+            )
+        }
+        
+        // Tutorial Overlay
+        if (showTutorial) {
+            val tutorialSteps = listOf(
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Welcome to Forge OS",
+                    description = "This is your AI assistant. Ask anything, and it will help you with tasks, answer questions, and more.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.CENTER
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Model Selection",
+                    description = "Tap the model pill in the header to switch between AI providers. Green dot means connected.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Menu",
+                    description = "Access workspace, settings, hub, and more from the side menu.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Input Area",
+                    description = "Type your message here. Tap + for attachments, voice input, and more options.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Send & Stop",
+                    description = "Tap the arrow to send. While generating, tap the red stop button to cancel.",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
+                )
+            )
+            
+            com.forge.os.presentation.components.CoachMarkOverlay(
+                steps = tutorialSteps,
+                currentStep = tutorialStep,
+                onNext = { tutorialStep++ },
+                onSkip = {
+                    showTutorial = false
+                    tutorialManager.markChatTutorialShown()
+                },
+                onDone = {
+                    showTutorial = false
+                    tutorialManager.markChatTutorialShown()
+                }
             )
         }
     }
