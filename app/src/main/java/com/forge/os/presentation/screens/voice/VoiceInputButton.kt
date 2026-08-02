@@ -64,14 +64,21 @@ fun VoiceInputButton(
         }
     }
 
-    if (!isAvailable) {
-        // Don't show button if voice input is not available
-        return
+    val bgColor = when {
+        isListening -> forgePalette.danger
+        !isAvailable -> forgePalette.surface2
+        else -> forgePalette.surface2
+    }
+    val iconTint = when {
+        isListening -> Color.White
+        !isAvailable -> forgePalette.textMuted.copy(alpha = 0.4f)
+        else -> forgePalette.orange
     }
 
     Box(modifier = modifier) {
         IconButton(
             onClick = {
+                if (!isAvailable) return@IconButton
                 if (isListening) {
                     viewModel.stopListening()
                 } else {
@@ -88,18 +95,15 @@ fun VoiceInputButton(
             },
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    if (isListening) forgePalette.danger else forgePalette.borderSoft,
-                    CircleShape
-                )
+                .background(bgColor, CircleShape)
         ) {
             if (isListening) {
                 PulsingMicIcon()
             } else {
                 Icon(
-                    Icons.Default.Mic,
+                    if (isAvailable) Icons.Default.Mic else Icons.Default.MicOff,
                     "Voice Input",
-                    tint = Color.White,
+                    tint = iconTint,
                     modifier = Modifier.size(20.dp)
                 )
             }

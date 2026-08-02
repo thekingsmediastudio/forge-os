@@ -145,7 +145,7 @@ private fun ModernOnboardingHeader(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        "AI Development Environment",
+                        "by Forge Labs",
                         color = ModernTextSecondary,
                         fontSize = 12.sp
                     )
@@ -254,6 +254,15 @@ private fun ModernWelcomePage() {
                 modifier = Modifier.weight(1f)
             )
         }
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            "Forge Labs · TheKingsMediaStudio",
+            color = ModernTextSecondary.copy(alpha = 0.6f),
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

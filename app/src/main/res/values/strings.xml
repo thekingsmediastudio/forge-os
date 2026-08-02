@@ -18,4 +18,8 @@
     <string name="perm_use_api_label">Use Forge OS</string>
     <string name="perm_use_api_desc">Allows the app to call the Forge OS external API. The user must still grant access in Forge OS settings.</string>
     <string name="external_api_title">External API</string>
+
+    <!-- Branding -->
+    <string name="company_name">Forge Labs</string>
+    <string name="company_parent">TheKingsMediaStudio</string>
 </resources>

@@ -417,6 +417,49 @@ fun SettingsScreen(
                     )
                 }
 
+                // ── About ────────────────────────────────────────────────
+                item { SectionHeader(title = "ABOUT") }
+                item {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = forgePalette.surface,
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            ForgeLogo(size = 48.dp)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "Forge OS",
+                                color = ModernTextPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "v${com.forge.os.BuildConfig.VERSION_NAME}",
+                                color = ModernTextSecondary,
+                                fontSize = 13.sp
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                "Built by Forge Labs",
+                                color = ModernTextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "A division of TheKingsMediaStudio",
+                                color = ModernTextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+
                 item { Spacer(Modifier.height(32.dp)) }
             }
         }
