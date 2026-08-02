@@ -11,7 +11,8 @@ import javax.inject.Singleton
 
 @Singleton
 class FileToolProvider @Inject constructor(
-    private val sandboxManager: SandboxManager
+    private val sandboxManager: SandboxManager,
+    private val namedSecretRegistry: com.forge.os.domain.security.NamedSecretRegistry
 ) : ToolProvider {
 
     override fun getTools(): List<ToolDefinition> = listOf(
@@ -34,8 +35,10 @@ class FileToolProvider @Inject constructor(
             "Execute a shell command in the workspace root.",
             params("command" to "string:Shell command")),
         tool("python_run",
-            "Execute Python 3.11 code in the workspace sandbox. Returns stdout/stderr.",
-            params("code" to "string:Python source code")),
+            "Execute Python 3.11 code in the workspace sandbox. Returns stdout/stderr. " +
+            "Optionally inject named secrets as env vars (SECRET_<NAME>) via secret_names.",
+            params("code" to "string:Python source code",
+                   "secret_names" to "string:Comma-separated secret names to inject as env vars (optional)")),
         tool("workspace_info",
             "Get summary of files, directories, and disk usage in the sandbox.",
             emptyMap(), required = emptyList()),
@@ -171,7 +174,26 @@ class FileToolProvider @Inject constructor(
 
     private suspend fun pythonRun(args: Map<String, Any>): String {
         val code = args["code"]?.toString() ?: return "Error: code required"
-        return sandboxManager.executePython(code).getOrElse { "❌ python failed: ${it.message}" }
+        val secretNamesRaw = args["secret_names"]?.toString() ?: ""
+        val env = if (secretNamesRaw.isNotBlank()) {
+            val names = secretNamesRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            val map = mutableMapOf<String, String>()
+            val missing = mutableListOf<String>()
+            for (name in names) {
+                val value = namedSecretRegistry.getValue(name)
+                if (value != null) {
+                    val envKey = "SECRET_${name.uppercase().replace(Regex("[^A-Z0-9_]"), "_")}"
+                    map[envKey] = value
+                } else {
+                    missing.add(name)
+                }
+            }
+            if (missing.isNotEmpty()) {
+                return "❌ Secrets not found: ${missing.joinToString(", ")}. Use secret_list to see available names."
+            }
+            map.ifEmpty { null }
+        } else null
+        return sandboxManager.executePython(code, env = env).getOrElse { "❌ python failed: ${it.message}" }
     }
 
     private suspend fun workspaceInfo(): String {

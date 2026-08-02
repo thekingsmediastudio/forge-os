@@ -9,7 +9,7 @@ import builtins as _builtins
 from forge_sandbox.security import check_imports
 
 
-def run_python(code, workspace_path, profile="default", timeout=30):
+def run_python(code, workspace_path, profile="default", timeout=30, env_json="{}"):
     """Execute Python code in restricted environment.
 
     Args:
@@ -17,6 +17,7 @@ def run_python(code, workspace_path, profile="default", timeout=30):
         workspace_path: Directory to run in
         profile: "default" (strict) or "plugin" (allows imports for loader)
         timeout: Max execution time (enforced by Kotlin caller)
+        env_json: JSON string of env vars to inject (e.g. '{"SECRET_KEY":"val"}')
 
     Returns:
         JSON string with execution results
@@ -34,6 +35,16 @@ def run_python(code, workspace_path, profile="default", timeout=30):
     # Change to workspace
     old_cwd = os.getcwd()
     os.chdir(workspace_path)
+
+    # Inject env vars (secrets) — track keys so we can clean up after
+    injected_env_keys = []
+    try:
+        env_map = json.loads(env_json) if env_json and env_json != "{}" else {}
+        for k, v in env_map.items():
+            os.environ[k] = v
+            injected_env_keys.append(k)
+    except Exception:
+        pass  # malformed env_json — proceed without injection
 
     # Capture stdout/stderr
     old_stdout = sys.stdout
@@ -154,3 +165,6 @@ def run_python(code, workspace_path, profile="default", timeout=30):
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         os.chdir(old_cwd)
+        # Remove injected env vars so they don't leak into subsequent runs
+        for k in injected_env_keys:
+            os.environ.pop(k, None)

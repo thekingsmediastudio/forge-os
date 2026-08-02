@@ -231,8 +231,8 @@ class SandboxManager @Inject constructor(
         shellExecutor.execute(command, currentWorkspaceDir(), timeoutSeconds.coerceAtMost(60))
     }
 
-    suspend fun executePython(code: String, profile: String = "default", timeoutSeconds: Int = 30): Result<String> = runCatching {
-        pythonRunner.run(code, currentWorkspaceDir(), profile, timeoutSeconds.coerceAtMost(60))
+    suspend fun executePython(code: String, profile: String = "default", timeoutSeconds: Int = 30, env: Map<String, String>? = null): Result<String> = runCatching {
+        pythonRunner.run(code, currentWorkspaceDir(), profile, timeoutSeconds.coerceAtMost(60), env)
     }
 
     suspend fun getWorkspaceInfo(): WorkspaceInfo {

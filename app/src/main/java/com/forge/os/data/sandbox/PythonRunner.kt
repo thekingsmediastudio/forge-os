@@ -12,16 +12,18 @@ class PythonRunner @Inject constructor(
     private val python: Python
 ) {
 
-    fun run(code: String, workingDir: File, profile: String = "default", timeoutSeconds: Int): String {
-        Timber.d("Executing Python in ${workingDir.absolutePath} (profile=$profile)")
+    fun run(code: String, workingDir: File, profile: String = "default", timeoutSeconds: Int, env: Map<String, String>? = null): String {
+        Timber.d("Executing Python in ${workingDir.absolutePath} (profile=$profile, env=${env?.size ?: 0} vars)")
         return try {
+            val envJson = if (env.isNullOrEmpty()) "{}" else org.json.JSONObject(env).toString()
             val module = python.getModule("forge_sandbox.python_runner")
             val result = module.callAttr(
                 "run_python",
                 code,
                 workingDir.absolutePath,
                 profile,
-                timeoutSeconds
+                timeoutSeconds,
+                envJson
             )
             result.toString()
         } catch (e: PyException) {
