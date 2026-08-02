@@ -32,6 +32,7 @@
     <!-- Foreground service for cron jobs -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <!-- Notifications for cron alerts and external-API requests -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -232,6 +233,12 @@
             android:name=".data.server.ForgeHttpService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Hotword detection: foreground service listening for "Hello Forge" -->
+        <service
+            android:name=".service.HotwordDetectionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <!-- FileProvider used by the workspace browser to share / "Open with" files -->
         <provider

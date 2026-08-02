@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var autoPhoneConnection: AutoPhoneConnection
     @Inject lateinit var browserRevealManager: com.forge.os.data.browser.BrowserRevealManager
     @Inject lateinit var headlessBrowser: com.forge.os.data.web.HeadlessBrowser
+    @Inject lateinit var hotwordEventBus: com.forge.os.domain.voice.HotwordEventBus
 
     private val requestAutoPhoneControl =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -118,6 +119,7 @@ class MainActivity : ComponentActivity() {
         ensureNotificationPermission()
         ensureDangerousPermissions()
         consumeIntentExtras(intent)
+        startHotwordDetectionService()
         setContent {
             val themeMode by configRepository.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             ForgeTheme(themeMode = themeMode) {
@@ -419,6 +421,15 @@ class MainActivity : ComponentActivity() {
                             browserRevealManager = browserRevealManager,
                         )
                     }
+
+                    // Hotword activation overlay — shows when "Hello Forge" is detected
+                    val hotwordEvent by hotwordEventBus.hotwordEvent.collectAsState()
+                    hotwordEvent?.let {
+                        com.forge.os.presentation.components.HotwordActivationOverlay(
+                            onDismiss = { hotwordEventBus.consume() },
+                            conversationId = null, // TODO: pass current conversation if available
+                        )
+                    }
                 }
             }
         }
@@ -438,6 +449,19 @@ class MainActivity : ComponentActivity() {
         val nav = i?.getStringExtra("nav")
         if (!nav.isNullOrBlank() && nav in KNOWN_NAV_ROUTES) {
             pendingNavRequest.value = nav
+        }
+    }
+
+    /** Start the hotword detection service if RECORD_AUDIO is granted. */
+    private fun startHotwordDetectionService() {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED) {
+            val intent = android.content.Intent(this, com.forge.os.service.HotwordDetectionService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
         }
     }
 
