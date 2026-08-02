@@ -120,9 +120,9 @@ fun ModernChatScreen(
     }
 
     // Recipes — if the Recipes screen handed us a prompt via "Use in Chat",
-    // pre-fill the input so the user can edit before sending.
+    // auto-send it immediately so the agent starts working.
     LaunchedEffect(Unit) {
-        PendingRecipeSeed.consume()?.let { inputText = it }
+        PendingRecipeSeed.consume()?.let { viewModel.send(it) }
     }
 
     // Auto-scroll to bottom when new messages arrive
