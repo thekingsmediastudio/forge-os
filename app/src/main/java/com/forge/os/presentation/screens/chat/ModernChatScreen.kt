@@ -1639,7 +1639,7 @@ private fun ModernInputBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 6.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.Bottom,
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             // Plus button — attachments / actions
@@ -1716,9 +1716,7 @@ private fun ModernInputBar(
             // Voice input button (inline mic)
             com.forge.os.presentation.screens.voice.VoiceInputButton(
                 onVoiceInput = { recognizedText -> onValueChange(recognizedText) },
-                modifier = Modifier
-                    .size(36.dp)
-                    .padding(bottom = 2.dp)
+                modifier = Modifier.size(44.dp)
             )
 
             // Send/Stop button — ember circle when active with press animation

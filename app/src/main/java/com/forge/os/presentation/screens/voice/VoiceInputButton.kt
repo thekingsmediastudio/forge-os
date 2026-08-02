@@ -87,11 +87,11 @@ fun VoiceInputButton(
                 }
             },
             modifier = Modifier
+                .fillMaxSize()
                 .background(
                     if (isListening) forgePalette.danger else forgePalette.borderSoft,
-                    RoundedCornerShape(8.dp)
+                    CircleShape
                 )
-                .size(48.dp)
         ) {
             if (isListening) {
                 PulsingMicIcon()
