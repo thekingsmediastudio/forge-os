@@ -43,7 +43,7 @@ class SettingsViewModel @Inject constructor(
     private val namedSecrets: NamedSecretRegistry,
     private val configRepository: ConfigRepository,
     private val backupManager: BackupManager,
-    private val forgeApiServer: com.forge.os.data.api.ForgeApiServer
+    private val forgeHttpServer: com.forge.os.data.server.ForgeHttpServer
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = configRepository.themeMode
@@ -95,21 +95,41 @@ class SettingsViewModel @Inject constructor(
     val reasoningEnabled: StateFlow<Boolean> = _reasoningEnabled
 
     // ── API Server ────────────────────────────────────────────────────────────
-    val apiServerState: StateFlow<com.forge.os.data.api.ForgeApiServer.ServerState> = forgeApiServer.serverState
+    private val _apiServerRunning = MutableStateFlow(false)
+    val apiServerRunning: StateFlow<Boolean> = _apiServerRunning
+
+    private val _apiServerPort = MutableStateFlow(8789)
+    val apiServerPort: StateFlow<Int> = _apiServerPort
+
+    private val _apiServerKey = MutableStateFlow("")
+    val apiServerKey: StateFlow<String> = _apiServerKey
+
+    fun refreshApiServerState() {
+        _apiServerRunning.value = forgeHttpServer.isRunning()
+        _apiServerPort.value = forgeHttpServer.port()
+        _apiServerKey.value = if (forgeHttpServer.isRunning()) forgeHttpServer.apiKey() else ""
+    }
 
     fun startApiServer() {
-        forgeApiServer.start()
-        _saveMessage.value = "✅ API server started on port ${forgeApiServer.serverState.value.port}"
+        val success = forgeHttpServer.start()
+        if (success) {
+            refreshApiServerState()
+            _saveMessage.value = "✅ API server started on port ${forgeHttpServer.port()}"
+        } else {
+            _saveMessage.value = "❌ Failed to start API server"
+        }
     }
 
     fun stopApiServer() {
-        forgeApiServer.stop()
+        forgeHttpServer.stop()
+        refreshApiServerState()
         _saveMessage.value = "⏹️ API server stopped"
     }
 
     fun regenerateApiToken() {
-        val newToken = forgeApiServer.regenerateToken()
-        _saveMessage.value = "🔑 New token generated"
+        val newKey = forgeHttpServer.rotateKey()
+        _apiServerKey.value = newKey
+        _saveMessage.value = "🔑 New API key generated"
     }
 
     // ── API Keys ──────────────────────────────────────────────────────────────
@@ -141,13 +161,14 @@ class SettingsViewModel @Inject constructor(
             _hapticFeedbackEnabled.value = cfg.appearance.hapticFeedbackEnabled
             _prefetchEnabled.value = cfg.prefetchSettings.enabled
             _prefetchAllowUnsafe.value = cfg.prefetchSettings.allowUnsafeTools
-            
+
             val intel = cfg.intelligenceUpgrades
             _reflectionEnabled.value = intel.reflectionEnabled
             _memoryRagEnabled.value = intel.memoryRagEnabled
             _visionEnabled.value = intel.visionEnabled
             _reasoningEnabled.value = intel.reasoningEnabled
         }
+        refreshApiServerState()
         loadAll()
     }
 

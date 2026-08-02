@@ -72,7 +72,9 @@ fun SettingsScreen(
     val visionEnabled by viewModel.visionEnabled.collectAsState()
     val reasoningEnabled by viewModel.reasoningEnabled.collectAsState()
     val backupLoading by viewModel.backupLoading.collectAsState()
-    val apiServerState by viewModel.apiServerState.collectAsState()
+    val apiServerRunning by viewModel.apiServerRunning.collectAsState()
+    val apiServerPort by viewModel.apiServerPort.collectAsState()
+    val apiServerKey by viewModel.apiServerKey.collectAsState()
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
     var showAddSecretDialog by remember { mutableStateOf(false) }
@@ -432,7 +434,9 @@ fun SettingsScreen(
                 item { SectionHeader(title = "API SERVER") }
                 item {
                     ApiServerCard(
-                        state = apiServerState,
+                        running = apiServerRunning,
+                        port = apiServerPort,
+                        apiKey = apiServerKey,
                         onStart = { viewModel.startApiServer() },
                         onStop = { viewModel.stopApiServer() },
                         onRegenerateToken = { viewModel.regenerateApiToken() }
@@ -1785,12 +1789,14 @@ private fun PermissionGroupRow(
 
 @Composable
 private fun ApiServerCard(
-    state: com.forge.os.data.api.ForgeApiServer.ServerState,
+    running: Boolean,
+    port: Int,
+    apiKey: String,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRegenerateToken: () -> Unit
 ) {
-    var showToken by remember { mutableStateOf(false) }
+    var showKey by remember { mutableStateOf(false) }
 
     ModernCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1817,8 +1823,8 @@ private fun ApiServerCard(
                     )
                 }
                 StatusBadge(
-                    status = if (state.running) "Running" else "Stopped",
-                    color = if (state.running) forgePalette.success else forgePalette.textMuted
+                    status = if (running) "Running" else "Stopped",
+                    color = if (running) forgePalette.success else forgePalette.textMuted
                 )
             }
 
@@ -1829,7 +1835,7 @@ private fun ApiServerCard(
                 lineHeight = 16.sp
             )
 
-            if (state.running) {
+            if (running) {
                 HorizontalDivider(color = forgePalette.divider, thickness = 0.5.dp)
 
                 // Connection info
@@ -1839,27 +1845,27 @@ private fun ApiServerCard(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("Host", color = ModernTextSecondary, fontSize = 11.sp)
-                        Text("127.0.0.1:${state.port}", color = ModernTextPrimary, fontSize = 13.sp)
+                        Text("127.0.0.1:$port", color = ModernTextPrimary, fontSize = 13.sp)
                     }
                 }
 
-                // Token
+                // API Key
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("Auth Token", color = ModernTextSecondary, fontSize = 11.sp)
+                        Text("API Key", color = ModernTextSecondary, fontSize = 11.sp)
                         Text(
-                            if (showToken) state.token else "••••••••••••••••",
+                            if (showKey) apiKey else "••••••••••••••••",
                             color = ModernTextPrimary,
                             fontSize = 13.sp
                         )
                     }
-                    IconButton(onClick = { showToken = !showToken }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { showKey = !showKey }, modifier = Modifier.size(32.dp)) {
                         Icon(
-                            if (showToken) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                            "Toggle token visibility",
+                            if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                            "Toggle key visibility",
                             tint = ModernTextSecondary,
                             modifier = Modifier.size(16.dp)
                         )
@@ -1881,7 +1887,7 @@ private fun ApiServerCard(
                         Spacer(Modifier.height(4.dp))
                         Text(
                             "from forge_sdk import ForgeClient\n" +
-                            "client = ForgeClient(token=\"${state.token.take(8)}...\")\n" +
+                            "client = ForgeClient(token=\"${apiKey.take(8)}...\")\n" +
                             "result = client.call_tool(\"file_list\", path=\".\")",
                             color = ModernTextSecondary,
                             fontSize = 10.sp,
@@ -1896,7 +1902,7 @@ private fun ApiServerCard(
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = ModernTextSecondary)
                     ) {
-                        Text("Regenerate Token", fontSize = 12.sp)
+                        Text("Rotate Key", fontSize = 12.sp)
                     }
                     Button(
                         onClick = onStop,
@@ -1907,20 +1913,6 @@ private fun ApiServerCard(
                     }
                 }
             } else {
-                if (state.error != null) {
-                    Surface(
-                        color = forgePalette.danger.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text(
-                            "Error: ${state.error}",
-                            color = forgePalette.danger,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(10.dp)
-                        )
-                    }
-                }
-
                 Button(
                     onClick = onStart,
                     modifier = Modifier.fillMaxWidth(),

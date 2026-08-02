@@ -42,7 +42,7 @@ class ForgeClient:
     """
 
     DEFAULT_HOST = "127.0.0.1"
-    DEFAULT_PORT = 8765
+    DEFAULT_PORT = 8789  # ForgeHttpServer default port
     DEFAULT_TIMEOUT = 30
 
     def __init__(
@@ -62,12 +62,12 @@ class ForgeClient:
         Check if the Forge API server is running.
 
         Returns:
-            dict: {"status": "ok", "version": "1.0"} on success
+            dict: {"status": "ok", ...} on success
 
         Raises:
             ConnectionError: If server is not reachable
         """
-        return self._request("GET", "/health", auth=False)
+        return self._request("GET", "/api/status", auth=False)
 
     def list_tools(self) -> List[Dict[str, str]]:
         """
@@ -80,7 +80,7 @@ class ForgeClient:
             AuthenticationError: If token is invalid
             ConnectionError: If server is not reachable
         """
-        response = self._request("GET", "/tools")
+        response = self._request("GET", "/api/tools")
         return response.get("tools", [])
 
     def call_tool(self, tool_name: str, **kwargs) -> str:
@@ -104,16 +104,16 @@ class ForgeClient:
             result = client.call_tool("python_run", code="print('hello')")
         """
         payload = {
-            "tool": tool_name,
+            "name": tool_name,
             "args": kwargs,
         }
-        response = self._request("POST", "/tool", payload)
+        response = self._request("POST", "/api/tool", payload)
 
-        if not response.get("success", False):
+        if not response.get("ok", False):
             error = response.get("error", "Unknown error")
             raise ToolError(f"Tool '{tool_name}' failed: {error}")
 
-        return response.get("result", "")
+        return response.get("output", "")
 
     def _request(
         self,
