@@ -44,6 +44,9 @@ class VoiceInputManager @Inject constructor(
     
     private val _lastRecognizedText = MutableStateFlow("")
     val lastRecognizedText: StateFlow<String> = _lastRecognizedText.asStateFlow()
+
+    private val _recognitionError = MutableStateFlow<VoiceRecognitionError?>(null)
+    val recognitionError: StateFlow<VoiceRecognitionError?> = _recognitionError.asStateFlow()
     
     private val _ttsState = MutableStateFlow(TTSState.IDLE)
     val ttsState: StateFlow<TTSState> = _ttsState.asStateFlow()
@@ -148,19 +151,17 @@ class VoiceInputManager @Inject constructor(
             
             override fun onError(error: Int) {
                 _isListening.value = false
-                val errorMessage = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-                    SpeechRecognizer.ERROR_CLIENT -> "Client side error"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
-                    SpeechRecognizer.ERROR_NETWORK -> "Network error"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No speech match"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Recognition service busy"
-                    SpeechRecognizer.ERROR_SERVER -> "Server error"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
-                    else -> "Unknown error: $error"
+                _rmsLevel.value = 0f
+                val recognitionError = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> VoiceRecognitionError.NoMatch
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> VoiceRecognitionError.SpeechTimeout
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> VoiceRecognitionError.Busy
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> VoiceRecognitionError.PermissionDenied
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> VoiceRecognitionError.Network
+                    else -> VoiceRecognitionError.Other(error)
                 }
-                Timber.w("Speech recognition error: $errorMessage")
+                _recognitionError.value = recognitionError
+                Timber.w("Speech recognition error: ${recognitionError.message}")
             }
             
             override fun onResults(results: Bundle?) {
@@ -196,6 +197,7 @@ class VoiceInputManager @Inject constructor(
             Timber.w("Speech recognition not available")
             return
         }
+        _recognitionError.value = null
         
         // Ensure SpeechRecognizer is initialized on main thread
         if (!speechRecognizerInitialized) {
@@ -309,6 +311,15 @@ enum class TTSState {
     IDLE,
     SPEAKING,
     ERROR
+}
+
+sealed class VoiceRecognitionError(val message: String) {
+    object NoMatch : VoiceRecognitionError("No speech match")
+    object SpeechTimeout : VoiceRecognitionError("No speech input")
+    object Busy : VoiceRecognitionError("Recognition service busy")
+    object PermissionDenied : VoiceRecognitionError("Insufficient microphone permissions")
+    object Network : VoiceRecognitionError("Speech recognition network error")
+    data class Other(val code: Int) : VoiceRecognitionError("Speech recognition error: $code")
 }
 
 /**

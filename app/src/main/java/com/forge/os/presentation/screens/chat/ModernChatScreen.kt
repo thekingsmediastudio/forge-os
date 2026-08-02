@@ -219,6 +219,7 @@ fun ModernChatScreen(
                     }
                 },
                 onStop = { viewModel.stopGeneration() },
+                onOpenVoiceMode = { showVoiceMode = true },
                 onNavigateToWorkspace = onNavigateToWorkspace,
                 onNavigateToBrowser = onNavigateToBrowser,
                 onNavigateToConversations = onNavigateToConversations,
@@ -246,7 +247,10 @@ fun ModernChatScreen(
         // Voice Mode Overlay
         if (showVoiceMode) {
             com.forge.os.presentation.screens.voice.VoiceModeOverlay(
-                onDismiss = { showVoiceMode = false },
+                onDismiss = {
+                    showVoiceMode = false
+                    viewModel.reloadCurrent()
+                },
                 conversationId = viewModel.currentConversationId
             )
         }
@@ -1639,6 +1643,7 @@ private fun ModernInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
+    onOpenVoiceMode: () -> Unit,
     onNavigateToWorkspace: () -> Unit,
     onNavigateToBrowser: () -> Unit,
     onNavigateToConversations: () -> Unit,
@@ -1756,6 +1761,25 @@ private fun ModernInputBar(
                 onVoiceInput = { recognizedText -> onValueChange(recognizedText) },
                 modifier = Modifier.size(44.dp)
             )
+
+            // Voice mode button — opens the full duplex-style voice overlay for this chat
+            Surface(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .clickable(enabled = enabled) { onOpenVoiceMode() },
+                color = ModernSurfaceHover,
+                shape = CircleShape,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Outlined.GraphicEq,
+                        "Voice mode",
+                        tint = if (enabled) ModernAccent else ModernTextSecondary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
 
             // Send/Stop button — ember circle when active with press animation
             val sendEnabled = value.isNotBlank() && enabled

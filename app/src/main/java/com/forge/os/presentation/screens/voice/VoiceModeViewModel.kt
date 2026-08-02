@@ -12,6 +12,7 @@ import com.forge.os.domain.agent.ReActAgent
 import com.forge.os.domain.config.ConfigRepository
 import com.forge.os.domain.voice.TTSState
 import com.forge.os.domain.voice.VoiceInputManager
+import com.forge.os.domain.voice.VoiceRecognitionError
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -89,6 +90,14 @@ class VoiceModeViewModel @Inject constructor(
                     if (_state.value.phase == VoicePhase.SPEAKING) {
                         startListening()
                     }
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            voiceInputManager.recognitionError.collect { error ->
+                if (error != null && _state.value.phase == VoicePhase.LISTENING) {
+                    onRecognitionError(error)
                 }
             }
         }
@@ -177,6 +186,35 @@ class VoiceModeViewModel @Inject constructor(
             error = null,
             rmsLevel = 0f)
         voiceInputManager.startListening()
+    }
+
+    private fun onRecognitionError(error: VoiceRecognitionError) {
+        when (error) {
+            VoiceRecognitionError.NoMatch,
+            VoiceRecognitionError.SpeechTimeout -> {
+                _state.value = _state.value.copy(
+                    error = "Still listening — speak when ready, or tap the orb to pause.",
+                    rmsLevel = 0f)
+                viewModelScope.launch {
+                    delay(900)
+                    if (_state.value.phase == VoicePhase.LISTENING) {
+                        voiceInputManager.startListening()
+                    }
+                }
+            }
+            VoiceRecognitionError.Busy -> {
+                viewModelScope.launch {
+                    delay(500)
+                    if (_state.value.phase == VoicePhase.LISTENING) {
+                        voiceInputManager.startListening()
+                    }
+                }
+            }
+            else -> _state.value = _state.value.copy(
+                phase = VoicePhase.IDLE,
+                error = error.message,
+                rmsLevel = 0f)
+        }
     }
 
     private fun onSpeechRecognized(text: String) {

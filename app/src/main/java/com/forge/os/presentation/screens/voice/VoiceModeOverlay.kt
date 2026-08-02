@@ -121,12 +121,21 @@ fun VoiceModeOverlay(
                     }
                 )
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
+
+                Text(
+                    "Continuing this chat",
+                    color = forgePalette.textMuted,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(16.dp))
 
                 // ── Status Badge ──────────────────────────────────────────────
                 VoiceStatusBadge(phase = state.phase)
 
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(24.dp))
 
                 // ── Transcript Card ───────────────────────────────────────────
                 AnimatedVisibility(
@@ -153,7 +162,21 @@ fun VoiceModeOverlay(
                     }
                 )
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(12.dp))
+
+                Text(
+                    when (state.phase) {
+                        VoicePhase.LISTENING -> "Listening — tap the orb to submit early"
+                        VoicePhase.THINKING -> "Forge is thinking"
+                        VoicePhase.SPEAKING -> "Tap the orb to interrupt and listen again"
+                        VoicePhase.IDLE -> "Tap the orb to start listening"
+                    },
+                    color = forgePalette.textMuted,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(20.dp))
 
                 // ── Waveform ──────────────────────────────────────────────────
                 VoiceWaveform(
@@ -200,7 +223,7 @@ fun VoiceModeOverlay(
 
                 // ── Bottom Controls ───────────────────────────────────────────
                 VoiceBottomControls(
-                    onEndSession = {
+                    onCloseVoiceMode = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         viewModel.exitVoiceMode()
                         onDismiss()
@@ -423,15 +446,14 @@ private fun ModernVoiceOrb(
 }
 
 @Composable
-private fun VoiceBottomControls(onEndSession: () -> Unit) {
+private fun VoiceBottomControls(onCloseVoiceMode: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // End session button
         Surface(
-            onClick = onEndSession,
+            onClick = onCloseVoiceMode,
             color = forgePalette.dangerBg,
             shape = RoundedCornerShape(24.dp)
         ) {
@@ -447,7 +469,7 @@ private fun VoiceBottomControls(onEndSession: () -> Unit) {
                     modifier = Modifier.size(20.dp)
                 )
                 Text(
-                    "End Session",
+                    "Close voice mode",
                     color = forgePalette.danger,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium
