@@ -551,12 +551,7 @@ fun SimpleHeader(
             onClick = onBackClick,
             modifier = Modifier.size(40.dp)
         ) {
-            Icon(
-                Icons.Default.ArrowBack,
-                "Back",
-                tint = ModernTextPrimary,
-                modifier = Modifier.size(24.dp)
-            )
+            ForgeLogo(size = 28.dp)
         }
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
