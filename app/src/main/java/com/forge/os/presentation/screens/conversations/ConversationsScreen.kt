@@ -65,6 +65,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ConversationsScreen(
     onBack: () -> Unit,
@@ -393,7 +394,7 @@ private fun relativeTime(ts: Long): String {
 }
 
 // ── Conversation Card ─────────────────────────────────────────────────────
-@androidx.compose.foundation.ExperimentalFoundationApi
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationCard(
     conv: StoredConversation,
