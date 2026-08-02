@@ -64,7 +64,7 @@ private val MODULES = listOf(
     ModuleTile("server", Icons.Outlined.Storage, "Server", "Local HTTP API", "Tools", "server http api"),
 
     // Security
-    ModuleTile("missingMode", Icons.Outlined.PhonePaused, "Missing Mode", "Auto-respond to calls", "Security", "missing mode phone call auto respond"),
+    ModuleTile("findMyPhone", Icons.Outlined.PhonePaused, "Find My Phone", "Locate your lost phone", "Security", "find my phone lost locate ring"),
     ModuleTile("antiTheft", Icons.Outlined.Security, "Anti-Theft", "Grab & run protection", "Security", "antitheft theft lock wipe locate"),
 
     // Advanced

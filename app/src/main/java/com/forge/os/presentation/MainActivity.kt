@@ -46,7 +46,7 @@ import com.forge.os.presentation.screens.WorkspaceScreen
 import com.forge.os.presentation.screens.agents.AgentsScreen
 import com.forge.os.presentation.screens.alarms.AlarmsScreen
 import com.forge.os.presentation.screens.antitheft.AntiTheftScreen
-import com.forge.os.presentation.screens.missingmode.MissingModeScreen
+import com.forge.os.presentation.screens.findmyphone.FindMyPhoneScreen
 import com.forge.os.presentation.screens.android.AndroidScreen
 import com.forge.os.presentation.screens.channels.ChannelsScreen
 import com.forge.os.presentation.screens.channels.ChannelSessionsScreen
@@ -371,7 +371,7 @@ class MainActivity : ComponentActivity() {
                         composable("alarms")   { AlarmsScreen(onBack = { navController.popBackStack() }) }
                         composable("server")   { ServerScreen(onBack = { navController.popBackStack() }) }
                         composable("doctor")   { DoctorScreen(onBack = { navController.popBackStack() }) }
-                        composable("missingMode") { MissingModeScreen(onBack = { navController.popBackStack() }) }
+                        composable("findMyPhone") { FindMyPhoneScreen(navController) }
                         composable("antiTheft") { AntiTheftScreen(onBack = { navController.popBackStack() }) }
                         composable("channels") {
                             ChannelsScreen(

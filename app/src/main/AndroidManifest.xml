@@ -232,9 +232,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- Missing Mode: detects incoming calls for auto-response -->
+        <!-- Find My Phone: detects incoming calls to help locate the device -->
         <receiver
-            android:name=".domain.missingmode.CallStateReceiver"
+            android:name=".domain.findmyphone.CallStateReceiver"
             android:exported="true"
             android:permission="android.permission.READ_PHONE_STATE">
             <intent-filter>
