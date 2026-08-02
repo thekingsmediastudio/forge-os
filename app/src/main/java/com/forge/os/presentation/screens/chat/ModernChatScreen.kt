@@ -1665,12 +1665,7 @@ private fun ModernInputBar(
                 shape = CircleShape,
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Filled.ArrowUpward,
-                        "Send",
-                        tint = sendIconColor,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    ForgeLogo(size = 22.dp)
                 }
             }
         }
