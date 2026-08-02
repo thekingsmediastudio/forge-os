@@ -216,6 +216,7 @@ class ChatViewModel @Inject constructor(
             _isLoading.value = true
             val streamId = java.util.UUID.randomUUID().toString()
             var streamBuffer = ""
+            val toolHistory = mutableListOf<String>()
 
             reActAgent.run(input, apiHistory.toList(), spec, currentChannel = "main").collect { event ->
                 when (event) {
@@ -231,6 +232,7 @@ class ChatViewModel @Inject constructor(
                             upsertMsg(ChatMessage(id = streamId, role = "assistant", content = streamBuffer))
                             streamBuffer = ""
                         }
+                        toolHistory.add("CALL ${event.name} args=${event.args.take(500)}")
                         // request_user_input: just add a visual bubble; the agent suspends
                         // until the user responds via UserInputBroker
                         if (event.name == "request_user_input") {
@@ -252,6 +254,8 @@ class ChatViewModel @Inject constructor(
                         } else {
                             hapticManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.SUCCESS)
                         }
+                        val resultStatus = if (event.isError) "ERROR" else "OK"
+                        toolHistory.add("RESULT ${event.name} $resultStatus output=${event.result.take(1200)}")
                         // Check if this tool result produced a file the user can view/play/download
                         val (attachPath, attachMime) = resolveAttachment(event.name, event.result)
                         addMsg(ChatMessage(
@@ -271,6 +275,15 @@ class ChatViewModel @Inject constructor(
                     is AgentEvent.Response -> {
                         upsertMsg(ChatMessage(id = streamId, role = "assistant", content = event.text, isStreaming = false))
                         apiHistory.add(ApiMessage(role = "user", content = input))
+                        if (toolHistory.isNotEmpty()) {
+                            apiHistory.add(ApiMessage(
+                                role = "assistant",
+                                content = buildString {
+                                    appendLine("Tool execution history for the previous request:")
+                                    toolHistory.takeLast(20).forEach { appendLine("- $it") }
+                                }.trimEnd()
+                            ))
+                        }
                         apiHistory.add(ApiMessage(role = "assistant", content = event.text))
                         while (apiHistory.size > 40) apiHistory.removeAt(0)
                     }

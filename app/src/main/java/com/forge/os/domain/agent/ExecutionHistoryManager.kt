@@ -163,9 +163,10 @@ class ExecutionHistoryManager @Inject constructor(
             session.steps.forEach { step ->
                 val status = if (step.success) "✅" else "❌"
                 appendLine("$status ${step.stepNumber}. ${step.action}")
-                if (!step.success) {
-                    appendLine("   Error: ${step.result}")
-                }
+                appendLine("   Tool: ${step.tool}")
+                appendLine("   Args: ${step.args.take(300)}")
+                val resultLabel = if (step.success) "Result" else "Error"
+                appendLine("   $resultLabel: ${step.result.take(1200)}")
             }
             appendLine()
             if (session.status == "failed") {
