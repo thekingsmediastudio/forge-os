@@ -4,25 +4,30 @@ This document collects every feature idea discussed during the session (user-sug
 
 ---
 
-## User-suggested priorities (direct request)
-1. Separate memory / individualized channels
-   - MVP: per-channel namespaces (workspace/companion/<channel_id>), UI channel switch, scoped embedding index and search. Provide channel export/purge.
-2. forge-os Python package (developer SDK)
-   - MVP: pip-installable module that talks to Forge via local HTTP socket or Unix/ADB socket exposing tool_call, memory APIs, and short-lived auth tokens. Examples and templates included.
+## ✅ Completed Features
+
+| # | Feature | Status |
+|---|---------|--------|
+| 1 | Separate memory / individualized channels | ✅ Done |
+| 2 | forge-os Python package (developer SDK) | ✅ Done — `forge_sdk.py` + `ForgeHttpServer` |
+| 6 | "Hello Forge" hotword wake | ✅ Done |
+| 7 | Pip package bundling | ✅ Done — `PythonPackageManager` + `workspace/python_packages/` |
+| 8 | Secrets as env variables | ✅ Done |
+| 9 | Browser reveal (headless → visible) | ✅ Done — `browser_reveal` |
+| 10 | Notification click actions | ✅ Done — `NotificationActionReceiver` |
+| 11 | Dark/light theme tables | ✅ Done — `ForgePalette` theme-aware |
+| 12 | Multimodal chat (images/video/audio) | ✅ Done — `attachmentPath` + `FileAttachmentBubble` |
+
+---
+
+## 🔲 Remaining User-suggested Features
+
 3. "Grab & run" anti‑theft protection
    - MVP: opt-in Missing Mode: lock device UI, collect last-known location/screenshots, send secure packet to trusted contacts/Telegram, allow remote wipe. Foreground service + encrypted keystore auth.
 4. Map visited areas and detect room boundaries
    - MVP: background sampler (GPS/Wi‑Fi/BLE), DBSCAN clustering into "areas" with start/end times, simple UI list and export.
 5. Auto-respond to calls when phone missing
    - MVP: Missing profile that auto-replies via SMS or plays TTS on incoming calls for trusted contacts. Configurable templated responses.
-6. "Hello Forge" hotword wake
-   - MVP: integrate a small on-device wake word model (Picovoice / Vosk style) in a low-power audio service, show assistant UI on detection.
-7. a pip package bundled in the app that uses a dedicated folder downloads python packages there. the packages are automatically added to bndled packages and can be used
-8. allow secrets to be accessible by the python code as env variables..
-9. allow agent to reveal headless browser in same state such as if it needs help it can request.
-10. our notifications on click they dont do things.....
-11. currently tables and some other things are optimized for dark theme only.
-12. i want to implement away in which the agent can send videos and images and audio and other document in main chat
 
 ---
 
@@ -77,15 +82,12 @@ This document collects every feature idea discussed during the session (user-sug
 
 ---
 
-## Suggested priority (combined recommendations)
-1. Separate memory / individualized channels — high impact for personalization.
-2. forge-os Python SDK — enables developers to integrate AI in existing Python projects quickly.
-3. Pre-warmed runtime & small on-device model cache — big UX speed wins.
-4. One-tap automations, recipe gallery, and visual automation builder — makes power features accessible.
-5. Hotword wake ("Hello Forge") — natural interaction model.
-6. Live replay sandbox debugger & adaptive resource governor — developer-friendly and robust.
-7. Anti‑theft "Grab & run" + Missing Mode — security feature with legal/UX constraints.
-8. Mapping visited areas, auto-respond when missing, and emergency features — useful but sensitive; require careful privacy defaults.
+## Suggested priority (remaining items)
+1. Pre-warmed runtime & small on-device model cache — big UX speed wins.
+2. One-tap automations, recipe gallery, and visual automation builder — makes power features accessible.
+3. Anti‑theft "Grab & run" + Missing Mode — security feature with legal/UX constraints.
+4. Mapping visited areas, auto-respond when missing, and emergency features — useful but sensitive; require careful privacy defaults.
+5. Live replay sandbox debugger & adaptive resource governor — developer-friendly and robust.
 
 ---
 
