@@ -474,6 +474,7 @@ class ToolRegistry @Inject constructor(
                 "browser_get_text"         -> browserGetText(args)
                 "browser_get_attribute"    -> browserGetAttribute(args)
                 "browser_list_links"       -> browserListLinks(args)
+                "browser_reveal"           -> browserReveal(args)
                 "file_upload_to_browser"   -> fileUploadToBrowser(args)
                 "plugin_create"            -> pluginCreate(args)
                 // ─── Temp / upload folder ──────────────────────────────────────────
@@ -1860,6 +1861,33 @@ class ToolRegistry @Inject constructor(
     private suspend fun browserListLinks(args: Map<String, Any>): String {
         val limit = args["limit"]?.toString()?.toIntOrNull() ?: 100
         return headlessBrowser.listLinks(limit)
+    }
+
+    /**
+     * Hand the agent's current headless browser page to the user by opening
+     * the visible Browser tab at the same URL. Cookies/session are already
+     * shared via Android's global CookieManager, so login state carries over.
+     * Posts a notification so the user can tap to open the browser.
+     */
+    private suspend fun browserReveal(args: Map<String, Any>): String {
+        val url = headlessBrowser.currentUrl
+        if (url.isBlank() || url == "about:blank") {
+            return "❌ No page loaded in the agent's browser yet. Navigate somewhere first."
+        }
+        val message = args["message"]?.toString()?.takeIf { it.isNotBlank() }
+            ?: "The agent needs your help with this page."
+
+        // Queue the URL in the visible browser session
+        browserSessionManager.navigate(url)
+
+        // Post a notification that opens the Browser screen on tap
+        agentNotifier.postWithActions(
+            title = "🌐 Browser handoff",
+            body = "$message\n\nTap to open: $url",
+            navRoute = "browser",
+        )
+
+        return "✅ Revealed browser at $url — notification posted for the user to tap."
     }
 
     /**
@@ -3254,6 +3282,13 @@ To use Composio:
             "clicking an input field.",
             params("text" to "string:Text to type"),
             required = listOf("text")),
+        tool("browser_reveal",
+            "Hand the agent's current headless browser page to the user. Opens " +
+            "the visible Browser tab at the same URL — cookies and login state " +
+            "carry over automatically. Posts a notification the user taps to " +
+            "open the browser. WHEN TO USE: you're blocked by a captcha, login " +
+            "wall, or any page that needs human interaction.",
+            params("message" to "string:Optional message to show the user (e.g. 'Need your help with this login')")),
         tool("file_upload_to_browser",
             "Trigger the on-screen Browser tab's file-input chooser at " +
             "[selector] and tell the user which workspace file to pick. The " +
