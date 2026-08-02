@@ -6,8 +6,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,8 +19,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -27,23 +35,48 @@ import androidx.compose.ui.unit.sp
 import com.forge.os.presentation.theme.forgePalette
 
 /**
- * Data class representing a single coach mark step.
+ * Data class representing a single coach mark step with spotlight target.
  */
 data class CoachMarkStep(
     val title: String,
     val description: String,
-    val targetPosition: Offset = Offset.Zero,
-    val targetSize: Dp = 60.dp,
+    val targetKey: String? = null, // Key to identify the target element
     val tooltipPosition: TooltipPosition = TooltipPosition.BOTTOM
 )
 
 enum class TooltipPosition {
-    TOP, BOTTOM, CENTER
+    TOP, BOTTOM, AUTO
 }
 
 /**
- * Coach mark overlay that highlights UI elements with tooltips.
- * Shows a dark overlay with a spotlight cutout on the target element.
+ * Global registry for spotlight targets.
+ * Elements register their bounds here for the tutorial to find them.
+ */
+object SpotlightRegistry {
+    private val _targets = mutableStateMapOf<String, Rect>()
+    val targets: Map<String, Rect> get() = _targets
+
+    fun register(key: String, rect: Rect) {
+        _targets[key] = rect
+    }
+
+    fun unregister(key: String) {
+        _targets.remove(key)
+    }
+
+    fun getBounds(key: String): Rect? = _targets[key]
+}
+
+/**
+ * Modifier to register an element as a spotlight target.
+ */
+fun Modifier.spotlightTarget(key: String): Modifier = this.onGloballyPositioned { coordinates ->
+    SpotlightRegistry.register(key, coordinates.boundsInRoot())
+}
+
+/**
+ * Coach mark overlay with real spotlight cutout effect.
+ * Highlights the target element with a transparent cutout in the dark overlay.
  */
 @Composable
 fun CoachMarkOverlay(
@@ -58,50 +91,93 @@ fun CoachMarkOverlay(
 
     val step = steps[currentStep]
     val isLastStep = currentStep == steps.lastIndex
+    val targetBounds = step.targetKey?.let { SpotlightRegistry.getBounds(it) }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Dark overlay with spotlight effect
-        Box(
+        // Dark overlay with spotlight cutout
+        Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.7f))
-                .clickable(onClick = onSkip)
-        )
+                .pointerInput(Unit) {
+                    detectTapGestures { onSkip() }
+                }
+        ) {
+            val path = Path().apply {
+                addRect(Rect(0f, 0f, size.width, size.height))
+            }
 
-        // Spotlight circle on target
-        if (step.targetPosition != Offset.Zero) {
+            // Cut out the spotlight area if we have target bounds
+            targetBounds?.let { bounds ->
+                val padding = 16.dp.toPx()
+                val spotlightRect = Rect(
+                    left = bounds.left - padding,
+                    top = bounds.top - padding,
+                    right = bounds.right + padding,
+                    bottom = bounds.bottom + padding
+                )
+                path.addRoundRect(
+                    androidx.compose.ui.geometry.RoundRect(
+                        rect = spotlightRect,
+                        radiusX = 16.dp.toPx(),
+                        radiusY = 16.dp.toPx()
+                    )
+                )
+            }
+
+            // Draw with even-odd fill to create cutout
+            drawPath(
+                path = path,
+                color = Color.Black.copy(alpha = 0.75f),
+                style = Fill
+            )
+        }
+
+        // Pulsing ring around target
+        targetBounds?.let { bounds ->
+            val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+            val ringScale by infiniteTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = 1.1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "ringScale"
+            )
+            val ringAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.4f,
+                targetValue = 0.8f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1000),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "ringAlpha"
+            )
+
             val density = LocalDensity.current
-            val targetSizePx = with(density) { step.targetSize.toPx() }
-            
+            val padding = with(density) { 16.dp.toPx() }
+
             Box(
                 modifier = Modifier
                     .offset(
-                        x = with(density) { (step.targetPosition.x - targetSizePx / 2).toDp() },
-                        y = with(density) { (step.targetPosition.y - targetSizePx / 2).toDp() }
+                        x = with(density) { (bounds.left - padding).toDp() },
+                        y = with(density) { (bounds.top - padding).toDp() }
                     )
-                    .size(step.targetSize)
-                    .clip(CircleShape)
-                    .background(Color.Transparent)
+                    .size(
+                        width = with(density) { (bounds.width + padding * 2).toDp() },
+                        height = with(density) { (bounds.height + padding * 2).toDp() }
+                    )
             ) {
-                // Pulsing ring around target
-                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-                val ringAlpha by infiniteTransition.animateFloat(
-                    initialValue = 0.3f,
-                    targetValue = 0.8f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1000),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "ringAlpha"
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            forgePalette.orange.copy(alpha = ringAlpha * 0.3f),
-                            CircleShape
-                        )
-                )
+                // Animated border
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Color.Transparent,
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(
+                        width = 2.dp,
+                        color = forgePalette.orange.copy(alpha = ringAlpha)
+                    )
+                ) {}
             }
         }
 
@@ -114,7 +190,15 @@ fun CoachMarkOverlay(
                 when (step.tooltipPosition) {
                     TooltipPosition.TOP -> Alignment.TopCenter
                     TooltipPosition.BOTTOM -> Alignment.BottomCenter
-                    TooltipPosition.CENTER -> Alignment.Center
+                    TooltipPosition.AUTO -> {
+                        // Auto-position based on target location
+                        targetBounds?.let { bounds ->
+                            val screenHeight = LocalDensity.current.run { 
+                                androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp.toPx() 
+                            }
+                            if (bounds.top < screenHeight / 2) Alignment.BottomCenter else Alignment.TopCenter
+                        } ?: Alignment.BottomCenter
+                    }
                 }
             )
         ) {

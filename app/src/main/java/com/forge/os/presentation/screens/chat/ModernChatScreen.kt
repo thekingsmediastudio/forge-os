@@ -247,26 +247,31 @@ fun ModernChatScreen(
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Welcome to Forge OS",
                     description = "This is your AI assistant. Ask anything, and it will help you with tasks, answer questions, and more.",
-                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.CENTER
+                    targetKey = null, // No spotlight for welcome
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
                 ),
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Model Selection",
-                    description = "Tap the model pill in the header to switch between AI providers. Green dot means connected.",
+                    description = "Tap the model pill to switch between AI providers. Green dot means connected.",
+                    targetKey = "model_pill",
                     tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
                 ),
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Menu",
                     description = "Access workspace, settings, hub, and more from the side menu.",
+                    targetKey = "menu_button",
                     tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
                 ),
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Input Area",
                     description = "Type your message here. Tap + for attachments, voice input, and more options.",
+                    targetKey = "input_field",
                     tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
                 ),
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Send & Stop",
                     description = "Tap the arrow to send. While generating, tap the red stop button to cancel.",
+                    targetKey = "send_button",
                     tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
                 )
             )
@@ -323,7 +328,9 @@ private fun ModernHeader(
             // Hamburger
             IconButton(
                 onClick = onMenuClick,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier
+                    .size(40.dp)
+                    .then(com.forge.os.presentation.components.spotlightTarget("menu_button"))
             ) {
                 Icon(
                     Icons.Outlined.Menu,
@@ -377,7 +384,8 @@ private fun ModernHeader(
                 Surface(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
-                        .clickable { showModelMenu = true },
+                        .clickable { showModelMenu = true }
+                        .then(com.forge.os.presentation.components.spotlightTarget("model_pill")),
                     color = ModernSurface,
                     shape = RoundedCornerShape(20.dp)
                 ) {
@@ -1686,7 +1694,8 @@ private fun ModernInputBar(
                 onValueChange = onValueChange,
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 36.dp, max = 160.dp),
+                    .heightIn(min = 36.dp, max = 160.dp)
+                    .then(com.forge.os.presentation.components.spotlightTarget("input_field")),
                 placeholder = {
                     Text(
                         "Message Forge...",
@@ -1774,7 +1783,8 @@ private fun ModernInputBar(
                         .clickable(enabled = sendEnabled) {
                             sendPressed = true
                             onSend()
-                        },
+                        }
+                        .then(com.forge.os.presentation.components.spotlightTarget("send_button")),
                     color = sendBgColor,
                     shape = CircleShape,
                 ) {
