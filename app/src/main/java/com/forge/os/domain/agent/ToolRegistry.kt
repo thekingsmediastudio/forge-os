@@ -699,6 +699,7 @@ class ToolRegistry @Inject constructor(
                         ?: com.forge.os.data.net.DownloadManager.DEFAULT_MAX_BYTES,
                 ).toString()
                 // ─── Phase 1: Project-AI Integration ───────────────────────────────
+                "project_create"         -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_create"
                 "project_list"           -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_list"
                 "project_read_metadata"  -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_read_metadata"
                 "project_write_metadata" -> projectToolProvider.dispatch(toolName, args) ?: "Error dispatching project_write_metadata"

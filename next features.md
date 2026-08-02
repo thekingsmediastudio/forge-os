@@ -19,6 +19,8 @@ This document collects every feature idea discussed during the session (user-sug
    - MVP: integrate a small on-device wake word model (Picovoice / Vosk style) in a low-power audio service, show assistant UI on detection.
 7. a pip package bundled in the app that uses a dedicated folder downloads python packages there. the packages are automatically added to bndled packages and can be used
 8. allow secrets to be accessible by the python code as env variables..
+9. allow agent to reveal headless browser in same state such as if it needs help it can request.
+10. our notifications on click they dont do things.....
 
 ---
 
