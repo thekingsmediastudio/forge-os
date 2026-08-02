@@ -337,6 +337,9 @@ class ToolRegistry @Inject constructor(
                 "memory_list_skills" -> memoryListSkills()
                 "memory_store_image" -> memoryStoreImage(args)
                 "memory_summary"     -> memorySummary()
+                "memory_delete"      -> memoryDelete(args)
+                "memory_update"      -> memoryUpdate(args)
+                "memory_delete_skill" -> memoryDeleteSkill(args)
                 // ─── Channels ──────────────────────────────────────────────────────
                 "telegram_react"     -> telegramReact(args)
                 "telegram_reply"     -> telegramReply(args)
@@ -1107,6 +1110,34 @@ class ToolRegistry @Inject constructor(
     }
 
     private fun memorySummary(): String = memoryManager.fullSummary()
+
+    private fun memoryDelete(args: Map<String, Any>): String {
+        val key = args["key"]?.toString() ?: return "Error: key required"
+        return if (memoryManager.forgetFact(key)) {
+            "🗑 Deleted memory: '$key'"
+        } else {
+            "❌ Memory not found: '$key'"
+        }
+    }
+
+    private fun memoryUpdate(args: Map<String, Any>): String {
+        val key = args["key"]?.toString() ?: return "Error: key required"
+        val content = args["content"]?.toString() ?: return "Error: content required"
+        val tagsRaw = args["tags"]?.toString() ?: ""
+        val tags = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
+        memoryManager.store(key, content, tags)
+        return "✏️ Updated memory: '$key' (${content.length} chars)"
+    }
+
+    private fun memoryDeleteSkill(args: Map<String, Any>): String {
+        val name = args["name"]?.toString() ?: return "Error: name required"
+        return if (memoryManager.skill.delete(name)) {
+            memoryManager.rebuildIndex()
+            "🗑 Deleted skill: '$name'"
+        } else {
+            "❌ Skill not found: '$name'"
+        }
+    }
 
     // ─── Cron tools ─────────────────────────────────────────────────────────
 
@@ -2943,6 +2974,15 @@ To use Composio:
             params("name" to "string:Skill name"), required = listOf("name")),
         tool("memory_list_skills", "List all stored skills and their descriptions", emptyMap()),
         tool("memory_summary", "Get a summary of all memory tiers", params()),
+        tool("memory_delete", "Delete a long-term memory fact by key",
+            params("key" to "string:Key of the fact to delete"), required = listOf("key")),
+        tool("memory_update", "Update (overwrite) an existing long-term memory fact",
+            params("key" to "string:Key of the fact to update",
+                   "content" to "string:New content",
+                   "tags" to "string:Comma-separated tags"),
+            required = listOf("key", "content")),
+        tool("memory_delete_skill", "Delete a stored skill by name",
+            params("name" to "string:Name of the skill to delete"), required = listOf("name")),
         tool("memory_store_image",
             "Tag a workspace image and index it in semantic memory so it can be " +
             "recalled by description later. Pass a workspace-relative `path` and " +
