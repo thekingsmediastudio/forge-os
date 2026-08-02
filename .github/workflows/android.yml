@@ -44,9 +44,11 @@ jobs:
 
       - name: Build debug APK
         # -Pkotlin.incremental=false forces a full non-incremental Kotlin compile.
-        # --info surfaces the Kotlin compiler's detailed per-file diagnostics so we
-        # can see the real root error behind the phantom "unresolved reference".
-        run: ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false --info 2>&1 | tee build-log.txt
+        # --info surfaces the Kotlin compiler's detailed per-file diagnostics.
+        # pipefail ensures the gradle exit code (not tee's) determines step success.
+        run: |
+          set -o pipefail
+          ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false --info 2>&1 | tee build-log.txt
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
