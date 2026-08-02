@@ -242,6 +242,29 @@
             </intent-filter>
         </receiver>
 
+        <!-- Anti-Theft: Device Admin receiver for lock/wipe -->
+        <receiver
+            android:name=".security.antitheft.AntiTheftReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Anti-Theft: SMS command receiver -->
+        <receiver
+            android:name=".security.antitheft.SmsCommandReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
         <!-- Server: long-running foreground service for the local HTTP API -->
         <service
             android:name=".data.server.ForgeHttpService"

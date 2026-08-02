@@ -65,6 +65,7 @@ private val MODULES = listOf(
 
     // Security
     ModuleTile("missingMode", Icons.Outlined.PhonePaused, "Missing Mode", "Auto-respond to calls", "Security", "missing mode phone call auto respond"),
+    ModuleTile("antiTheft", Icons.Outlined.Security, "Anti-Theft", "Grab & run protection", "Security", "antitheft theft lock wipe locate"),
 
     // Advanced
     ModuleTile("debugger", Icons.Outlined.BugReport, "Debugger", "Agent replay traces", "Advanced", "debugger snapshot replay trace"),
