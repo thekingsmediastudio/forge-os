@@ -77,7 +77,7 @@ fun ConversationsScreen(
         title = "CONVERSATIONS",
         onBack = onBack,
         actions = {
-            Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("conversations_new"))) {
+            Box(modifier = Modifier.spotlightTarget("conversations_new")) {
                 TextButton(onClick = {
                     viewModel.startNew(); onOpened()
                 }) {
@@ -118,7 +118,7 @@ fun ConversationsScreen(
             } else {
                 LazyColumn(
                     Modifier.fillMaxSize().padding(horizontal = 12.dp)
-                        .then(com.forge.os.presentation.components.spotlightTarget("conversations_list"))
+                        .spotlightTarget("conversations_list")
                 ) {
                     items(state.items, key = { it.id }) { conv ->
                         ConversationRow(

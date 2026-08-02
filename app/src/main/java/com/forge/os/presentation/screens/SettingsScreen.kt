@@ -142,7 +142,7 @@ fun SettingsScreen(
                 // ── Appearance ───────────────────────────────────────────
                 item { SectionHeader(title = "APPEARANCE") }
                 item {
-                    Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("settings_appearance"))) {
+                    Box(modifier = Modifier.spotlightTarget("settings_appearance")) {
                         AppearanceCard(
                             selected = themeMode,
                             onSelect = { viewModel.setThemeMode(it) },
@@ -164,7 +164,7 @@ fun SettingsScreen(
                 // ── Built-in Providers ───────────────────────────────────
                 item { SectionHeader(title = "BUILT-IN PROVIDERS") }
                 item {
-                    Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("settings_api_keys"))) {
+                    Box(modifier = Modifier.spotlightTarget("settings_api_keys")) {
                         Column {
                             keyStatuses.forEach { status ->
                                 ApiKeyCard(
@@ -345,7 +345,7 @@ fun SettingsScreen(
                     val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
                     val channelsEnabled by channelVm.channelsEnabled.collectAsState()
                     
-                    Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("settings_channels"))) {
+                    Box(modifier = Modifier.spotlightTarget("settings_channels")) {
                         SettingsToggleRow(
                             title = "Enable channels",
                             subtitle = "Separate memory by context (Work, Personal, etc.)",

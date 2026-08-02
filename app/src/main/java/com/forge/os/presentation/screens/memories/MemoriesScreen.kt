@@ -60,7 +60,7 @@ fun MemoriesScreen(
         title = "MEMORIES",
         onBack = onBack,
         actions = {
-            Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("memories_add"))) {
+            Box(modifier = Modifier.spotlightTarget("memories_add")) {
                 TextButton(onClick = { showCreateDialog = true }) {
                     Icon(Icons.Outlined.Add, null, tint = ForgeOsPalette.Orange, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
@@ -71,7 +71,7 @@ fun MemoriesScreen(
     ) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             // Enable/Disable toggle
-            Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("memories_toggle"))) {
+            Box(modifier = Modifier.spotlightTarget("memories_toggle")) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     color = ForgeOsPalette.Surface,
@@ -158,7 +158,7 @@ fun MemoriesScreen(
             )
             Spacer(Modifier.height(8.dp))
             
-            Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("memories_list"))) {
+            Box(modifier = Modifier.spotlightTarget("memories_list")) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Default General channel
                     item {

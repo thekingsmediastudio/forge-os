@@ -132,7 +132,7 @@ fun ModernHubScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)
-                    .then(com.forge.os.presentation.components.spotlightTarget("hub_search")),
+                    .spotlightTarget("hub_search"),
                 color = ModernSurface,
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -198,7 +198,7 @@ fun ModernHubScreen(
             androidx.compose.foundation.lazy.LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(com.forge.os.presentation.components.spotlightTarget("hub_modules")),
+                    .spotlightTarget("hub_modules"),
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 100.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
@@ -255,7 +255,7 @@ fun ModernHubScreen(
                         val rows = visiblePluginTiles.chunked(2)
                         Column(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("hub_plugins"))
+                            modifier = Modifier.spotlightTarget("hub_plugins"))
                         ) {
                             rows.forEach { row ->
                                 Row(

@@ -337,7 +337,7 @@ private fun ModernHeader(
                 onClick = onMenuClick,
                 modifier = Modifier
                     .size(40.dp)
-                    .then(com.forge.os.presentation.components.spotlightTarget("menu_button"))
+                    .spotlightTarget("menu_button")
             ) {
                 Icon(
                     Icons.Outlined.Menu,
@@ -392,7 +392,7 @@ private fun ModernHeader(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .clickable { showModelMenu = true }
-                        .then(com.forge.os.presentation.components.spotlightTarget("model_pill")),
+                        .spotlightTarget("model_pill"),
                     color = ModernSurface,
                     shape = RoundedCornerShape(20.dp)
                 ) {
@@ -1702,7 +1702,7 @@ private fun ModernInputBar(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 36.dp, max = 160.dp)
-                    .then(com.forge.os.presentation.components.spotlightTarget("input_field")),
+                    .spotlightTarget("input_field"),
                 placeholder = {
                     Text(
                         "Message Forge...",
@@ -1791,7 +1791,7 @@ private fun ModernInputBar(
                             sendPressed = true
                             onSend()
                         }
-                        .then(com.forge.os.presentation.components.spotlightTarget("send_button")),
+                        .spotlightTarget("send_button"),
                     color = sendBgColor,
                     shape = CircleShape,
                 ) {

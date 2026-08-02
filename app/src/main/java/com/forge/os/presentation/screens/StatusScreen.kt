@@ -86,7 +86,7 @@ fun StatusScreen(
                 "SYSTEM STATUS", color = orange, fontSize = 16.sp, letterSpacing = 2.sp
             )
             Spacer(Modifier.weight(1f))
-            Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("status_health"))) {
+            Box(modifier = Modifier.spotlightTarget("status_health")) {
                 HealthBadge(status.overallHealth)
             }
         }
@@ -117,7 +117,7 @@ fun StatusScreen(
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("status_components"))
+            modifier = Modifier.spotlightTarget("status_components"))
         ) {
             items(status.components.entries.toList()) { (name, comp) ->
                 Card(
