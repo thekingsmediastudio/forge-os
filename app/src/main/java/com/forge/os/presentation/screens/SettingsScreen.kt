@@ -1,5 +1,7 @@
 package com.forge.os.presentation.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +30,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import com.forge.os.domain.permissions.PermissionGroup
+import com.forge.os.domain.permissions.PermissionManager
 import com.forge.os.domain.security.ApiKeyProvider
 import com.forge.os.domain.security.KeyStatus
 import com.forge.os.domain.security.ProviderSchema
@@ -415,6 +419,12 @@ fun SettingsScreen(
                         subtitle = "Create system snapshot or restore from backup",
                         onClick = onNavigateToBackup
                     )
+                }
+
+                // ── Permissions ──────────────────────────────────────────
+                item { SectionHeader(title = "PERMISSIONS") }
+                item {
+                    PermissionsCard()
                 }
 
                 // ── About ────────────────────────────────────────────────
@@ -1584,3 +1594,177 @@ private fun settingsTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedLabelColor = ModernAccent,
     unfocusedLabelColor = ModernTextSecondary
 )
+
+// ── Permissions Card ────────────────────────────────────────────────────────
+
+@Composable
+private fun PermissionsCard() {
+    val context = LocalContext.current
+    val permissionManager = remember { PermissionManager(context) }
+    var permissionGroups by remember { mutableStateOf(permissionManager.getPermissionGroups()) }
+    var expandedGroup by remember { mutableStateOf<String?>(null) }
+
+    // Permission launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        // Refresh permission states after request
+        permissionGroups = permissionManager.getPermissionGroups()
+    }
+
+    ModernCard {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        Icons.Outlined.Security,
+                        contentDescription = null,
+                        tint = ModernAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        "App Permissions",
+                        color = ModernTextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            Text(
+                "Grant permissions to enable agent tools. Tap a category to request.",
+                color = ModernTextSecondary,
+                fontSize = 12.sp,
+                lineHeight = 16.sp
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            permissionGroups.forEach { group ->
+                PermissionGroupRow(
+                    group = group,
+                    isExpanded = expandedGroup == group.id,
+                    onToggleExpand = {
+                        expandedGroup = if (expandedGroup == group.id) null else group.id
+                    },
+                    onRequest = {
+                        val toRequest = permissionManager.getPermissionsToRequest(group)
+                        if (toRequest.isNotEmpty()) {
+                            permissionLauncher.launch(toRequest)
+                        }
+                    }
+                )
+                if (group.id != permissionGroups.last().id) {
+                    HorizontalDivider(color = forgePalette.divider, thickness = 0.5.dp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionGroupRow(
+    group: PermissionGroup,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onRequest: () -> Unit
+) {
+    val allGranted = group.isGranted
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggleExpand)
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        if (allGranted) forgePalette.success.copy(alpha = 0.12f)
+                        else ModernAccent.copy(alpha = 0.12f),
+                        RoundedCornerShape(10.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(group.icon, fontSize = 18.sp)
+            }
+
+            // Text
+            Column(Modifier.weight(1f)) {
+                Text(
+                    group.name,
+                    color = ModernTextPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    group.description,
+                    color = ModernTextSecondary,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+            }
+
+            // Status
+            if (allGranted) {
+                Icon(
+                    Icons.Outlined.CheckCircle,
+                    contentDescription = "Granted",
+                    tint = forgePalette.success,
+                    modifier = Modifier.size(20.dp)
+                )
+            } else {
+                TextButton(onClick = onRequest) {
+                    Text("Grant", color = ModernAccent, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // Expanded details
+        AnimatedVisibility(visible = isExpanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 48.dp, top = 4.dp, bottom = 8.dp)
+            ) {
+                Text(
+                    "Permissions in this group:",
+                    color = ModernTextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(4.dp))
+                group.permissions.forEach { perm ->
+                    val permName = perm.substringAfterLast(".")
+                    Text(
+                        "• $permName",
+                        color = forgePalette.textDim,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(vertical = 1.dp)
+                    )
+                }
+                if (!allGranted) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onRequest,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ModernAccent)
+                    ) {
+                        Text("Grant ${group.name} Permissions", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    }
+}
