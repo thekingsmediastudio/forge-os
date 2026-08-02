@@ -219,8 +219,10 @@ fun ModernChatScreen(
                     }
                 },
                 onStop = { viewModel.stopGeneration() },
-                onVoiceMode = { showVoiceMode = true },
-                onClearChat = { viewModel.clearMessages() },
+                onNavigateToWorkspace = onNavigateToWorkspace,
+                onNavigateToBrowser = onNavigateToBrowser,
+                onNavigateToConversations = onNavigateToConversations,
+                onNavigateToHub = onNavigateToHub,
                 isLoading = isLoading,
                 enabled = !isLoading
             )
@@ -1636,8 +1638,10 @@ private fun ModernInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
-    onVoiceMode: () -> Unit,
-    onClearChat: () -> Unit,
+    onNavigateToWorkspace: () -> Unit,
+    onNavigateToBrowser: () -> Unit,
+    onNavigateToConversations: () -> Unit,
+    onNavigateToHub: () -> Unit,
     isLoading: Boolean,
     enabled: Boolean
 ) {
@@ -1657,23 +1661,30 @@ private fun ModernInputBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // Plus button — attachments / actions
+            // Plus button — quick actions
             var showPlusMenu by remember { mutableStateOf(false) }
+            val plusRotation by animateFloatAsState(
+                targetValue = if (showPlusMenu) 90f else 0f,
+                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                label = "plusRotation"
+            )
             Box {
                 Surface(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .clickable { showPlusMenu = true },
+                        .clickable { showPlusMenu = !showPlusMenu },
                     color = ModernSurfaceHover,
                     shape = CircleShape,
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Filled.Add,
-                            "Attach",
+                            "Quick actions",
                             tint = ModernTextSecondary,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier
+                                .size(22.dp)
+                                .graphicsLayer { rotationZ = plusRotation }
                         )
                     }
                 }
@@ -1683,14 +1694,24 @@ private fun ModernInputBar(
                     modifier = Modifier.background(ModernSurfaceElevated)
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Clear chat", color = ModernTextPrimary, fontSize = 14.sp) },
-                        onClick = { showPlusMenu = false; onClearChat() },
-                        leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
+                        text = { Text("Workspace", color = ModernTextPrimary, fontSize = 14.sp) },
+                        onClick = { showPlusMenu = false; onNavigateToWorkspace() },
+                        leadingIcon = { Icon(Icons.Outlined.Folder, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
                     )
                     DropdownMenuItem(
-                        text = { Text("Voice mode", color = ModernTextPrimary, fontSize = 14.sp) },
-                        onClick = { showPlusMenu = false; onVoiceMode() },
-                        leadingIcon = { Icon(Icons.Filled.Mic, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
+                        text = { Text("Browser", color = ModernTextPrimary, fontSize = 14.sp) },
+                        onClick = { showPlusMenu = false; onNavigateToBrowser() },
+                        leadingIcon = { Icon(Icons.Outlined.Public, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Conversations", color = ModernTextPrimary, fontSize = 14.sp) },
+                        onClick = { showPlusMenu = false; onNavigateToConversations() },
+                        leadingIcon = { Icon(Icons.Outlined.ChatBubbleOutline, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Hub", color = ModernTextPrimary, fontSize = 14.sp) },
+                        onClick = { showPlusMenu = false; onNavigateToHub() },
+                        leadingIcon = { Icon(Icons.Outlined.Apps, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
                     )
                 }
             }
