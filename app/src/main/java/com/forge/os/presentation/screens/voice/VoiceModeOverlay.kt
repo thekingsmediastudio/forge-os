@@ -377,12 +377,17 @@ private fun ModernVoiceOrb(
         label = "speak_bounce"
     )
 
-    val orbScale = when (phase) {
+    val targetScale = when (phase) {
         VoicePhase.LISTENING -> 1f + rmsLevel * 0.3f
         VoicePhase.THINKING -> idlePulse
         VoicePhase.SPEAKING -> speakBounce
         VoicePhase.IDLE -> idlePulse
     }
+    val orbScale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = tween(150, easing = FastOutSlowInEasing),
+        label = "orb_scale"
+    )
 
     val orbColor = when (phase) {
         VoicePhase.LISTENING -> forgePalette.orange

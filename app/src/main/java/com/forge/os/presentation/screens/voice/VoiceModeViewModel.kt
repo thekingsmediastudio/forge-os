@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.text.SimpleDateFormat
@@ -62,13 +63,24 @@ class VoiceModeViewModel @Inject constructor(
     private var currentConversation: StoredConversation? = null
 
     private var agentJob: Job? = null
+    private var consecutiveRetryCount = 0
 
     init {
-        // Mirror RMS level into state while listening
+        // Mirror RMS level into state while listening, throttled to ~10fps
         viewModelScope.launch {
-            voiceInputManager.rmsLevel.collect { rms ->
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            voiceInputManager.rmsLevel.sample(100).collect { rms ->
                 if (_state.value.phase == VoicePhase.LISTENING) {
                     _state.value = _state.value.copy(rmsLevel = rms)
+                }
+            }
+        }
+
+        // Mirror partial transcript while listening for real-time feedback
+        viewModelScope.launch {
+            voiceInputManager.partialText.collect { partial ->
+                if (_state.value.phase == VoicePhase.LISTENING) {
+                    _state.value = _state.value.copy(transcript = partial)
                 }
             }
         }
@@ -180,6 +192,7 @@ class VoiceModeViewModel @Inject constructor(
     // ── Private ───────────────────────────────────────────────────────────────
 
     private fun startListening() {
+        consecutiveRetryCount = 0
         _state.value = _state.value.copy(
             phase = VoicePhase.LISTENING,
             transcript = "",
@@ -192,11 +205,21 @@ class VoiceModeViewModel @Inject constructor(
         when (error) {
             VoiceRecognitionError.NoMatch,
             VoiceRecognitionError.SpeechTimeout -> {
+                consecutiveRetryCount++
+                if (consecutiveRetryCount >= 5) {
+                    // Too many retries — pause and let the user tap to resume
+                    _state.value = _state.value.copy(
+                        phase = VoicePhase.IDLE,
+                        error = "Tap the orb to try again.",
+                        rmsLevel = 0f)
+                    consecutiveRetryCount = 0
+                    return
+                }
                 _state.value = _state.value.copy(
                     error = "Still listening — speak when ready, or tap the orb to pause.",
                     rmsLevel = 0f)
                 viewModelScope.launch {
-                    delay(900)
+                    delay(1200)
                     if (_state.value.phase == VoicePhase.LISTENING) {
                         voiceInputManager.startListening()
                     }
@@ -204,7 +227,7 @@ class VoiceModeViewModel @Inject constructor(
             }
             VoiceRecognitionError.Busy -> {
                 viewModelScope.launch {
-                    delay(500)
+                    delay(800)
                     if (_state.value.phase == VoicePhase.LISTENING) {
                         voiceInputManager.startListening()
                     }
@@ -219,6 +242,7 @@ class VoiceModeViewModel @Inject constructor(
 
     private fun onSpeechRecognized(text: String) {
         Timber.i("VoiceMode: recognized '$text'")
+        consecutiveRetryCount = 0
         _state.value = _state.value.copy(
             phase = VoicePhase.THINKING,
             transcript = text,

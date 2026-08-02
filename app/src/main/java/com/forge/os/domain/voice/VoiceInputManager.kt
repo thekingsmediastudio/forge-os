@@ -45,6 +45,9 @@ class VoiceInputManager @Inject constructor(
     private val _lastRecognizedText = MutableStateFlow("")
     val lastRecognizedText: StateFlow<String> = _lastRecognizedText.asStateFlow()
 
+    private val _partialText = MutableStateFlow("")
+    val partialText: StateFlow<String> = _partialText.asStateFlow()
+
     private val _recognitionError = MutableStateFlow<VoiceRecognitionError?>(null)
     val recognitionError: StateFlow<VoiceRecognitionError?> = _recognitionError.asStateFlow()
     
@@ -168,6 +171,7 @@ class VoiceInputManager @Inject constructor(
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
                     val recognizedText = matches[0]
+                    _partialText.value = ""
                     _lastRecognizedText.value = recognizedText
                     Timber.i("Recognized: $recognizedText")
                     
@@ -178,7 +182,10 @@ class VoiceInputManager @Inject constructor(
             }
             
             override fun onPartialResults(partialResults: Bundle?) {
-                // Partial recognition results - could be used for real-time feedback
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    _partialText.value = matches[0]
+                }
             }
             
             override fun onEvent(eventType: Int, params: Bundle?) {
@@ -198,7 +205,11 @@ class VoiceInputManager @Inject constructor(
             return
         }
         _recognitionError.value = null
-        
+        _partialText.value = ""
+
+        // Stop any in-progress recognition before starting a new one
+        speechRecognizer?.stopListening()
+
         // Ensure SpeechRecognizer is initialized on main thread
         if (!speechRecognizerInitialized) {
             initializeSpeechRecognizer()

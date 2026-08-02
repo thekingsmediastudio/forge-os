@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import com.forge.os.presentation.theme.forgePalette
 import kotlin.random.Random
@@ -49,7 +50,7 @@ private fun WaveformBar(
 ) {
     // Create staggered animation for each bar
     val infiniteTransition = rememberInfiniteTransition(label = "waveform_$index")
-    
+
     // Base animation for idle state
     val idleHeight by infiniteTransition.animateFloat(
         initialValue = 0.3f,
@@ -63,20 +64,31 @@ private fun WaveformBar(
         ),
         label = "idle_height_$index"
     )
-    
-    // Active animation based on RMS level with some randomness
+
+    // Stable per-bar randomness — hoisted so it doesn't re-roll on every RMS tick
     val activeMultiplier = remember { 0.5f + Random.nextFloat() * 0.5f }
-    val activeHeight = remember(rmsLevel) {
-        (rmsLevel * activeMultiplier).coerceIn(0.1f, 1f)
-    }
-    
-    val heightFraction = if (isActive) activeHeight else idleHeight
+    val activeHeight = (rmsLevel * activeMultiplier).coerceIn(0.1f, 1f)
+
+    // Smooth the switch between idle and active instead of snapping
+    val targetFraction = if (isActive) activeHeight else idleHeight
+    val heightFraction by animateFloatAsState(
+        targetValue = targetFraction,
+        animationSpec = tween(120, easing = FastOutSlowInEasing),
+        label = "bar_height_$index"
+    )
+
     val barColor = if (isActive) forgePalette.orange else forgePalette.textMuted.copy(alpha = 0.5f)
-    
+
+    // Fixed layout height; scale via graphicsLayer to avoid layout passes on every RMS tick
     Box(
         modifier = Modifier
             .width(4.dp)
-            .height((48 * heightFraction).dp)
+            .height(48.dp)
+            .graphicsLayer {
+                scaleY = heightFraction
+                // Anchor scaling to the bottom of the bar
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 1f)
+            }
             .clip(RoundedCornerShape(2.dp))
             .background(barColor)
     )
