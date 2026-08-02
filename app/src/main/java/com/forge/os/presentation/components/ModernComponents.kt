@@ -75,7 +75,7 @@ fun ForgeLogo(
         )
 
         Image(
-            painter = painterResource(id = R.drawable.ic_forge_logo),
+            painter = painterResource(id = R.drawable.splash_logo),
             contentDescription = "Forge OS",
             modifier = modifier
                 .size(size)
@@ -83,7 +83,7 @@ fun ForgeLogo(
         )
     } else {
         Image(
-            painter = painterResource(id = R.drawable.ic_forge_logo),
+            painter = painterResource(id = R.drawable.splash_logo),
             contentDescription = "Forge OS",
             modifier = modifier.size(size)
         )
