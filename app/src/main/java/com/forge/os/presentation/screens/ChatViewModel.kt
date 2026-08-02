@@ -14,6 +14,7 @@ import com.forge.os.data.conversations.toStored
 import com.forge.os.data.conversations.toUi
 import com.forge.os.domain.agent.AgentEvent
 import com.forge.os.domain.agent.ExecutionPlanner
+import com.forge.os.domain.agent.ImageAttachment
 import com.forge.os.domain.agent.InputRoute
 import com.forge.os.domain.agent.ReActAgent
 import com.forge.os.domain.agent.UserInputBroker
@@ -105,6 +106,10 @@ class ChatViewModel @Inject constructor(
     private val _pendingCostApproval = MutableStateFlow<ExecutionPlanner.CostEstimate?>(null)
     val pendingCostApproval: StateFlow<ExecutionPlanner.CostEstimate?> = _pendingCostApproval
 
+    /** Multimodal support — pending image attachments for the next message. */
+    private val _pendingImages = MutableStateFlow<List<ImageAttachment>>(emptyList())
+    val pendingImages: StateFlow<List<ImageAttachment>> = _pendingImages
+
 
     private val apiHistory = mutableListOf<ApiMessage>()
     private var currentConversation: StoredConversation = conversationRepo.loadOrCreateCurrent()
@@ -190,6 +195,21 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch { userInputBroker.submitResponse(InputRoute.UI, response) }
     }
 
+    /** Add an image attachment to the pending message. */
+    fun addImageAttachment(attachment: ImageAttachment) {
+        _pendingImages.value = _pendingImages.value + attachment
+    }
+
+    /** Remove an image attachment from the pending message. */
+    fun removeImageAttachment(attachment: ImageAttachment) {
+        _pendingImages.value = _pendingImages.value - attachment
+    }
+
+    /** Clear all pending image attachments. */
+    fun clearImageAttachments() {
+        _pendingImages.value = emptyList()
+    }
+
     fun send(userText: String) {
         if (userText.isBlank()) return
         val input = userText.trim()
@@ -209,6 +229,10 @@ class ChatViewModel @Inject constructor(
             return
         }
 
+        // Capture pending images before clearing
+        val images = _pendingImages.value
+        _pendingImages.value = emptyList()
+
         addMsg(ChatMessage(role = "user", content = input))
         hapticManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.LIGHT_TICK)
         skillRecorder.noteUserRequest(input)
@@ -222,7 +246,7 @@ class ChatViewModel @Inject constructor(
             var streamBuffer = ""
             val toolHistory = mutableListOf<String>()
 
-            reActAgent.run(input, apiHistory.toList(), spec, currentChannel = "main").collect { event ->
+            reActAgent.run(input, apiHistory.toList(), spec, currentChannel = "main", imageAttachments = images).collect { event ->
                 when (event) {
                     is AgentEvent.Thinking -> {
                         if (streamBuffer.isEmpty()) {

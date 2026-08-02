@@ -329,7 +329,9 @@ Tools available ({tool_count} total): {tool_catalog}
         currentChannel: String? = null,
         /** Phase 3 fix — identity and depth tracking for delegation recursion guards. */
         agentId: String? = null,
-        depth: Int = 0
+        depth: Int = 0,
+        /** Multimodal support — image attachments for this message. */
+        imageAttachments: List<ImageAttachment> = emptyList(),
     ): kotlinx.coroutines.flow.Flow<AgentEvent> = kotlinx.coroutines.flow.flow {
         // Task 4: Start execution session for learning
         val executionSession = executionHistoryManager.startSession(userMessage)
@@ -508,7 +510,24 @@ Tools available ({tool_count} total): {tool_catalog}
         }
 
         val messages = history.toMutableList()
-        messages.add(ApiMessage(role = "user", content = userMessage))
+        
+        // Build user message with optional image attachments
+        val userApiMessage = if (imageAttachments.isNotEmpty()) {
+            val contentParts = mutableListOf<com.forge.os.data.api.ContentPart>()
+            // Add text part
+            contentParts.add(com.forge.os.data.api.ContentPart(type = "text", text = userMessage))
+            // Add image parts
+            imageAttachments.forEach { attachment ->
+                contentParts.add(com.forge.os.data.api.ContentPart(
+                    type = "image_url",
+                    imageUrl = com.forge.os.data.api.ImageUrl(url = attachment.toDataUrl())
+                ))
+            }
+            ApiMessage(role = "user", content = null, contentParts = contentParts)
+        } else {
+            ApiMessage(role = "user", content = userMessage)
+        }
+        messages.add(userApiMessage)
 
         // System Integration: Automatic preference learning
         try {

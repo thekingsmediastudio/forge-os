@@ -106,6 +106,37 @@ fun ModernChatScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showVoiceMode by remember { mutableStateOf(false) }
     
+    // Multimodal support — image attachments
+    val pendingImages by viewModel.pendingImages.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val imagePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let {
+            scope.launch {
+                try {
+                    // Read image and convert to base64
+                    val inputStream = context.contentResolver.openInputStream(it)
+                    val bytes = inputStream?.readBytes()
+                    inputStream?.close()
+                    
+                    if (bytes != null) {
+                        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        val mimeType = context.contentResolver.getType(it) ?: "image/jpeg"
+                        val attachment = com.forge.os.domain.agent.ImageAttachment(
+                            filePath = it.toString(),
+                            mimeType = mimeType,
+                            base64Data = base64
+                        )
+                        viewModel.addImageAttachment(attachment)
+                    }
+                } catch (e: Exception) {
+                    timber.log.Timber.e(e, "Failed to load image")
+                }
+            }
+        }
+    }
+    
     // Tutorial state
     val tutorialManager: com.forge.os.domain.tutorial.TutorialManager = androidx.hilt.navigation.compose.hiltViewModel<com.forge.os.presentation.screens.chat.TutorialViewModel>().tutorialManager
     var showTutorial by remember { mutableStateOf(false) }
@@ -225,7 +256,9 @@ fun ModernChatScreen(
                 onNavigateToConversations = onNavigateToConversations,
                 onNavigateToHub = onNavigateToHub,
                 isLoading = isLoading,
-                enabled = !isLoading
+                enabled = !isLoading,
+                pendingImages = pendingImages,
+                onRemoveImage = { viewModel.removeImageAttachment(it) },
             )
         }
         
@@ -1649,14 +1682,63 @@ private fun ModernInputBar(
     onNavigateToConversations: () -> Unit,
     onNavigateToHub: () -> Unit,
     isLoading: Boolean,
-    enabled: Boolean
+    enabled: Boolean,
+    pendingImages: List<com.forge.os.domain.agent.ImageAttachment> = emptyList(),
+    onRemoveImage: (com.forge.os.domain.agent.ImageAttachment) -> Unit = {},
 ) {
-    // Unified pill composer — +, field, send all in one rounded container
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        color = ModernSurface,
+    Column {
+        // Pending images preview
+        if (pendingImages.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                pendingImages.forEach { attachment ->
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(ModernSurfaceHover)
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = coil.compose.rememberAsyncImagePainter(
+                                android.util.Base64.decode(attachment.base64Data, android.util.Base64.NO_WRAP)
+                            ),
+                            contentDescription = "Attached image",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                        // Remove button
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .clickable { onRemoveImage(attachment) },
+                            color = Color.Black.copy(alpha = 0.6f),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    "Remove",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Unified pill composer — +, field, send all in one rounded container
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            color = ModernSurface,
         shape = RoundedCornerShape(28.dp),
         shadowElevation = 4.dp
     ) {
@@ -1699,6 +1781,14 @@ private fun ModernInputBar(
                     onDismissRequest = { showPlusMenu = false },
                     modifier = Modifier.background(ModernSurfaceElevated)
                 ) {
+                    DropdownMenuItem(
+                        text = { Text("Attach Image", color = ModernTextPrimary, fontSize = 14.sp) },
+                        onClick = { 
+                            showPlusMenu = false
+                            imagePickerLauncher.launch("image/*")
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Image, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
+                    )
                     DropdownMenuItem(
                         text = { Text("Workspace", color = ModernTextPrimary, fontSize = 14.sp) },
                         onClick = { showPlusMenu = false; onNavigateToWorkspace() },
@@ -1852,6 +1942,7 @@ private fun ModernInputBar(
                 }
             }
         }
+    }
     }
 }
 

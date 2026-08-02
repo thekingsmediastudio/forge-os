@@ -118,10 +118,17 @@ class VisionTool @Inject constructor(
 
         // Name-based detection
         if (model.contains("vision") || model.contains("llava") || model.contains("bakllava") ||
-            model.contains("pixtral") || model.contains("gpt-4o") ||
-            model.contains("claude-3") || model.contains("claude-opus") ||
-            model.contains("claude-sonnet") || model.contains("claude-haiku") ||
-            model.contains("gemini") || model.contains("gpt-4-turbo")) return true
+            model.contains("pixtral") || model.contains("gpt-4o") || model.contains("gpt-4.1") ||
+            model.contains("gpt-5") || model.contains("claude-3") || model.contains("claude-4") ||
+            model.contains("claude-opus") || model.contains("claude-sonnet") || 
+            model.contains("claude-haiku") || model.contains("gemini") || 
+            model.contains("gpt-4-turbo") || model.contains("qwen2.5vl") || 
+            model.contains("qwen3-vl") || model.contains("-vl") || 
+            model.contains("minicpm") || model.contains("moondream") || 
+            model.contains("gemma3") || model.contains("mistral-small3") ||
+            model.contains("llama3.2-vision") || model.contains("granite") ||
+            model.contains("deepseek-ocr") || model.contains("grok-vision") ||
+            model.contains("grok-2-vision")) return true
 
         // Provider-based detection — modern flagship models from these providers support vision
         if (spec is ProviderSpec.Builtin) {
