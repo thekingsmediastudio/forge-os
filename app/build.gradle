@@ -199,9 +199,6 @@ dependencies {
     // Logging
     implementation 'com.jakewharton.timber:timber:5.0.1'
 
-    // Picovoice Porcupine — wake word detection ("Hello Forge")
-    implementation 'ai.picovoice:porcupine-android:4.0.0'
-
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'

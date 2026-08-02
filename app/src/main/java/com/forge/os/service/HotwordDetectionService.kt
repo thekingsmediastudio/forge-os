@@ -10,42 +10,48 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import ai.picovoice.porcupine.PorcupineManager
-import ai.picovoice.porcupine.PorcupineManagerCallback
 import com.forge.os.R
 import com.forge.os.domain.voice.HotwordEventBus
+import com.forge.os.domain.voice.VoiceActivityDetector
 import com.forge.os.presentation.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.*
 import timber.log.Timber
 import javax.inject.Inject
 
 /**
- * Foreground service that runs Picovoice Porcupine to listen for the
- * "Hello Forge" wake word. When detected, emits to [HotwordEventBus]
- * which triggers the activation overlay in the UI.
+ * Foreground service that listens for the "Hello Forge" wake word using
+ * Voice Activity Detection (VAD) + Android SpeechRecognizer.
  *
- * Battery-conscious: Porcupine is designed for always-listening IoT
- * devices and uses minimal CPU. The service only runs when the app
- * is in the foreground (started/stopped by MainActivity).
+ * How it works:
+ * 1. VAD continuously monitors the mic for speech (energy-based)
+ * 2. When speech is detected, trigger SpeechRecognizer to transcribe
+ * 3. Check if transcript contains "hello forge" (fuzzy match)
+ * 4. If match, emit to HotwordEventBus → show activation popup
+ *
+ * Battery-efficient: VAD uses minimal CPU, STT only runs when speech detected.
+ * No external dependencies or API keys required.
  */
 @AndroidEntryPoint
 class HotwordDetectionService : Service() {
 
     @Inject lateinit var hotwordEventBus: HotwordEventBus
+    @Inject lateinit var voiceActivityDetector: VoiceActivityDetector
 
-    private var porcupineManager: PorcupineManager? = null
+    private var speechRecognizer: SpeechRecognizer? = null
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var vadJob: Job? = null
 
     companion object {
         private const val CHANNEL_ID = "hotword_detection"
         private const val NOTIFICATION_ID = 42
-        private const val KEYWORD_PATH = "forge.ppn" // in assets/
-        private const val SENSITIVITY = 0.5f
-
-        // TODO: User must provide their Picovoice AccessKey
-        // Get one free at https://console.picovoice.ai/
-        private const val ACCESS_KEY = "YOUR_PICOVOICE_ACCESS_KEY"
+        private const val KEYWORD = "hello forge"
+        private const val FUZZY_MATCH_THRESHOLD = 0.7f // 70% of words must match
     }
 
     override fun onCreate() {
@@ -74,36 +80,89 @@ class HotwordDetectionService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Initialize Porcupine
-        try {
-            porcupineManager = PorcupineManager.Builder()
-                .setAccessKey(ACCESS_KEY)
-                .setKeywordPath(KEYWORD_PATH)
-                .setSensitivity(SENSITIVITY)
-                .build(this, PorcupineManagerCallback { keywordIndex ->
-                    Timber.d("HotwordDetectionService: wake word detected (index=$keywordIndex)")
-                    hotwordEventBus.emit()
-                })
-            porcupineManager?.start()
-            Timber.d("HotwordDetectionService: Porcupine started, listening for 'Hello Forge'")
-        } catch (e: Exception) {
-            Timber.e(e, "HotwordDetectionService: failed to initialize Porcupine")
-            stopSelf()
-            return START_NOT_STICKY
+        // Initialize SpeechRecognizer
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+            setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: android.os.Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onError(error: Int) {
+                    Timber.d("HotwordDetectionService: STT error $error")
+                }
+                override fun onResults(results: android.os.Bundle?) {
+                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    matches?.firstOrNull()?.let { transcript ->
+                        Timber.d("HotwordDetectionService: STT result: $transcript")
+                        if (fuzzyMatch(transcript, KEYWORD)) {
+                            Timber.d("HotwordDetectionService: wake word detected!")
+                            hotwordEventBus.emit()
+                        }
+                    }
+                }
+                override fun onPartialResults(partialResults: android.os.Bundle?) {
+                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    matches?.firstOrNull()?.let { partial ->
+                        Timber.d("HotwordDetectionService: STT partial: $partial")
+                        if (fuzzyMatch(partial, KEYWORD)) {
+                            Timber.d("HotwordDetectionService: wake word detected (partial)!")
+                            hotwordEventBus.emit()
+                        }
+                    }
+                }
+                override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+            })
         }
 
+        // Start VAD
+        voiceActivityDetector.start()
+
+        // Collect VAD events and trigger STT when speech detected
+        vadJob = scope.launch {
+            voiceActivityDetector.speechDetected.collect { detected ->
+                if (detected) {
+                    Timber.d("HotwordDetectionService: speech detected, starting STT")
+                    startListening()
+                }
+            }
+        }
+
+        Timber.d("HotwordDetectionService: VAD started, listening for 'Hello Forge'")
         return START_STICKY
     }
 
     override fun onDestroy() {
         Timber.d("HotwordDetectionService: onDestroy")
-        porcupineManager?.stop()
-        porcupineManager?.delete()
-        porcupineManager = null
+        vadJob?.cancel()
+        voiceActivityDetector.stop()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        scope.cancel()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun startListening() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+        speechRecognizer?.startListening(intent)
+    }
+
+    /**
+     * Fuzzy match: check if transcript contains the keyword.
+     * Returns true if at least [FUZZY_MATCH_THRESHOLD] of keyword words are present.
+     */
+    private fun fuzzyMatch(transcript: String, keyword: String): Boolean {
+        val transcriptWords = transcript.lowercase().split(Regex("\\s+"))
+        val keywordWords = keyword.lowercase().split(Regex("\\s+"))
+        val matchCount = keywordWords.count { it in transcriptWords }
+        return matchCount.toFloat() / keywordWords.size >= FUZZY_MATCH_THRESHOLD
+    }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
