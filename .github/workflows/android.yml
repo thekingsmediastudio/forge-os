@@ -43,7 +43,10 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build debug APK
-        run: ./gradlew :app:clean :app:assembleDebug --stacktrace --no-daemon
+        # -Pkotlin.incremental=false forces a full non-incremental Kotlin compile,
+        # bypassing any corrupted incremental-compilation state that causes phantom
+        # "unresolved reference" errors for symbols that exist in source.
+        run: ./gradlew :app:clean :app:assembleDebug --stacktrace --no-daemon -Pkotlin.incremental=false
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
