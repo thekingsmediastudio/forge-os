@@ -219,7 +219,6 @@ fun ModernChatScreen(
                     }
                 },
                 onStop = { viewModel.stopGeneration() },
-                onVoiceMode = { showVoiceMode = true },
                 onNavigateToWorkspace = onNavigateToWorkspace,
                 onNavigateToBrowser = onNavigateToBrowser,
                 onNavigateToConversations = onNavigateToConversations,
@@ -1640,7 +1639,6 @@ private fun ModernInputBar(
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
-    onVoiceMode: () -> Unit,
     onNavigateToWorkspace: () -> Unit,
     onNavigateToBrowser: () -> Unit,
     onNavigateToConversations: () -> Unit,
@@ -1758,25 +1756,6 @@ private fun ModernInputBar(
                 onVoiceInput = { recognizedText -> onValueChange(recognizedText) },
                 modifier = Modifier.size(44.dp)
             )
-
-            // Voice mode button — opens the full-screen voice session
-            Surface(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .clickable { onVoiceMode() },
-                color = ModernSurfaceHover,
-                shape = CircleShape,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Filled.GraphicEq,
-                        "Voice mode",
-                        tint = ModernTextSecondary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
 
             // Send/Stop button — ember circle when active with press animation
             val sendEnabled = value.isNotBlank() && enabled
