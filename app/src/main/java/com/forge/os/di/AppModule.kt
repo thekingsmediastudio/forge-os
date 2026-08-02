@@ -152,6 +152,8 @@ object AppModule {
         NotificationHelper(ctx)
     @Provides @Singleton fun provideCronRepository(@ApplicationContext ctx: Context) =
         CronRepository(ctx)
+    @Provides @Singleton fun provideRecipeRepository(@ApplicationContext ctx: Context) =
+        com.forge.os.domain.recipe.RecipeRepository(ctx)
     @Provides @Singleton fun provideCronManager(
         repo: CronRepository,
         sm: SandboxManager,

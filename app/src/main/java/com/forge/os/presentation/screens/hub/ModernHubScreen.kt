@@ -44,6 +44,7 @@ private val MODULES = listOf(
     ModuleTile("agents", Icons.Outlined.SmartToy, "Agents", "Sub-agent transcripts", "Agent", "agent sub-agent"),
     ModuleTile("projects", Icons.Outlined.Folder, "Projects", "Scoped workspaces", "Agent", "project workspace"),
     ModuleTile("skills", Icons.Outlined.Code, "Skills", "Reusable Python", "Agent", "skill python"),
+    ModuleTile("recipes", Icons.Outlined.MenuBook, "Recipes", "Prompt templates", "Agent", "recipe prompt template"),
     ModuleTile("conversations", Icons.Outlined.Chat, "Chats", "Multi-conversation", "Agent", "chat conversations"),
 
     // Data

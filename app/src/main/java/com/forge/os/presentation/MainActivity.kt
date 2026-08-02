@@ -239,6 +239,18 @@ class MainActivity : ComponentActivity() {
                         composable("agents")    { AgentsScreen(onBack = { navController.popBackStack() }) }
                         composable("projects")  { ProjectsScreen(onBack = { navController.popBackStack() }) }
                         composable("skills")    { SkillsScreen(onBack = { navController.popBackStack() }) }
+                        composable("recipes")   {
+                            com.forge.os.presentation.screens.recipes.RecipesScreen(
+                                onBack = { navController.popBackStack() },
+                                onUseInChat = { prompt ->
+                                    com.forge.os.presentation.screens.chat.PendingRecipeSeed.set(prompt)
+                                    navController.navigate("chat") {
+                                        popUpTo("chat") { inclusive = true }
+                                        launchSingleTop = true
+                                    }
+                                },
+                            )
+                        }
                         composable("snapshots") { SnapshotsScreen(onBack = { navController.popBackStack() }) }
                         composable("debugger") { DebuggerScreen(onBack = { navController.popBackStack() }) }
                         composable("mcp")       { McpServersScreen(onBack = { navController.popBackStack() }) }
@@ -518,7 +530,7 @@ class MainActivity : ComponentActivity() {
         private val KNOWN_NAV_ROUTES = setOf(
             "chat", "companion", "external", "settings", "workspace", "browser",
             "hub", "channels", "channelSessions", "alarms", "cron",
-            "memory", "agents", "skills", "snapshots", "mcp", "tools", "plugins",
+            "memory", "agents", "skills", "recipes", "snapshots", "mcp", "tools", "plugins",
             "status", "diagnostics", "doctor", "server", "android", "cost",
             "projects", "persona", "companionCheckIns", "companionMemory",
             "companionConversations", "conversations", "modelRouting",

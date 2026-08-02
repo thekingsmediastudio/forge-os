@@ -17,6 +17,8 @@ This document collects every feature idea discussed during the session (user-sug
    - MVP: Missing profile that auto-replies via SMS or plays TTS on incoming calls for trusted contacts. Configurable templated responses.
 6. "Hello Forge" hotword wake
    - MVP: integrate a small on-device wake word model (Picovoice / Vosk style) in a low-power audio service, show assistant UI on detection.
+7. a pip package bundled in the app that uses a dedicated folder downloads python packages there. the packages are automatically added to bndled packages and can be used
+8. allow secrets to be accessible by the python code as env variables..
 
 ---
 
