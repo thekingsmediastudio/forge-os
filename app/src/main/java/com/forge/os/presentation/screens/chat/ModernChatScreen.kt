@@ -277,12 +277,15 @@ private fun ModernHeader(
                         "Forge OS",
                         color = ModernTextPrimary,
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
                     )
                     Text(
                         if (isLoading) "Thinking..." else (selectedSpec?.displayLabel ?: "Auto"),
                         color = ModernTextSecondary,
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
             }
@@ -311,8 +314,9 @@ private fun ModernHeader(
                             text = selectedSpec?.displayLabel ?: "Auto",
                             color = ModernTextPrimary,
                             fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                            maxLines = 1
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.widthIn(max = 100.dp)
                         )
                     }
                 }
