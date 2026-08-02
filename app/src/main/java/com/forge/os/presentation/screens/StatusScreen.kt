@@ -45,6 +45,20 @@ fun StatusScreen(
     val bg = forgePalette.bg
     val surface = forgePalette.surface
     val muted = forgePalette.textMuted
+    
+    // Tutorial state
+    val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
+    val tutorialManager = tutorialVm.tutorialManager
+    var showTutorial by remember { mutableStateOf(false) }
+    var tutorialStep by remember { mutableIntStateOf(0) }
+    
+    // Check if tutorial should be shown
+    LaunchedEffect(Unit) {
+        if (tutorialManager.shouldShowTutorial(com.forge.os.domain.tutorial.TutorialType.STATUS)) {
+            kotlinx.coroutines.delay(500)
+            showTutorial = true
+        }
+    }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
 
@@ -71,7 +85,9 @@ fun StatusScreen(
                 "SYSTEM STATUS", color = orange, fontSize = 16.sp, letterSpacing = 2.sp
             )
             Spacer(Modifier.weight(1f))
-            HealthBadge(status.overallHealth)
+            Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("status_health"))) {
+                HealthBadge(status.overallHealth)
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(
@@ -98,7 +114,10 @@ fun StatusScreen(
             Spacer(Modifier.height(8.dp))
         }
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("status_components"))
+        ) {
             items(status.components.entries.toList()) { (name, comp) ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -164,6 +183,44 @@ fun StatusScreen(
                 }
             }
         }
+    }
+    
+    // Tutorial Overlay
+    if (showTutorial) {
+        val tutorialSteps = listOf(
+            com.forge.os.presentation.components.CoachMarkStep(
+                title = "System Status",
+                description = "Monitor the health of all Forge OS components in real-time.",
+                targetKey = null,
+                tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+            ),
+            com.forge.os.presentation.components.CoachMarkStep(
+                title = "Health Badge",
+                description = "Overall system health: HEALTHY (green), WARNING (yellow), CRITICAL (red), or DOWN (gray).",
+                targetKey = "status_health",
+                tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+            ),
+            com.forge.os.presentation.components.CoachMarkStep(
+                title = "Component Status",
+                description = "Individual status for storage, memory, API, workspace, and other components.",
+                targetKey = "status_components",
+                tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
+            )
+        )
+        
+        com.forge.os.presentation.components.CoachMarkOverlay(
+            steps = tutorialSteps,
+            currentStep = tutorialStep,
+            onNext = { tutorialStep++ },
+            onSkip = {
+                showTutorial = false
+                tutorialManager.markTutorialShown(com.forge.os.domain.tutorial.TutorialType.STATUS)
+            },
+            onDone = {
+                showTutorial = false
+                tutorialManager.markTutorialShown(com.forge.os.domain.tutorial.TutorialType.STATUS)
+            }
+        )
     }
 }
 

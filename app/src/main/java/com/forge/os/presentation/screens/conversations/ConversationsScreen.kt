@@ -49,6 +49,20 @@ fun ConversationsScreen(
     var renameTarget: StoredConversation? by remember { mutableStateOf(null) }
     var deleteTarget: StoredConversation? by remember { mutableStateOf(null) }
     val snackbar = remember { SnackbarHostState() }
+    
+    // Tutorial state
+    val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
+    val tutorialManager = tutorialVm.tutorialManager
+    var showTutorial by remember { mutableStateOf(false) }
+    var tutorialStep by remember { mutableIntStateOf(0) }
+    
+    // Check if tutorial should be shown
+    LaunchedEffect(Unit) {
+        if (tutorialManager.shouldShowTutorial(com.forge.os.domain.tutorial.TutorialType.CONVERSATIONS)) {
+            kotlinx.coroutines.delay(500)
+            showTutorial = true
+        }
+    }
 
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); viewModel.dismissMessage() }
@@ -58,10 +72,12 @@ fun ConversationsScreen(
         title = "CONVERSATIONS",
         onBack = onBack,
         actions = {
-            TextButton(onClick = {
-                viewModel.startNew(); onOpened()
-            }) {
-                Text("+ NEW", color = ForgeOsPalette.Orange, fontSize = 12.sp)
+            Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("conversations_new"))) {
+                TextButton(onClick = {
+                    viewModel.startNew(); onOpened()
+                }) {
+                    Text("+ NEW", color = ForgeOsPalette.Orange, fontSize = 12.sp)
+                }
             }
         }
     ) {
@@ -73,7 +89,10 @@ fun ConversationsScreen(
             if (state.items.isEmpty()) {
                 Text("No conversations yet.", color = ForgeOsPalette.TextMuted, modifier = Modifier.padding(16.dp))
             } else {
-                LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+                LazyColumn(
+                    Modifier.fillMaxSize().padding(horizontal = 12.dp)
+                        .then(com.forge.os.presentation.components.spotlightTarget("conversations_list"))
+                ) {
                     items(state.items, key = { it.id }) { conv ->
                         ConversationRow(
                             conv = conv,
@@ -87,6 +106,44 @@ fun ConversationsScreen(
             }
             SnackbarHost(snackbar)
         }
+    }
+    
+    // Tutorial Overlay
+    if (showTutorial) {
+        val tutorialSteps = listOf(
+            com.forge.os.presentation.components.CoachMarkStep(
+                title = "Conversations",
+                description = "All your chat history is saved here. Tap any conversation to continue where you left off.",
+                targetKey = null,
+                tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+            ),
+            com.forge.os.presentation.components.CoachMarkStep(
+                title = "New Conversation",
+                description = "Start a fresh conversation with the + NEW button.",
+                targetKey = "conversations_new",
+                tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+            ),
+            com.forge.os.presentation.components.CoachMarkStep(
+                title = "Manage Chats",
+                description = "Rename or delete conversations by tapping the action buttons on each row.",
+                targetKey = "conversations_list",
+                tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
+            )
+        )
+        
+        com.forge.os.presentation.components.CoachMarkOverlay(
+            steps = tutorialSteps,
+            currentStep = tutorialStep,
+            onNext = { tutorialStep++ },
+            onSkip = {
+                showTutorial = false
+                tutorialManager.markTutorialShown(com.forge.os.domain.tutorial.TutorialType.CONVERSATIONS)
+            },
+            onDone = {
+                showTutorial = false
+                tutorialManager.markTutorialShown(com.forge.os.domain.tutorial.TutorialType.CONVERSATIONS)
+            }
+        )
     }
 
     renameTarget?.let { c ->
