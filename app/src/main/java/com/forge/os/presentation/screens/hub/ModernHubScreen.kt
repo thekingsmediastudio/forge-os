@@ -255,7 +255,7 @@ fun ModernHubScreen(
                         val rows = visiblePluginTiles.chunked(2)
                         Column(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.spotlightTarget("hub_plugins"))
+                            modifier = Modifier.spotlightTarget("hub_plugins")
                         ) {
                             rows.forEach { row ->
                                 Row(

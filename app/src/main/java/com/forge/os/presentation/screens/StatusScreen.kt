@@ -117,7 +117,7 @@ fun StatusScreen(
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.spotlightTarget("status_components"))
+            modifier = Modifier.spotlightTarget("status_components")
         ) {
             items(status.components.entries.toList()) { (name, comp) ->
                 Card(
