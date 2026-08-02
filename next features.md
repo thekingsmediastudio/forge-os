@@ -21,6 +21,8 @@ This document collects every feature idea discussed during the session (user-sug
 8. allow secrets to be accessible by the python code as env variables..
 9. allow agent to reveal headless browser in same state such as if it needs help it can request.
 10. our notifications on click they dont do things.....
+11. currently tables and some other things are optimized for dark theme only.
+12. i want to implement away in which the agent can send videos and images and audio and other document in main chat
 
 ---
 

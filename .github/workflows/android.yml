@@ -44,11 +44,13 @@ jobs:
 
       - name: Build debug APK
         # -Pkotlin.incremental=false forces a full non-incremental Kotlin compile.
-        # --info surfaces the Kotlin compiler's detailed per-file diagnostics.
+        # kotlin.compiler.execution.strategy=in-process bypasses the persistent Kotlin
+        # compile daemon, whose stale in-memory state was causing phantom
+        # "unresolved reference: spotlightTarget" errors for a symbol that exists.
         # pipefail ensures the gradle exit code (not tee's) determines step success.
         run: |
           set -o pipefail
-          ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false --info 2>&1 | tee build-log.txt
+          ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false -Dkotlin.compiler.execution.strategy=in-process 2>&1 | tee build-log.txt
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
