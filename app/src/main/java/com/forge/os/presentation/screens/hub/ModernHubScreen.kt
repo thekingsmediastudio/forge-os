@@ -130,7 +130,8 @@ fun ModernHubScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .then(com.forge.os.presentation.components.spotlightTarget("hub_search")),
                 color = ModernSurface,
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -194,7 +195,9 @@ fun ModernHubScreen(
             }
 
             androidx.compose.foundation.lazy.LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(com.forge.os.presentation.components.spotlightTarget("hub_modules")),
                 contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 100.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
@@ -249,7 +252,10 @@ fun ModernHubScreen(
 
                     item(key = "grid_plugins") {
                         val rows = visiblePluginTiles.chunked(2)
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("hub_plugins"))
+                        ) {
                             rows.forEach { row ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -281,21 +287,25 @@ fun ModernHubScreen(
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Welcome to Hub",
                     description = "This is your control center. All Forge OS modules are organized here by category.",
-                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.CENTER
+                    targetKey = null,
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
                 ),
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Search",
                     description = "Quickly find any module by typing in the search bar.",
+                    targetKey = "hub_search",
                     tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
                 ),
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Module Tiles",
                     description = "Tap any tile to open that module. Tiles are grouped by category: Core, Agent, Data, Companion, Tools, and Advanced.",
+                    targetKey = "hub_modules",
                     tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
                 ),
                 com.forge.os.presentation.components.CoachMarkStep(
                     title = "Plugin Tiles",
                     description = "Your installed plugins appear here with their custom icons and actions.",
+                    targetKey = "hub_plugins",
                     tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
                 )
             )

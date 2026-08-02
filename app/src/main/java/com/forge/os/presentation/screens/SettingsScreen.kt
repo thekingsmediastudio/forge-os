@@ -70,6 +70,20 @@ fun SettingsScreen(
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
     var showAddSecretDialog by remember { mutableStateOf(false) }
+    
+    // Tutorial state
+    val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
+    val tutorialManager = tutorialVm.tutorialManager
+    var showTutorial by remember { mutableStateOf(false) }
+    var tutorialStep by remember { mutableIntStateOf(0) }
+    
+    // Check if tutorial should be shown
+    LaunchedEffect(Unit) {
+        if (tutorialManager.shouldShowTutorial(com.forge.os.domain.tutorial.TutorialType.SETTINGS)) {
+            kotlinx.coroutines.delay(500)
+            showTutorial = true
+        }
+    }
 
     LaunchedEffect(saveMessage) {
         if (saveMessage != null) { delay(3000); viewModel.clearSaveMessage() }
@@ -127,12 +141,14 @@ fun SettingsScreen(
                 // ── Appearance ───────────────────────────────────────────
                 item { SectionHeader(title = "APPEARANCE") }
                 item {
-                    AppearanceCard(
-                        selected = themeMode,
-                        onSelect = { viewModel.setThemeMode(it) },
-                        hapticEnabled = hapticFeedbackEnabled,
-                        onHapticToggle = { viewModel.setHapticFeedbackEnabled(it) }
-                    )
+                    Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("settings_appearance"))) {
+                        AppearanceCard(
+                            selected = themeMode,
+                            onSelect = { viewModel.setThemeMode(it) },
+                            hapticEnabled = hapticFeedbackEnabled,
+                            onHapticToggle = { viewModel.setHapticFeedbackEnabled(it) }
+                        )
+                    }
                 }
 
                 // ── Model ────────────────────────────────────────────────
@@ -146,12 +162,18 @@ fun SettingsScreen(
 
                 // ── Built-in Providers ───────────────────────────────────
                 item { SectionHeader(title = "BUILT-IN PROVIDERS") }
-                items(keyStatuses) { status ->
-                    ApiKeyCard(
-                        status = status,
-                        onSave = { key -> viewModel.saveKey(status.provider, key) },
-                        onDelete = { viewModel.deleteKey(status.provider) }
-                    )
+                item {
+                    Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("settings_api_keys"))) {
+                        Column {
+                            keyStatuses.forEach { status ->
+                                ApiKeyCard(
+                                    status = status,
+                                    onSave = { key -> viewModel.saveKey(status.provider, key) },
+                                    onDelete = { viewModel.deleteKey(status.provider) }
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // ── Custom Endpoints ─────────────────────────────────────
@@ -322,13 +344,15 @@ fun SettingsScreen(
                     val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
                     val channelsEnabled by channelVm.channelsEnabled.collectAsState()
                     
-                    SettingsToggleRow(
-                        icon = Icons.Outlined.Folder,
-                        title = "Enable channels",
-                        subtitle = "Separate memory by context (Work, Personal, etc.)",
-                        checked = channelsEnabled,
-                        onCheckedChange = { channelVm.setChannelsEnabled(it) }
-                    )
+                    Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("settings_channels"))) {
+                        SettingsToggleRow(
+                            icon = Icons.Outlined.Folder,
+                            title = "Enable channels",
+                            subtitle = "Separate memory by context (Work, Personal, etc.)",
+                            checked = channelsEnabled,
+                            onCheckedChange = { channelVm.setChannelsEnabled(it) }
+                        )
+                    }
                 }
                 item {
                     val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
@@ -395,6 +419,50 @@ fun SettingsScreen(
 
                 item { Spacer(Modifier.height(32.dp)) }
             }
+        }
+        
+        // Tutorial Overlay
+        if (showTutorial) {
+            val tutorialSteps = listOf(
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Settings",
+                    description = "Configure Forge OS to work the way you want. All settings are stored securely on your device.",
+                    targetKey = null,
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "API Keys",
+                    description = "Add your AI provider API keys here. They're stored encrypted in Android Keystore.",
+                    targetKey = "settings_api_keys",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Appearance",
+                    description = "Customize the look and feel with themes and display options.",
+                    targetKey = "settings_appearance",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.BOTTOM
+                ),
+                com.forge.os.presentation.components.CoachMarkStep(
+                    title = "Memory Channels",
+                    description = "Enable channels to separate AI memory by context (Work, Personal, etc.)",
+                    targetKey = "settings_channels",
+                    tooltipPosition = com.forge.os.presentation.components.TooltipPosition.TOP
+                )
+            )
+            
+            com.forge.os.presentation.components.CoachMarkOverlay(
+                steps = tutorialSteps,
+                currentStep = tutorialStep,
+                onNext = { tutorialStep++ },
+                onSkip = {
+                    showTutorial = false
+                    tutorialManager.markTutorialShown(com.forge.os.domain.tutorial.TutorialType.SETTINGS)
+                },
+                onDone = {
+                    showTutorial = false
+                    tutorialManager.markTutorialShown(com.forge.os.domain.tutorial.TutorialType.SETTINGS)
+                }
+            )
         }
     }
 

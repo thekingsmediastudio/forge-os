@@ -9,6 +9,20 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
+ * Tutorial types for each screen.
+ */
+enum class TutorialType(val key: String) {
+    CHAT("chat_tutorial_shown"),
+    HUB("hub_tutorial_shown"),
+    SETTINGS("settings_tutorial_shown"),
+    STATUS("status_tutorial_shown"),
+    CONVERSATIONS("conversations_tutorial_shown"),
+    WORKSPACE("workspace_tutorial_shown"),
+    COMPANION("companion_tutorial_shown"),
+    BROWSER("browser_tutorial_shown")
+}
+
+/**
  * Manages tutorial/coach mark state persistence.
  * Tracks which tutorials have been shown to the user.
  */
@@ -20,76 +34,51 @@ class TutorialManager @Inject constructor(
         PREFS_NAME, Context.MODE_PRIVATE
     )
 
-    private val _showChatTutorial = MutableStateFlow(false)
-    val showChatTutorial: StateFlow<Boolean> = _showChatTutorial
-
-    private val _showHubTutorial = MutableStateFlow(false)
-    val showHubTutorial: StateFlow<Boolean> = _showHubTutorial
-
     companion object {
         private const val PREFS_NAME = "forge_tutorial_prefs"
-        private const val KEY_CHAT_TUTORIAL_SHOWN = "chat_tutorial_shown"
-        private const val KEY_HUB_TUTORIAL_SHOWN = "hub_tutorial_shown"
         private const val KEY_ONBOARDING_COMPLETED = "onboarding_completed"
     }
 
     /**
-     * Check if chat tutorial should be shown (first visit to chat).
+     * Check if a tutorial should be shown (first visit to screen).
      */
-    fun shouldShowChatTutorial(): Boolean {
-        return !prefs.getBoolean(KEY_CHAT_TUTORIAL_SHOWN, false)
+    fun shouldShowTutorial(type: TutorialType): Boolean {
+        return !prefs.getBoolean(type.key, false)
     }
 
     /**
-     * Check if hub tutorial should be shown (first visit to hub).
+     * Mark a tutorial as shown.
      */
-    fun shouldShowHubTutorial(): Boolean {
-        return !prefs.getBoolean(KEY_HUB_TUTORIAL_SHOWN, false)
+    fun markTutorialShown(type: TutorialType) {
+        prefs.edit().putBoolean(type.key, true).apply()
     }
 
     /**
-     * Mark chat tutorial as shown.
+     * Reset a specific tutorial.
      */
-    fun markChatTutorialShown() {
-        prefs.edit().putBoolean(KEY_CHAT_TUTORIAL_SHOWN, true).apply()
-        _showChatTutorial.value = false
-    }
-
-    /**
-     * Mark hub tutorial as shown.
-     */
-    fun markHubTutorialShown() {
-        prefs.edit().putBoolean(KEY_HUB_TUTORIAL_SHOWN, true).apply()
-        _showHubTutorial.value = false
-    }
-
-    /**
-     * Trigger chat tutorial display.
-     */
-    fun triggerChatTutorial() {
-        if (shouldShowChatTutorial()) {
-            _showChatTutorial.value = true
-        }
-    }
-
-    /**
-     * Trigger hub tutorial display.
-     */
-    fun triggerHubTutorial() {
-        if (shouldShowHubTutorial()) {
-            _showHubTutorial.value = true
-        }
+    fun resetTutorial(type: TutorialType) {
+        prefs.edit().putBoolean(type.key, false).apply()
     }
 
     /**
      * Reset all tutorials (for replay from settings).
      */
     fun resetAllTutorials() {
-        prefs.edit()
-            .putBoolean(KEY_CHAT_TUTORIAL_SHOWN, false)
-            .putBoolean(KEY_HUB_TUTORIAL_SHOWN, false)
-            .apply()
+        val editor = prefs.edit()
+        TutorialType.values().forEach { type ->
+            editor.putBoolean(type.key, false)
+        }
+        editor.apply()
     }
+
+    // ── Legacy methods for backward compatibility ─────────────────────────────
+
+    fun shouldShowChatTutorial(): Boolean = shouldShowTutorial(TutorialType.CHAT)
+    fun shouldShowHubTutorial(): Boolean = shouldShowTutorial(TutorialType.HUB)
+    fun markChatTutorialShown() = markTutorialShown(TutorialType.CHAT)
+    fun markHubTutorialShown() = markTutorialShown(TutorialType.HUB)
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
 
     /**
      * Check if onboarding has been completed.
