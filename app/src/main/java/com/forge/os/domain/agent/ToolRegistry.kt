@@ -131,7 +131,7 @@ class ToolRegistry @Inject constructor(
     private val locationToolProvider: com.forge.os.domain.agent.providers.LocationToolProvider,
     private val storageToolProvider: com.forge.os.domain.agent.providers.StorageToolProvider,
     private val androidUiToolProvider: com.forge.os.domain.agent.providers.AndroidUiToolProvider,
-    private val missingModeToolProvider: com.forge.os.domain.agent.providers.MissingModeToolProvider,
+    private val findMyPhoneToolProvider: com.forge.os.domain.agent.providers.FindMyPhoneToolProvider,
     private val antiTheftToolProvider: com.forge.os.domain.agent.providers.AntiTheftToolProvider,
     // Phase 1: Project-AI Integration
     private val projectToolProvider: com.forge.os.domain.projects.ProjectToolProvider,
@@ -176,7 +176,7 @@ class ToolRegistry @Inject constructor(
         locationToolProvider.getTools() +
         storageToolProvider.getTools() +
         androidUiToolProvider.getTools() +
-        missingModeToolProvider.getTools() +
+        findMyPhoneToolProvider.getTools() +
         antiTheftToolProvider.getTools() +
         projectToolProvider.getTools()
 
@@ -318,7 +318,7 @@ class ToolRegistry @Inject constructor(
                     ?: locationToolProvider.dispatch(toolName, args)
                     ?: storageToolProvider.dispatch(toolName, args)
                     ?: androidUiToolProvider.dispatch(toolName, args)
-                    ?: missingModeToolProvider.dispatch(toolName, args)
+                    ?: findMyPhoneToolProvider.dispatch(toolName, args)
                     ?: antiTheftToolProvider.dispatch(toolName, args)
             } ?: when (toolName) {
                 "plan_and_execute_dag" -> {
@@ -1895,8 +1895,11 @@ class ToolRegistry @Inject constructor(
             navRoute = "browser",
         )
 
-        return "✅ Browser revealed at $url — the user sees the exact same page. " +
-               "Wait for them to finish, then continue with browser tools."
+        // Block until the user taps "Done" in the overlay
+        browserRevealManager.awaitDismiss()
+
+        return "✅ User finished interacting with the browser at $url. " +
+               "The page is back in headless mode — you can continue driving it with browser tools."
     }
 
     /**
