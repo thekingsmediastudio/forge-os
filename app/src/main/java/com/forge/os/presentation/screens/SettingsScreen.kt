@@ -48,6 +48,7 @@ fun SettingsScreen(
     onNavigateToOverrides: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {},
     onNavigateToPersonality: () -> Unit = {},
+    onNavigateToMemories: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val keyStatuses by viewModel.keyStatuses.collectAsState()
@@ -363,7 +364,7 @@ fun SettingsScreen(
                             icon = Icons.Outlined.ManageAccounts,
                             title = "Manage channels",
                             subtitle = "Create, edit, and organize your channels",
-                            onClick = { /* TODO: Navigate to channel list */ }
+                            onClick = onNavigateToMemories
                         )
                     }
                 }

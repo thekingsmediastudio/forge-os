@@ -314,6 +314,12 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToOverrides = { navController.navigate("toolOverrides") },
                                 onNavigateToBackup = { navController.navigate("backup") },
                                 onNavigateToPersonality = { navController.navigate("personality") },
+                                onNavigateToMemories = { navController.navigate("memories") },
+                            )
+                        }
+                        composable("memories") {
+                            com.forge.os.presentation.screens.memories.MemoriesScreen(
+                                onBack = { navController.popBackStack() }
                             )
                         }
                         composable("personality") {
