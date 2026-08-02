@@ -1557,7 +1557,7 @@ private fun ModernInputBar(
             Box {
                 Surface(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .clickable { showPlusMenu = true },
                     color = ModernSurfaceHover,
@@ -1568,7 +1568,7 @@ private fun ModernInputBar(
                             Icons.Filled.Add,
                             "Attach",
                             tint = ModernTextSecondary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -1654,7 +1654,7 @@ private fun ModernInputBar(
             )
             Surface(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(44.dp)
                     .scale(sendScale)
                     .clip(CircleShape)
                     .clickable(enabled = sendEnabled) {
@@ -1669,7 +1669,7 @@ private fun ModernInputBar(
                         Icons.Filled.ArrowUpward,
                         "Send",
                         tint = sendIconColor,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
