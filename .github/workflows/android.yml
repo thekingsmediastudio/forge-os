@@ -31,6 +31,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.4'
+          # Disable the remote/local Gradle cache: a poisoned incremental
+          # Kotlin compile cache was causing phantom "unresolved reference"
+          # errors for symbols that exist in source.
+          cache-disabled: true
 
       - name: Generate Gradle wrapper
         run: gradle wrapper --gradle-version 8.4
@@ -39,7 +43,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+        run: ./gradlew :app:clean :app:assembleDebug --stacktrace --no-daemon
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
