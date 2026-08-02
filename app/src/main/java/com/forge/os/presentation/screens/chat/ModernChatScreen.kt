@@ -188,8 +188,10 @@ fun ModernChatScreen(
                         inputText = ""
                     }
                 },
+                onStop = { viewModel.stopGeneration() },
                 onVoiceMode = { showVoiceMode = true },
                 onClearChat = { viewModel.clearMessages() },
+                isLoading = isLoading,
                 enabled = !isLoading
             )
         }
@@ -1532,8 +1534,10 @@ private fun ModernInputBar(
     value: String,
     onValueChange: (String) -> Unit,
     onSend: () -> Unit,
+    onStop: () -> Unit,
     onVoiceMode: () -> Unit,
     onClearChat: () -> Unit,
+    isLoading: Boolean,
     enabled: Boolean
 ) {
     // Unified pill composer — +, field, send all in one rounded container
@@ -1631,18 +1635,8 @@ private fun ModernInputBar(
                     .padding(bottom = 2.dp)
             )
 
-            // Send button — ember circle when active with press animation
+            // Send/Stop button — ember circle when active with press animation
             val sendEnabled = value.isNotBlank() && enabled
-            val sendBgColor by animateColorAsState(
-                targetValue = if (sendEnabled) ModernAccent else ModernSurfaceHover,
-                animationSpec = tween(200),
-                label = "sendBg"
-            )
-            val sendIconColor by animateColorAsState(
-                targetValue = if (sendEnabled) forgePalette.onAccent else ModernTextSecondary,
-                animationSpec = tween(200),
-                label = "sendIcon"
-            )
             var sendPressed by remember { mutableStateOf(false) }
             val sendScale by animateFloatAsState(
                 targetValue = if (sendPressed) 0.85f else 1f,
@@ -1652,25 +1646,62 @@ private fun ModernInputBar(
                 ),
                 label = "sendScale"
             )
-            Surface(
-                modifier = Modifier
-                    .size(44.dp)
-                    .scale(sendScale)
-                    .clip(CircleShape)
-                    .clickable(enabled = sendEnabled) {
-                        sendPressed = true
-                        onSend()
-                    },
-                color = sendBgColor,
-                shape = CircleShape,
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Filled.ArrowUpward,
-                        "Send",
-                        tint = sendIconColor,
-                        modifier = Modifier.size(22.dp)
-                    )
+            
+            if (isLoading) {
+                // Stop button when generating
+                Surface(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .scale(sendScale)
+                        .clip(CircleShape)
+                        .clickable {
+                            sendPressed = true
+                            onStop()
+                        },
+                    color = forgePalette.danger,
+                    shape = CircleShape,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Filled.Stop,
+                            "Stop",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            } else {
+                // Send button
+                val sendBgColor by animateColorAsState(
+                    targetValue = if (sendEnabled) ModernAccent else ModernSurfaceHover,
+                    animationSpec = tween(200),
+                    label = "sendBg"
+                )
+                val sendIconColor by animateColorAsState(
+                    targetValue = if (sendEnabled) forgePalette.onAccent else ModernTextSecondary,
+                    animationSpec = tween(200),
+                    label = "sendIcon"
+                )
+                Surface(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .scale(sendScale)
+                        .clip(CircleShape)
+                        .clickable(enabled = sendEnabled) {
+                            sendPressed = true
+                            onSend()
+                        },
+                    color = sendBgColor,
+                    shape = CircleShape,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Filled.ArrowUpward,
+                            "Send",
+                            tint = sendIconColor,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }

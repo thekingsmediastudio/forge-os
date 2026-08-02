@@ -81,6 +81,9 @@ class ChatViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    /** Reference to the current agent job for cancellation. */
+    private var currentAgentJob: kotlinx.coroutines.Job? = null
+
     private val _availableSpecs = MutableStateFlow<List<ProviderSpec>>(emptyList())
     val availableSpecs: StateFlow<List<ProviderSpec>> = _availableSpecs
 
@@ -208,7 +211,7 @@ class ChatViewModel @Inject constructor(
 
         val spec = if (_autoRoute.value) null else _selectedSpec.value
 
-        viewModelScope.launch {
+        currentAgentJob = viewModelScope.launch {
             _isLoading.value = true
             val streamId = java.util.UUID.randomUUID().toString()
             var streamBuffer = ""
@@ -289,6 +292,19 @@ class ChatViewModel @Inject constructor(
             val next = pendingSends.removeFirstOrNull()
             if (next != null) send(next)
         }
+    }
+
+    /**
+     * Stop the currently running agent generation.
+     * Cancels the job and resets loading state.
+     */
+    fun stopGeneration() {
+        currentAgentJob?.cancel()
+        currentAgentJob = null
+        _isLoading.value = false
+        pendingSends.clear()
+        addMsg(ChatMessage(role = "assistant", content = "⏹ Generation stopped by user."))
+        hapticManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.LIGHT_TICK)
     }
 
     private fun handleSlashCommand(input: String) {
