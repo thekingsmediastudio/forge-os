@@ -31,6 +31,7 @@ data class StoredConversation(
     val title: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val channelId: String = "general", // Memory channel ID
     val lastProviderLabel: String? = null,
     val lastProviderName: String? = null,
     val lastModel: String? = null,
@@ -69,6 +70,30 @@ class ConversationRepository @Inject constructor(
         ?.sortedByDescending { it.updatedAt }
         ?: emptyList()
 
+    /** List conversations filtered by channel ID */
+    fun listByChannel(channelId: String): List<StoredConversation> = list()
+        .filter { it.channelId == channelId }
+
+    /** Delete all conversations in a channel */
+    fun deleteByChannel(channelId: String): Int {
+        val toDelete = list().filter { it.channelId == channelId }
+        var count = 0
+        toDelete.forEach { conv ->
+            if (File(dir, "${conv.id}.json").delete()) count++
+        }
+        _listFlow.value = list()
+        return count
+    }
+
+    /** Move conversations from one channel to another */
+    fun moveToChannel(fromChannelId: String, toChannelId: String): Int {
+        val toMove = list().filter { it.channelId == fromChannelId }
+        toMove.forEach { conv ->
+            save(conv.copy(channelId = toChannelId, updatedAt = System.currentTimeMillis()))
+        }
+        return toMove.size
+    }
+
     fun rename(id: String, newTitle: String): Boolean {
         val conv = load(id) ?: return false
         save(conv.copy(title = newTitle.ifBlank { conv.title }, updatedAt = System.currentTimeMillis()))
@@ -96,12 +121,13 @@ class ConversationRepository @Inject constructor(
         return ok
     }
 
-    fun newConversation(): StoredConversation {
+    fun newConversation(channelId: String = "general"): StoredConversation {
         val id = "conv-${System.currentTimeMillis()}"
         val now = System.currentTimeMillis()
         val conv = StoredConversation(
             id = id, title = "New conversation",
-            createdAt = now, updatedAt = now
+            createdAt = now, updatedAt = now,
+            channelId = channelId
         )
         save(conv)
         setCurrent(id)

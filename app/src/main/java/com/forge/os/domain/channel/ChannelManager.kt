@@ -148,7 +148,12 @@ class ChannelManager @Inject constructor(
 
     /** Purge all data for a channel */
     fun purgeChannel(channelId: String) {
-        // TODO: Clear conversation history for this channel
-        // This will be implemented when integrating with ConversationRepository
+        // Note: ConversationRepository integration is handled by the caller
+        // (e.g., MemoriesScreen or ChannelViewModel) to avoid circular dependency
+    }
+    
+    /** Check if a channel exists */
+    fun channelExists(channelId: String): Boolean {
+        return channelId == Channel.GENERAL.id || _channels.value.any { it.id == channelId }
     }
 }

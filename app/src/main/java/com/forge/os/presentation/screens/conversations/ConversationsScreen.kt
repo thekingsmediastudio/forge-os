@@ -82,6 +82,28 @@ fun ConversationsScreen(
         }
     ) {
         Column(Modifier.fillMaxSize()) {
+            // Channel filter indicator
+            if (state.channelsEnabled) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    color = ForgeOsPalette.Orange.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🧠", fontSize = 14.sp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Showing: ${state.currentChannelName}",
+                            color = ForgeOsPalette.Orange,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+            
             Text("${state.items.size} conversation(s) — tap to open",
                 color = ForgeOsPalette.TextMuted,
                 fontSize = 11.sp, modifier = Modifier.padding(12.dp))

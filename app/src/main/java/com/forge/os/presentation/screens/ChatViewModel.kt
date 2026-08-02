@@ -72,6 +72,7 @@ class ChatViewModel @Inject constructor(
     private val skillRecorder: SkillRecorder,
     private val userInputBroker: UserInputBroker,
     private val hapticManager: com.forge.os.domain.haptic.HapticFeedbackManager,
+    private val channelManager: com.forge.os.domain.channel.ChannelManager,
     heartbeatMonitor: HeartbeatMonitor
 ) : ViewModel() {
 
@@ -603,11 +604,14 @@ SETTINGS: tap ⚙ to add API keys & custom endpoints.
     }
 
     fun startNewConversation() {
-        currentConversation = conversationRepo.newConversation()
+        val channelId = channelManager.getCurrentChannelId()
+        currentConversation = conversationRepo.newConversation(channelId)
         _messages.value = emptyList()
         apiHistory.clear()
         val identity = configRepository.get().agentIdentity
-        addMsg(ChatMessage(role = "system", content = "${identity.defaultGreeting}\n\n(new conversation started)"))
+        val channelName = channelManager.currentChannel.value.name
+        val channelNote = if (channelManager.isChannelsEnabled()) "\n\n(channel: $channelName)" else ""
+        addMsg(ChatMessage(role = "system", content = "${identity.defaultGreeting}\n\n(new conversation started)$channelNote"))
         persistCurrent()
     }
 
