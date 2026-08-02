@@ -880,10 +880,10 @@ private fun AiActivityMessage(
         BubbleActionsSheet(
             onDismiss = { showSheet = false },
             actions = listOf(
-                BubbleAction("📋 Copy", Icons.Outlined.ContentCopy) {
+                BubbleAction("Copy", Icons.Outlined.ContentCopy) {
                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(response.content))
                 },
-                BubbleAction("🔊 Speak", Icons.Outlined.VolumeUp) {
+                BubbleAction("Speak", Icons.Outlined.VolumeUp) {
                     onSpeak(response.content)
                 }
             )
@@ -1018,7 +1018,7 @@ private fun ModernUserBubble(text: String) {
         BubbleActionsSheet(
             onDismiss = { showSheet = false },
             actions = listOf(
-                BubbleAction("📋 Copy", Icons.Outlined.ContentCopy) {
+                BubbleAction("Copy", Icons.Outlined.ContentCopy) {
                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
                 }
             )
@@ -1072,10 +1072,10 @@ private fun ModernAssistantBubble(text: String, isStreaming: Boolean, onSpeak: (
         BubbleActionsSheet(
             onDismiss = { showSheet = false },
             actions = listOf(
-                BubbleAction("📋 Copy", Icons.Outlined.ContentCopy) {
+                BubbleAction("Copy", Icons.Outlined.ContentCopy) {
                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
                 },
-                BubbleAction("🔊 Speak", Icons.Outlined.VolumeUp) {
+                BubbleAction("Speak", Icons.Outlined.VolumeUp) {
                     onSpeak(text)
                 }
             )
@@ -1129,8 +1129,8 @@ private fun ModernErrorBubble(msg: ChatMessage, onRetry: () -> Unit) {
         BubbleActionsSheet(
             onDismiss = { showSheet = false },
             actions = listOf(
-                BubbleAction("↺ Retry", Icons.Outlined.Refresh) { onRetry() },
-                BubbleAction("📋 Copy", Icons.Outlined.ContentCopy) {
+                BubbleAction("Retry", Icons.Outlined.Refresh) { onRetry() },
+                BubbleAction("Copy", Icons.Outlined.ContentCopy) {
                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(msg.content))
                 }
             )
@@ -1289,7 +1289,7 @@ private fun ModernInputRequestBubble(question: String) {
     }
 }
 
-/** Small pill button shown in the long-press action row under a bubble. */
+/** Bottom sheet shown on long-press of a message bubble. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BubbleActionsSheet(
@@ -1300,13 +1300,13 @@ private fun BubbleActionsSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = ModernSurface,
+        containerColor = forgePalette.surface,
         dragHandle = {
             Box(
                 Modifier
-                    .padding(vertical = 8.dp)
-                    .size(width = 32.dp, height = 4.dp)
-                    .background(ModernBorder, RoundedCornerShape(2.dp))
+                    .padding(vertical = 10.dp)
+                    .size(width = 36.dp, height = 4.dp)
+                    .background(forgePalette.borderSoft, RoundedCornerShape(2.dp))
             )
         }
     ) {
@@ -1323,21 +1323,21 @@ private fun BubbleActionsSheet(
                             action.onClick()
                             onDismiss()
                         }
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                        .padding(horizontal = 24.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Icon(
                         action.icon,
                         contentDescription = null,
-                        tint = ModernAccent,
-                        modifier = Modifier.size(22.dp)
+                        tint = forgePalette.orange,
+                        modifier = Modifier.size(20.dp)
                     )
                     Text(
                         action.label,
-                        color = ModernTextPrimary,
-                        fontSize = 15.sp,
-                        fontFamily = FontFamily.Monospace
+                        color = forgePalette.textPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
