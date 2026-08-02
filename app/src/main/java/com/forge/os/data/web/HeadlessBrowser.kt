@@ -158,6 +158,51 @@ class HeadlessBrowser @Inject constructor(
         pendingNav = null
     }
 
+    // ─── Attach / Detach for browser reveal ─────────────────────────────────
+
+    /** Whether the WebView is currently attached to a visible container. */
+    @Volatile var isAttachedToVisibleContainer: Boolean = false
+        private set
+
+    /**
+     * Attach the WebView to a visible [parent] container so the user can see
+     * and interact with the exact page the agent is on. Must be called on the
+     * main thread. The WebView fills the parent (MATCH_PARENT).
+     */
+    suspend fun attachTo(parent: android.view.ViewGroup) = withContext(Dispatchers.Main) {
+        val w = ensureOnMain()
+        // Remove from any existing parent first
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        parent.addView(w, android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        ))
+        isAttachedToVisibleContainer = true
+        Timber.d("HeadlessBrowser: attached to visible container")
+    }
+
+    /**
+     * Detach the WebView from its visible container and return it to
+     * off-screen headless mode. Must be called on the main thread.
+     */
+    suspend fun detachFromVisibleContainer() = withContext(Dispatchers.Main) {
+        val w = wv ?: return@withContext
+        (w.parent as? android.view.ViewGroup)?.removeView(w)
+        // Re-apply the off-screen layout box so rendering continues
+        w.layout(0, 0, viewportWidth, viewportHeight)
+        isAttachedToVisibleContainer = false
+        Timber.d("HeadlessBrowser: detached from visible container, back to headless")
+    }
+
+    /**
+     * Expose the raw WebView for the reveal overlay. Creates it lazily if
+     * needed. Must be called on the main thread (or via suspend from any
+     * coroutine — this dispatches internally).
+     */
+    suspend fun getOrCreateWebView(): WebView = withContext(Dispatchers.Main) {
+        ensureOnMain()
+    }
+
     // ─── Public ops (all safe to call from any coroutine) ───────────────────
 
     /**

@@ -1,0 +1,44 @@
+package com.forge.os.data.browser
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import timber.log.Timber
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Coordinates the "browser reveal" flow between the agent (background tool
+ * call) and the UI (Compose overlay). When the agent calls `browser_reveal`,
+ * this manager emits a [BrowserRevealRequest] that MainActivity collects to
+ * show the [AgentBrowserRevealOverlay] with the headless WebView attached.
+ *
+ * The overlay is dismissed when the user taps "Done", at which point the
+ * WebView is detached and returned to headless mode.
+ */
+@Singleton
+class BrowserRevealManager @Inject constructor() {
+
+    data class BrowserRevealRequest(
+        val message: String,
+        val url: String,
+        val timestamp: Long = System.currentTimeMillis(),
+    )
+
+    private val _revealRequest = MutableStateFlow<BrowserRevealRequest?>(null)
+    val revealRequest: StateFlow<BrowserRevealRequest?> = _revealRequest
+
+    /** Called by the agent tool to request a browser reveal. */
+    fun requestReveal(message: String, url: String) {
+        Timber.d("BrowserRevealManager: reveal requested for $url — $message")
+        _revealRequest.value = BrowserRevealRequest(message, url)
+    }
+
+    /** Called by the UI when the user dismisses the overlay. */
+    fun dismiss() {
+        Timber.d("BrowserRevealManager: reveal dismissed")
+        _revealRequest.value = null
+    }
+
+    /** Whether the overlay is currently showing. */
+    val isRevealed: Boolean get() = _revealRequest.value != null
+}

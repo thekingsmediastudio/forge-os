@@ -85,6 +85,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var configRepository: ConfigRepository
     @Inject lateinit var sandboxManager: SandboxManager
     @Inject lateinit var autoPhoneConnection: AutoPhoneConnection
+    @Inject lateinit var browserRevealManager: com.forge.os.data.browser.BrowserRevealManager
+    @Inject lateinit var headlessBrowser: com.forge.os.data.web.HeadlessBrowser
 
     private val requestAutoPhoneControl =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -404,6 +406,18 @@ class MainActivity : ComponentActivity() {
                             PluginTileScreen(pluginId = p, toolName = t,
                                 onBack = { navController.popBackStack() })
                         }
+                    }
+
+                    // Agent browser reveal overlay — shows the headless WebView
+                    // when the agent calls browser_reveal. Rendered on top of
+                    // whatever screen is active.
+                    val revealRequest by browserRevealManager.revealRequest.collectAsState()
+                    revealRequest?.let { request ->
+                        com.forge.os.presentation.screens.browser.AgentBrowserRevealOverlay(
+                            request = request,
+                            headlessBrowser = headlessBrowser,
+                            browserRevealManager = browserRevealManager,
+                        )
                     }
                 }
             }

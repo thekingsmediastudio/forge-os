@@ -99,6 +99,7 @@ class ToolRegistry @Inject constructor(
     private val pluginRepository: com.forge.os.domain.plugins.PluginRepository,
     private val webScreenshotter: com.forge.os.data.web.WebScreenshotter,
     private val headlessBrowser: com.forge.os.data.web.HeadlessBrowser,
+    private val browserRevealManager: com.forge.os.data.browser.BrowserRevealManager,
     private val browserHistory: com.forge.os.data.browser.BrowserHistory,
     private val projectServer: com.forge.os.data.server.ProjectStaticServer,
     private val agentNotifier: com.forge.os.domain.notifications.AgentNotificationBuilder,
@@ -1864,10 +1865,11 @@ class ToolRegistry @Inject constructor(
     }
 
     /**
-     * Hand the agent's current headless browser page to the user by opening
-     * the visible Browser tab at the same URL. Cookies/session are already
-     * shared via Android's global CookieManager, so login state carries over.
-     * Posts a notification so the user can tap to open the browser.
+     * Reveal the agent's headless WebView as a visible overlay so the user
+     * sees the EXACT same page (no reload, no state loss). The user interacts
+     * with the page (captcha, login, etc.) then taps "Done" to return the
+     * WebView to headless mode. Also posts a notification as a fallback for
+     * when the app is in the background.
      */
     private suspend fun browserReveal(args: Map<String, Any>): String {
         val url = headlessBrowser.currentUrl
@@ -1877,17 +1879,18 @@ class ToolRegistry @Inject constructor(
         val message = args["message"]?.toString()?.takeIf { it.isNotBlank() }
             ?: "The agent needs your help with this page."
 
-        // Queue the URL in the visible browser session
-        browserSessionManager.navigate(url)
+        // Trigger the in-app overlay with the live WebView
+        browserRevealManager.requestReveal(message, url)
 
-        // Post a notification that opens the Browser screen on tap
+        // Also post a notification as fallback (e.g. app in background)
         agentNotifier.postWithActions(
             title = "🌐 Browser handoff",
             body = "$message\n\nTap to open: $url",
             navRoute = "browser",
         )
 
-        return "✅ Revealed browser at $url — notification posted for the user to tap."
+        return "✅ Browser revealed at $url — the user sees the exact same page. " +
+               "Wait for them to finish, then continue with browser tools."
     }
 
     /**
