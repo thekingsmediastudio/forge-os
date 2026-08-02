@@ -50,6 +50,7 @@ import com.forge.os.presentation.theme.forgePalette
 @Composable
 fun VoiceModeOverlay(
     onDismiss: () -> Unit,
+    conversationId: String? = null,
     viewModel: VoiceModeViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -60,15 +61,15 @@ fun VoiceModeOverlay(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) viewModel.enterVoiceMode()
+        if (granted) viewModel.enterVoiceMode(conversationId)
         else onDismiss()
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(conversationId) {
         val hasPermission = ContextCompat.checkSelfPermission(
             context, Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
-        if (hasPermission) viewModel.enterVoiceMode()
+        if (hasPermission) viewModel.enterVoiceMode(conversationId)
         else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 

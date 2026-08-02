@@ -109,6 +109,10 @@ class ChatViewModel @Inject constructor(
     private val apiHistory = mutableListOf<ApiMessage>()
     private var currentConversation: StoredConversation = conversationRepo.loadOrCreateCurrent()
 
+    /** Current persisted conversation id for surfaces that need to continue this chat. */
+    val currentConversationId: String
+        get() = currentConversation.id
+
     /** Messages typed while the agent is busy. Drained FIFO when the
      *  current run completes — replaces the earlier "silent drop" that
      *  cancelled or ignored the user's input mid-turn. */

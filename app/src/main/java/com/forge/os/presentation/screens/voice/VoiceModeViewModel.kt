@@ -96,35 +96,49 @@ class VoiceModeViewModel @Inject constructor(
 
     // ── Public API ────────────────────────────────────────────────────────────
 
-    /** Enter voice mode — creates a new conversation and starts listening. */
-    fun enterVoiceMode() {
+    /** Enter voice mode — resumes the provided conversation when possible. */
+    fun enterVoiceMode(conversationId: String? = null) {
         voiceHistory.clear()
         voiceMessages.clear()
 
-        // Create a dedicated conversation for this voice session
-        val timestamp = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date())
-        val id = "voice-${System.currentTimeMillis()}"
-        val now = System.currentTimeMillis()
-        val conv = StoredConversation(
-            id = id,
-            title = "🎤 Voice — $timestamp",
-            createdAt = now,
-            updatedAt = now)
-        conversationRepo.save(conv)
-        conversationRepo.setCurrent(id)
-        currentConversation = conv
+        val existing = conversationId?.let { conversationRepo.load(it) }
+        val conv = if (existing != null) {
+            existing
+        } else {
+            // Fallback: create a dedicated conversation for standalone voice sessions.
+            val timestamp = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault()).format(Date())
+            val id = "voice-${System.currentTimeMillis()}"
+            val now = System.currentTimeMillis()
+            StoredConversation(
+                id = id,
+                title = "🎤 Voice — $timestamp",
+                createdAt = now,
+                updatedAt = now)
+        }
 
-        // Add a system greeting message
-        val greeting = StoredChatMessage(
+        currentConversation = conv
+        voiceHistory += conv.apiHistory.map { ApiMessage(role = it.role, content = it.content) }
+        voiceMessages += conv.messages
+
+        if (existing == null) {
+            conversationRepo.save(conv)
+            conversationRepo.setCurrent(conv.id)
+        }
+
+        val markerText = if (existing != null) {
+            "🎤 Voice mode resumed — ${configRepository.get().agentIdentity.name} is listening."
+        } else {
+            "🎤 Voice session started — ${configRepository.get().agentIdentity.name} is listening."
+        }
+        voiceMessages.add(StoredChatMessage(
             id = UUID.randomUUID().toString(),
             role = "system",
-            content = "🎤 Voice session started — ${configRepository.get().agentIdentity.name} is listening.")
-        voiceMessages.add(greeting)
+            content = markerText))
         persistConversation()
 
         _state.value = VoiceModeState(
             phase = VoicePhase.IDLE,
-            conversationId = id)
+            conversationId = conv.id)
         startListening()
     }
 
