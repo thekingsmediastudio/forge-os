@@ -351,6 +351,7 @@ class ToolRegistry @Inject constructor(
                 "telegram_react"     -> telegramReact(args)
                 "telegram_reply"     -> telegramReply(args)
                 "telegram_send_file" -> telegramSendFile(args)
+                "chat_send_file"     -> chatSendFile(args)
                 // ─── Cron ──────────────────────────────────────────────────────────
                 "cron_add"           -> {
                     val name = args["name"]?.toString() ?: "Untitled"
@@ -2296,6 +2297,45 @@ To use Composio:
         }
         return if (res.success) "✅ File sent: ${res.detail}" else "❌ ${res.detail}"
     }
+    
+    private suspend fun chatSendFile(args: Map<String, Any>): String {
+        val path = args["path"]?.toString() ?: return "Error: path required"
+        val caption = args["caption"]?.toString()
+        
+        // Resolve the file path
+        val file = try {
+            sandboxManager.resolveSafe(path)
+        } catch (e: Exception) {
+            return "Error: Invalid path - ${e.message}"
+        }
+        
+        if (!file.exists()) {
+            return "Error: File not found: $path"
+        }
+        
+        // Return a special JSON result that ChatViewModel will detect
+        // and convert to a file attachment
+        val mime = guessMimeType(file.name)
+        return """{"ok":true,"action":"chat_file","path":"${file.absolutePath}","mime":"$mime","caption":"${caption ?: ""}"}"""
+    }
+    
+    private fun guessMimeType(filename: String): String {
+        val ext = filename.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "png", "jpg", "jpeg", "gif", "webp", "bmp" -> "image/$ext"
+            "mp3" -> "audio/mpeg"
+            "wav" -> "audio/wav"
+            "ogg" -> "audio/ogg"
+            "m4a" -> "audio/mp4"
+            "mp4" -> "video/mp4"
+            "webm" -> "video/webm"
+            "pdf" -> "application/pdf"
+            "zip" -> "application/zip"
+            "json" -> "application/json"
+            "txt", "md", "py", "kt", "js", "html", "css" -> "text/plain"
+            else -> "application/octet-stream"
+        }
+    }
 
     private suspend fun telegramReact(args: Map<String, Any>): String {
         val to = args["to"]?.toString() ?: return "Error: to required"
@@ -3412,6 +3452,13 @@ To use Composio:
                    "path" to "string:Workspace-relative or absolute audio file path",
                    "caption" to "string:Optional caption (HTML allowed)"),
             required = listOf("to", "path")),
+        tool("chat_send_file",
+            "Send a file to the chat interface. The file will be displayed inline " +
+            "with a preview (images/videos) or as a downloadable card (documents/audio). " +
+            "Use this to share generated files, screenshots, or any workspace file with the user.",
+            params("path" to "string:Workspace-relative or absolute file path",
+                   "caption" to "string:Optional caption or description"),
+            required = listOf("path")),
         tool("telegram_send_file",
             "Send a photo, video, or generic document through a Telegram channel. " +
             "Automatically detects whether to use sendPhoto, sendVideo, or sendDocument " +

@@ -74,6 +74,7 @@ class ChatViewModel @Inject constructor(
     private val userInputBroker: UserInputBroker,
     private val hapticManager: com.forge.os.domain.haptic.HapticFeedbackManager,
     private val channelManager: com.forge.os.domain.channel.ChannelManager,
+    private val capabilityResolver: com.forge.os.data.api.ModelCapabilityResolver,
     heartbeatMonitor: HeartbeatMonitor
 ) : ViewModel() {
 
@@ -109,6 +110,10 @@ class ChatViewModel @Inject constructor(
     /** Multimodal support — pending image attachments for the next message. */
     private val _pendingImages = MutableStateFlow<List<ImageAttachment>>(emptyList())
     val pendingImages: StateFlow<List<ImageAttachment>> = _pendingImages
+
+    /** Whether the currently selected model supports vision. */
+    private val _supportsVision = MutableStateFlow(false)
+    val supportsVision: StateFlow<Boolean> = _supportsVision
 
 
     private val apiHistory = mutableListOf<ApiMessage>()
@@ -184,7 +189,23 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun selectSpec(spec: ProviderSpec) { _selectedSpec.value = spec; _autoRoute.value = false; persistCurrent() }
+    fun selectSpec(spec: ProviderSpec) { 
+        _selectedSpec.value = spec
+        _autoRoute.value = false
+        persistCurrent()
+        updateVisionCapability(spec)
+    }
+    
+    private fun updateVisionCapability(spec: ProviderSpec?) {
+        viewModelScope.launch {
+            _supportsVision.value = if (spec != null) {
+                capabilityResolver.supportsVision(spec)
+            } else {
+                // Auto-route — assume vision is available (will be checked at send time)
+                true
+            }
+        }
+    }
     fun setAutoRoute(enabled: Boolean) { _autoRoute.value = enabled; persistCurrent() }
 
     /** Called from the UI when the user submits their response to a mid-run input request. */
@@ -587,6 +608,20 @@ SETTINGS: tap ⚙ to add API keys & custom endpoints.
      * Returns (absolutePath, mimeType) or (null, null) if no file was produced.
      */
     private fun resolveAttachment(toolName: String, result: String): Pair<String?, String?> {
+        // Special case: chat_send_file explicitly sends a file
+        if (toolName == "chat_send_file") {
+            if (result.contains("\"action\":\"chat_file\"")) {
+                val pathRegex = Regex(""""path"\s*:\s*"([^"]+)"""")
+                val mimeRegex = Regex(""""mime"\s*:\s*"([^"]+)"""")
+                val path = pathRegex.find(result)?.groupValues?.get(1)
+                val mime = mimeRegex.find(result)?.groupValues?.get(1)
+                if (path != null && mime != null) {
+                    return path to mime
+                }
+            }
+            return null to null
+        }
+        
         // Tools that produce files: file_write, file_download, python_run (output path), autophone_screenshot
         val fileProducingTools = setOf(
             "file_write", "file_download", "python_run",

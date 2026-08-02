@@ -41,6 +41,7 @@ class AiApiManager @Inject constructor(
     private val costMeter: CostMeter,
     @ApplicationContext private val appContext: Context,
     private val bridgeDiscovery: ForgeBridgeDiscovery,
+    private val capabilityResolver: ModelCapabilityResolver,
 ) {
     private val json = Json {
         ignoreUnknownKeys = true; encodeDefaults = false; isLenient = true
@@ -569,6 +570,21 @@ class AiApiManager @Inject constructor(
                 Timber.w("$providerLabel returned tool_use_failed; retrying without tools")
                 return callOpenAi(spec, messages, emptyList(), systemPrompt, maxTokensOverride)
             }
+            
+            // Vision capability detection: if we sent images and got a 400 with
+            // an image-related error, mark this model as non-vision (negative caching)
+            val hasImages = messages.any { it.contentParts?.any { part -> part.type == "image_url" } == true }
+            if (hasImages && response.code == 400) {
+                val isImageError = err.message.contains("image", ignoreCase = true) ||
+                                   err.message.contains("vision", ignoreCase = true) ||
+                                   err.message.contains("unsupported content", ignoreCase = true) ||
+                                   err.message.contains("invalid content type", ignoreCase = true)
+                if (isImageError) {
+                    Timber.w("$providerLabel rejected images; marking $model as non-vision")
+                    capabilityResolver.markAsNonVision(spec)
+                }
+            }
+            
             throw ApiCallException(err)
         }
 

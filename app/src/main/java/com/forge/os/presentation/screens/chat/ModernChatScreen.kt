@@ -108,30 +108,56 @@ fun ModernChatScreen(
     
     // Multimodal support — image attachments
     val pendingImages by viewModel.pendingImages.collectAsState()
+    val supportsVision by viewModel.supportsVision.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val imagePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
     ) { uri: android.net.Uri? ->
         uri?.let {
             scope.launch {
                 try {
-                    // Read image and convert to base64
-                    val inputStream = context.contentResolver.openInputStream(it)
-                    val bytes = inputStream?.readBytes()
-                    inputStream?.close()
-                    
-                    if (bytes != null) {
-                        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                        val mimeType = context.contentResolver.getType(it) ?: "image/jpeg"
-                        val attachment = com.forge.os.domain.agent.ImageAttachment(
-                            filePath = it.toString(),
-                            mimeType = mimeType,
-                            base64Data = base64
-                        )
-                        viewModel.addImageAttachment(attachment)
+                    // Get file metadata
+                    val cursor = context.contentResolver.query(it, null, null, null, null)
+                    var fileName = "unknown"
+                    var fileSize = 0L
+                    cursor?.use {
+                        if (it.moveToFirst()) {
+                            val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            val sizeIndex = it.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                            if (nameIndex >= 0) fileName = it.getString(nameIndex)
+                            if (sizeIndex >= 0) fileSize = it.getLong(sizeIndex)
+                        }
                     }
+                    
+                    // Check file size
+                    if (fileSize > com.forge.os.domain.agent.FileAttachment.MAX_FILE_SIZE) {
+                        timber.log.Timber.w("File too large: ${fileSize / (1024 * 1024)}MB")
+                        // TODO: Show error to user
+                        return@launch
+                    }
+                    
+                    val mimeType = context.contentResolver.getType(it) ?: "application/octet-stream"
+                    
+                    // Only encode images to base64 (for vision models)
+                    val base64 = if (mimeType.startsWith("image/")) {
+                        val inputStream = context.contentResolver.openInputStream(it)
+                        val bytes = inputStream?.readBytes()
+                        inputStream?.close()
+                        bytes?.let { b -> android.util.Base64.encodeToString(b, android.util.Base64.NO_WRAP) }
+                    } else {
+                        null
+                    }
+                    
+                    val attachment = com.forge.os.domain.agent.FileAttachment(
+                        filePath = it.toString(),
+                        fileName = fileName,
+                        mimeType = mimeType,
+                        fileSize = fileSize,
+                        base64Data = base64
+                    )
+                    viewModel.addImageAttachment(attachment)
                 } catch (e: Exception) {
-                    timber.log.Timber.e(e, "Failed to load image")
+                    timber.log.Timber.e(e, "Failed to load file")
                 }
             }
         }
@@ -1687,7 +1713,7 @@ private fun ModernInputBar(
     onRemoveImage: (com.forge.os.domain.agent.ImageAttachment) -> Unit = {},
 ) {
     Column {
-        // Pending images preview
+        // Pending files preview
         if (pendingImages.isNotEmpty()) {
             Row(
                 modifier = Modifier
@@ -1702,14 +1728,43 @@ private fun ModernInputBar(
                             .clip(RoundedCornerShape(8.dp))
                             .background(ModernSurfaceHover)
                     ) {
-                        androidx.compose.foundation.Image(
-                            painter = coil.compose.rememberAsyncImagePainter(
-                                android.util.Base64.decode(attachment.base64Data, android.util.Base64.NO_WRAP)
-                            ),
-                            contentDescription = "Attached image",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
+                        if (attachment.isImage() && attachment.base64Data != null) {
+                            // Image thumbnail
+                            androidx.compose.foundation.Image(
+                                painter = coil.compose.rememberAsyncImagePainter(
+                                    android.util.Base64.decode(attachment.base64Data, android.util.Base64.NO_WRAP)
+                                ),
+                                contentDescription = attachment.fileName,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            // File icon
+                            Column(
+                                modifier = Modifier.fillMaxSize().padding(4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    when {
+                                        attachment.isVideo() -> Icons.Outlined.VideoFile
+                                        attachment.isAudio() -> Icons.Outlined.AudioFile
+                                        attachment.mimeType.contains("pdf") -> Icons.Outlined.PictureAsPdf
+                                        else -> Icons.Outlined.InsertDriveFile
+                                    },
+                                    attachment.fileName,
+                                    tint = ModernAccent,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    attachment.fileName.take(8),
+                                    fontSize = 8.sp,
+                                    color = ModernTextSecondary,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                         // Remove button
                         Surface(
                             modifier = Modifier
@@ -1782,12 +1837,12 @@ private fun ModernInputBar(
                     modifier = Modifier.background(ModernSurfaceElevated)
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Attach Image", color = ModernTextPrimary, fontSize = 14.sp) },
+                        text = { Text("Attach File", color = ModernTextPrimary, fontSize = 14.sp) },
                         onClick = { 
                             showPlusMenu = false
-                            imagePickerLauncher.launch("image/*")
+                            filePickerLauncher.launch("*/*")
                         },
-                        leadingIcon = { Icon(Icons.Outlined.Image, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
+                        leadingIcon = { Icon(Icons.Outlined.AttachFile, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
                     )
                     DropdownMenuItem(
                         text = { Text("Workspace", color = ModernTextPrimary, fontSize = 14.sp) },

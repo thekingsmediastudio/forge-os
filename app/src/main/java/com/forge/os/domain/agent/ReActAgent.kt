@@ -511,19 +511,44 @@ Tools available ({tool_count} total): {tool_catalog}
 
         val messages = history.toMutableList()
         
-        // Build user message with optional image attachments
+        // Build user message with optional file attachments
         val userApiMessage = if (imageAttachments.isNotEmpty()) {
-            val contentParts = mutableListOf<com.forge.os.data.api.ContentPart>()
-            // Add text part
-            contentParts.add(com.forge.os.data.api.ContentPart(type = "text", text = userMessage))
-            // Add image parts
-            imageAttachments.forEach { attachment ->
-                contentParts.add(com.forge.os.data.api.ContentPart(
-                    type = "image_url",
-                    imageUrl = com.forge.os.data.api.ImageUrl(url = attachment.toDataUrl())
-                ))
+            val images = imageAttachments.filter { it.isImage() && it.base64Data != null }
+            val nonImages = imageAttachments.filter { !it.isImage() || it.base64Data == null }
+            
+            if (images.isNotEmpty()) {
+                // Vision model path: use contentParts with image_url
+                val contentParts = mutableListOf<com.forge.os.data.api.ContentPart>()
+                
+                // Build text with file descriptions
+                var text = userMessage
+                if (nonImages.isNotEmpty()) {
+                    text += "\n\n[Attached files: " + nonImages.joinToString(", ") { 
+                        "${it.fileName} (${it.formattedSize()})" 
+                    } + "]"
+                }
+                
+                contentParts.add(com.forge.os.data.api.ContentPart(type = "text", text = text))
+                
+                // Add image parts
+                images.forEach { attachment ->
+                    attachment.toDataUrl()?.let { dataUrl ->
+                        contentParts.add(com.forge.os.data.api.ContentPart(
+                            type = "image_url",
+                            imageUrl = com.forge.os.data.api.ImageUrl(url = dataUrl)
+                        ))
+                    }
+                }
+                
+                ApiMessage(role = "user", content = null, contentParts = contentParts)
+            } else {
+                // Text-only path: describe files in the message
+                var text = userMessage
+                text += "\n\n[Attached files: " + imageAttachments.joinToString(", ") { 
+                    "${it.fileName} (${it.mimeType}, ${it.formattedSize()})" 
+                } + "]"
+                ApiMessage(role = "user", content = text)
             }
-            ApiMessage(role = "user", content = null, contentParts = contentParts)
         } else {
             ApiMessage(role = "user", content = userMessage)
         }
