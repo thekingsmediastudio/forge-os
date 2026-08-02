@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.forge.os.presentation.components.spotlightTarget
 import com.forge.os.presentation.theme.forgePalette
 import com.forge.os.domain.heartbeat.HealthLevel
 import com.forge.os.domain.heartbeat.HeartbeatMonitor

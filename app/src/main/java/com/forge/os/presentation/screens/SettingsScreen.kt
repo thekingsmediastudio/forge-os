@@ -347,7 +347,6 @@ fun SettingsScreen(
                     
                     Box(modifier = Modifier.then(com.forge.os.presentation.components.spotlightTarget("settings_channels"))) {
                         SettingsToggleRow(
-                            icon = Icons.Outlined.Folder,
                             title = "Enable channels",
                             subtitle = "Separate memory by context (Work, Personal, etc.)",
                             checked = channelsEnabled,

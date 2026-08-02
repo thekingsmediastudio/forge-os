@@ -81,6 +81,34 @@ fun ChannelSwitcher(
             
             allChannels.forEach { channel ->
                 DropdownMenuItem(
+                    text = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Channel icon
+                            Text(channel.icon, fontSize = 16.sp)
+
+                            // Channel name
+                            Text(
+                                channel.name,
+                                color = forgePalette.textPrimary,
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            // Check mark for current
+                            if (channel.id == currentChannel.id) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = forgePalette.orange,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    },
                     onClick = {
                         onChannelSelect(channel)
                         expanded = false
@@ -91,34 +119,7 @@ fun ChannelSwitcher(
                         else
                             Color.Transparent
                     )
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Channel icon
-                        Text(channel.icon, fontSize = 16.sp)
-                        
-                        // Channel name
-                        Text(
-                            channel.name,
-                            color = forgePalette.textPrimary,
-                            fontSize = 14.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        
-                        // Check mark for current
-                        if (channel.id == currentChannel.id) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                tint = forgePalette.orange,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
+                )
             }
         }
     }

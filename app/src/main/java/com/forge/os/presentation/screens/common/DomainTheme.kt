@@ -41,6 +41,8 @@ object ForgeOsPalette {
         @Composable @ReadOnlyComposable get() = forgePalette.surface
     val Surface2: Color
         @Composable @ReadOnlyComposable get() = forgePalette.surface2
+    val SurfaceVariant: Color
+        @Composable @ReadOnlyComposable get() = forgePalette.surface2
     val Border: Color
         @Composable @ReadOnlyComposable get() = forgePalette.border
     val TextPrimary: Color

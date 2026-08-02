@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.forge.os.domain.channel.Channel
 import com.forge.os.domain.channel.ChannelType
+import com.forge.os.presentation.components.spotlightTarget
 import com.forge.os.presentation.screens.channels.ChannelViewModel
 import com.forge.os.presentation.screens.common.ForgeOsPalette
 import com.forge.os.presentation.screens.common.ModuleScaffold

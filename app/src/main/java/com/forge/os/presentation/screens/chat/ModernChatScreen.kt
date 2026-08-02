@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.rememberAsyncImagePainter
 import com.forge.os.presentation.components.ForgeLogo
+import com.forge.os.presentation.components.spotlightTarget
 import com.forge.os.presentation.screens.ChatViewModel
 import com.forge.os.presentation.theme.LocalForgePalette
 import com.forge.os.presentation.theme.forgePalette
