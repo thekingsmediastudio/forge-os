@@ -131,6 +131,7 @@ class ToolRegistry @Inject constructor(
     private val locationToolProvider: com.forge.os.domain.agent.providers.LocationToolProvider,
     private val storageToolProvider: com.forge.os.domain.agent.providers.StorageToolProvider,
     private val androidUiToolProvider: com.forge.os.domain.agent.providers.AndroidUiToolProvider,
+    private val missingModeToolProvider: com.forge.os.domain.agent.providers.MissingModeToolProvider,
     // Phase 1: Project-AI Integration
     private val projectToolProvider: com.forge.os.domain.projects.ProjectToolProvider,
     // Phase 2: Project Python Execution
@@ -174,6 +175,7 @@ class ToolRegistry @Inject constructor(
         locationToolProvider.getTools() +
         storageToolProvider.getTools() +
         androidUiToolProvider.getTools() +
+        missingModeToolProvider.getTools() +
         projectToolProvider.getTools()
 
     fun getDefinitions(): List<ToolDefinition> {
@@ -314,6 +316,7 @@ class ToolRegistry @Inject constructor(
                     ?: locationToolProvider.dispatch(toolName, args)
                     ?: storageToolProvider.dispatch(toolName, args)
                     ?: androidUiToolProvider.dispatch(toolName, args)
+                    ?: missingModeToolProvider.dispatch(toolName, args)
             } ?: when (toolName) {
                 "plan_and_execute_dag" -> {
                     val complexGoal = args["complex_goal"]?.toString()

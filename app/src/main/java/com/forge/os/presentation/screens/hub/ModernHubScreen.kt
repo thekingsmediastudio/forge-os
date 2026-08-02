@@ -63,6 +63,9 @@ private val MODULES = listOf(
     ModuleTile("alarms", Icons.Outlined.Alarm, "Alarms", "Schedule exact alarms", "Tools", "alarm timer"),
     ModuleTile("server", Icons.Outlined.Storage, "Server", "Local HTTP API", "Tools", "server http api"),
 
+    // Security
+    ModuleTile("missingMode", Icons.Outlined.PhonePaused, "Missing Mode", "Auto-respond to calls", "Security", "missing mode phone call auto respond"),
+
     // Advanced
     ModuleTile("debugger", Icons.Outlined.BugReport, "Debugger", "Agent replay traces", "Advanced", "debugger snapshot replay trace"),
     ModuleTile("doctor", Icons.Outlined.MedicalServices, "Doctor", "Diagnostics & repair", "Advanced", "doctor diagnostic repair"),
@@ -70,7 +73,7 @@ private val MODULES = listOf(
     ModuleTile("android", Icons.Outlined.PhoneAndroid, "Android", "Device snapshot", "Advanced", "android device battery"),
 )
 
-private val SECTION_ORDER = listOf("Core", "Agent", "Data", "Companion", "Tools", "Advanced")
+private val SECTION_ORDER = listOf("Core", "Agent", "Data", "Companion", "Tools", "Security", "Advanced")
 
 /**
  * Modern hub screen - main dashboard for all Forge OS modules.
