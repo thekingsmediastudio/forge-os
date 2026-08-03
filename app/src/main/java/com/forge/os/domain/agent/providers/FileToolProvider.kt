@@ -49,15 +49,9 @@ class FileToolProvider @Inject constructor(
             emptyMap(), required = emptyList()),
         tool("python_packages",
             "List installed Python packages in the local Chaquopy environment. " +
-            "Use this to check if a library is available before trying to import it.",
-            emptyMap(), required = emptyList()),
-        tool("python_pip_install",
-            "Install one or more Python packages into the local Chaquopy sandbox via pip. " +
-            "Pass a space-separated list of package names (e.g. 'requests numpy'). " +
-            "Returns pip's output. Note: only packages that are compatible with the " +
-            "device's Chaquopy runtime can be installed at runtime.",
-            params("packages" to "string:Space-separated package name(s), e.g. 'requests pillow'"),
-            required = listOf("packages"))
+            "Use this to check if a library is available before trying to import it. " +
+            "Note: Runtime pip install is NOT supported. Packages must be declared in build.gradle.",
+            emptyMap(), required = emptyList())
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
@@ -71,7 +65,6 @@ class FileToolProvider @Inject constructor(
             "workspace_info"     -> workspaceInfo()
             "workspace_describe" -> WorkspaceLayout.describe()
             "python_packages"    -> pythonPackages()
-            "python_pip_install" -> pipInstall(args)
             else -> null
         }
     }
@@ -218,28 +211,5 @@ class FileToolProvider @Inject constructor(
         // Use PythonPackageManager to generate code that shows both built-in and user-installed packages
         val code = pythonPackageManager.buildListPackagesCode()
         return sandboxManager.executePython(code).getOrElse { "❌ python failed: ${it.message}" }
-    }
-
-    private suspend fun pipInstall(args: Map<String, Any>): String {
-        val packages = args["packages"]?.toString()?.trim() ?: return "Error: packages required"
-        if (packages.isBlank()) return "Error: packages must not be blank"
-        // Sanitise: only allow package-name characters to prevent shell injection.
-        // Valid pip package specs: alphanumerics, hyphens, underscores, dots, '>=', '<=',
-        // '==', '!=', '~=', '[', ']', spaces (separating multiple packages), and digits.
-        val sanitised = packages.replace(Regex("[^A-Za-z0-9_.\\-\\[\\]=><!~, ]"), "")
-        if (sanitised.isBlank()) return "❌ Error: no valid package names after sanitisation"
-
-        val pkgList = sanitised.split(Regex("\\s+")).filter { it.isNotBlank() }
-
-        // Use PythonPackageManager to build install code targeting python_packages/ folder
-        val code = pythonPackageManager.buildPipInstallCode(pkgList)
-        val result = sandboxManager.executePython(code).getOrElse { "❌ python failed: ${it.message}" }
-
-        // If install succeeded, record in manifest
-        if (result.contains("✅ Installed")) {
-            pythonPackageManager.recordInstalled(pkgList)
-        }
-
-        return result
     }
 }
