@@ -16,6 +16,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,6 +26,7 @@ sealed class AgentEvent {
     data class Thinking(val text: String) : AgentEvent()
     data class ToolCall(val name: String, val args: String) : AgentEvent()
     data class ToolResult(val name: String, val result: String, val isError: Boolean = false) : AgentEvent()
+    data class Verification(val toolName: String, val passed: Boolean, val detail: String) : AgentEvent()
     data class Response(val text: String) : AgentEvent()
     /** [error] is non-null when the failure originated in the API layer; UI can render structured info. */
     data class Error(val message: String, val error: ApiError? = null) : AgentEvent()
@@ -53,6 +56,7 @@ class ReActAgent @Inject constructor(
     private val permissionManager: com.forge.os.domain.security.PermissionManager,
     private val hapticFeedbackManager: com.forge.os.domain.haptic.HapticFeedbackManager,
     private val alertManager: com.forge.os.domain.heartbeat.AlertManager,
+    private val verificationEngine: VerificationEngine,
 ) {
     private val baseSystemPrompt = """
 You are Forge, a precise, security-conscious AI agent running on Android.
@@ -784,6 +788,25 @@ Tools available ({tool_count} total): {tool_catalog}
 
                             emit(AgentEvent.ToolResult(result.toolName, result.output, result.isError))
                             
+                            // Self-verification: check if the tool actually succeeded
+                            try {
+                                val argsMap = kotlinx.serialization.json.Json.parseToJsonElement(toolCall.function.arguments)
+                                    .jsonObject.mapValues { it.value.jsonPrimitive.content }
+                                val verification = verificationEngine.verify(name, argsMap, result.output, result.isError)
+                                when (verification) {
+                                    is VerificationResult.Pass -> {
+                                        emit(AgentEvent.Verification(name, true, verification.detail))
+                                    }
+                                    is VerificationResult.Fail -> {
+                                        emit(AgentEvent.Verification(name, false, verification.detail))
+                                        Timber.w("Verification failed for $name: ${verification.detail}")
+                                    }
+                                    else -> {} // Skip or NotApplicable
+                                }
+                            } catch (e: Exception) {
+                                Timber.w(e, "Verification error for $name")
+                            }
+                            
                             // System Integration: Smart haptic feedback
                             try {
                                 if (result.isError) {
@@ -943,6 +966,25 @@ Tools available ({tool_count} total): {tool_catalog}
                 currentStepNestedTraces.addAll(newTraces)
 
                 emit(AgentEvent.ToolResult(result.toolName, result.output, result.isError))
+                
+                // Self-verification: check if the tool actually succeeded
+                try {
+                    val argsMap = kotlinx.serialization.json.Json.parseToJsonElement(toolCall.function.arguments)
+                        .jsonObject.mapValues { it.value.jsonPrimitive.content }
+                    val verification = verificationEngine.verify(name, argsMap, result.output, result.isError)
+                    when (verification) {
+                        is VerificationResult.Pass -> {
+                            emit(AgentEvent.Verification(name, true, verification.detail))
+                        }
+                        is VerificationResult.Fail -> {
+                            emit(AgentEvent.Verification(name, false, verification.detail))
+                            Timber.w("Verification failed for $name: ${verification.detail}")
+                        }
+                        else -> {} // Skip or NotApplicable
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e, "Verification error for $name")
+                }
                 
                 // System Integration: Smart haptic feedback
                 try {
