@@ -27,6 +27,16 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0 ndk;25.2.9519653'
 
+      - name: Create persistent debug keystore
+        # Ensures every CI build signs with the same debug key so APKs can be
+        # installed as updates over previous CI builds without uninstalling.
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v -keystore ~/.android/debug.keystore \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
