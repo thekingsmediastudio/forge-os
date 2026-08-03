@@ -6,6 +6,7 @@ import com.forge.os.domain.agent.ToolProvider
 import com.forge.os.domain.agent.params
 import com.forge.os.domain.agent.tool
 import com.forge.os.domain.sandbox.PythonPackageManager
+import com.forge.os.domain.security.PermissionManager
 import com.forge.os.domain.workspace.WorkspaceLayout
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -14,7 +15,8 @@ import javax.inject.Singleton
 class FileToolProvider @Inject constructor(
     private val sandboxManager: SandboxManager,
     private val namedSecretRegistry: com.forge.os.domain.security.NamedSecretRegistry,
-    private val pythonPackageManager: PythonPackageManager
+    private val pythonPackageManager: PythonPackageManager,
+    private val permissionManager: PermissionManager,
 ) : ToolProvider {
 
     override fun getTools(): List<ToolDefinition> = listOf(
@@ -73,6 +75,11 @@ class FileToolProvider @Inject constructor(
         val path = args["path"]?.toString() ?: return "Error: path required"
         val startLine = args["start_line"]?.toString()?.toDoubleOrNull()?.toInt()?.coerceAtLeast(1)
         val endLine = args["end_line"]?.toString()?.toDoubleOrNull()?.toInt()?.coerceAtLeast(1)
+
+        // Enforce PermissionManager file read rules (allowed paths)
+        if (!permissionManager.checkFileRead(path)) {
+            return "❌ Permission denied: path not in read-allowed list"
+        }
 
         // Binary detection: sample the first 8 KB for null bytes before attempting
         // a full UTF-8 text read. readText() throws MalformedInputException on binary
@@ -137,6 +144,9 @@ class FileToolProvider @Inject constructor(
     private suspend fun fileWrite(args: Map<String, Any>): String {
         val path = args["path"]?.toString() ?: return "Error: path required"
         val content = args["content"]?.toString() ?: return "Error: content required"
+        // Enforce PermissionManager file write rules (blocked extensions, allowed paths, size)
+        val permCheck = permissionManager.checkFileWrite(path, content.length.toLong())
+        if (!permCheck.allowed) return "❌ Permission denied: ${permCheck.reason}"
         return sandboxManager.writeFile(path, content).fold(
             onSuccess = { "✅ Written ${content.length} chars to $path" },
             onFailure = { "❌ writeFile failed: ${it.message}" }
@@ -156,6 +166,9 @@ class FileToolProvider @Inject constructor(
 
     private suspend fun fileDelete(args: Map<String, Any>): String {
         val path = args["path"]?.toString() ?: return "Error: path required"
+        // Enforce PermissionManager file delete rules (allowed paths)
+        val permCheck = permissionManager.checkFileDelete(path)
+        if (!permCheck.allowed) return "❌ Permission denied: ${permCheck.reason}"
         return sandboxManager.deleteFile(path).fold(
             onSuccess = { "✅ Deleted $path" },
             onFailure = { "❌ deleteFile failed: ${it.message}" }

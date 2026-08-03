@@ -408,7 +408,11 @@ class ToolRegistry @Inject constructor(
                 }
                 "system_backup_import" -> {
                     val path = args["path"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: path required", isError = true)
-                    val source = java.io.File(appContext.filesDir, "workspace/$path")
+                    val source = try {
+                        sandboxManager.resolveSafe(path)
+                    } catch (e: SecurityException) {
+                        return ToolResult(toolCallId, toolName, "❌ Blocked: ${e.message}", isError = true)
+                    }
                     if (!source.exists()) return ToolResult(toolCallId, toolName, "Error: Backup file not found at $path", isError = true)
                     snapshotManager.importFullBackup(source).fold(
                         { "✅ System restored! $it files recovered. The app may need a restart to refresh all modules." },
@@ -664,6 +668,12 @@ class ToolRegistry @Inject constructor(
                         ?: return ToolResult(toolCallId, toolName, "Error: url required", isError = true)
                     val dest = args["dest"]?.toString()
                         ?: return ToolResult(toolCallId, toolName, "Error: dest required", isError = true)
+                    // Validate git URL to prevent SSRF via git protocol
+                    try {
+                        securityPolicy.validateGitUrl(url)
+                    } catch (e: SecurityException) {
+                        return ToolResult(toolCallId, toolName, "❌ Blocked: ${e.message}", isError = true)
+                    }
                     gitRunner.clone(url = url, intoPath = dest, token = args["token"]?.toString())
                 }
                 "git_push"            -> gitRunner.push(
@@ -828,7 +838,11 @@ class ToolRegistry @Inject constructor(
                 }
                 "sync_import" -> {
                     val path = args["path"]?.toString() ?: return ToolResult(toolCallId, toolName, "Error: path required", isError = true)
-                    val file = java.io.File(appContext.filesDir, "workspace/$path")
+                    val file = try {
+                        sandboxManager.resolveSafe(path)
+                    } catch (e: SecurityException) {
+                        return ToolResult(toolCallId, toolName, "❌ Blocked: ${e.message}", isError = true)
+                    }
                     
                     val includeConfig = args["include_config"]?.toString()?.toBoolean() ?: true
                     val includeProjects = args["include_projects"]?.toString()?.toBoolean() ?: true
@@ -1648,6 +1662,13 @@ class ToolRegistry @Inject constructor(
         val uploadFile = args["upload_file"]?.toString()?.takeIf { it.isNotBlank() }
         val saveAs = args["save_as"]?.toString()?.takeIf { it.isNotBlank() }
 
+        // SSRF protection — validate URL before making the request
+        try {
+            securityPolicy.validateUrl(url)
+        } catch (e: SecurityException) {
+            return@withContext "❌ Blocked: ${e.message}"
+        }
+
         try {
             val reqBuilder = Request.Builder().url(url)
             headersRaw.lines().forEach { line ->
@@ -1766,6 +1787,12 @@ class ToolRegistry @Inject constructor(
 
     private suspend fun browserNavigate(args: Map<String, Any>): String {
         val url = args["url"]?.toString() ?: return "Error: url required"
+        // SSRF protection — validate URL before navigating
+        try {
+            securityPolicy.validateUrl(url)
+        } catch (e: SecurityException) {
+            return "❌ Blocked: ${e.message}"
+        }
         val result = headlessBrowser.navigate(url)
         runCatching {
             browserHistory.record(
@@ -1783,6 +1810,12 @@ class ToolRegistry @Inject constructor(
     private suspend fun browserGetHtml(args: Map<String, Any> = emptyMap()): String {
         val explicitUrl = args["url"]?.toString()?.takeIf { it.isNotBlank() }
         if (explicitUrl != null) {
+            // SSRF protection
+            try {
+                securityPolicy.validateUrl(explicitUrl)
+            } catch (e: SecurityException) {
+                return "❌ Blocked: ${e.message}"
+            }
             // navigate first so subsequent ops (click/fill/eval) act on this page
             val nav = headlessBrowser.navigate(explicitUrl)
             if (nav.startsWith("❌")) return nav
@@ -2001,6 +2034,11 @@ class ToolRegistry @Inject constructor(
         val action = args["action"]?.toString() ?: return@withContext "Error: action required"
         val params = args["params"]?.toString() ?: "{}"
         val entityId = args["entity_id"]?.toString() ?: "default"
+
+        // Validate action name to prevent URL injection
+        if (!action.matches(Regex("^[A-Z0-9_]+$"))) {
+            return@withContext "❌ Invalid action name: must be uppercase letters, digits, and underscores only"
+        }
 
         if (apiKey.isNullOrBlank()) {
             return@withContext """
@@ -2939,7 +2977,12 @@ To use Composio:
         val height = args["height"]?.toString()?.toIntOrNull() ?: 1600
         val full = args["full_page"]?.toString()?.equals("false", ignoreCase = true) != true
         val waitMs = args["wait_ms"]?.toString()?.toLongOrNull() ?: 1500L
-        val outFile = java.io.File(appContext.filesDir, "workspace/$rel")
+        // Sandbox-validate the output path to prevent path traversal
+        val outFile = try {
+            sandboxManager.resolveSafe(rel)
+        } catch (e: SecurityException) {
+            return "❌ Blocked: ${e.message}"
+        }
         val res = webScreenshotter.capture(
             com.forge.os.data.web.WebScreenshotter.Spec(
                 url = url, widthPx = width, heightPx = height,
@@ -2980,7 +3023,12 @@ To use Composio:
     private fun projectServe(args: Map<String, Any>): String {
         val rel = args["path"]?.toString() ?: return "Error: path required"
         val port = args["port"]?.toString()?.toIntOrNull() ?: 0
-        val root = java.io.File(appContext.filesDir, "workspace/$rel")
+        // Sandbox-validate the serve path to prevent serving arbitrary directories
+        val root = try {
+            sandboxManager.resolveSafe(rel)
+        } catch (e: SecurityException) {
+            return "❌ Blocked: ${e.message}"
+        }
         return runCatching {
             val s = projectServer.start(root, port)
             "✓ serving ${s.root.absolutePath} on ${s.url}  (id=${s.id})"

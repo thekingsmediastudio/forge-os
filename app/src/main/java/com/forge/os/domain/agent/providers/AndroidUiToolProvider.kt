@@ -65,6 +65,8 @@ class AndroidUiToolProvider @Inject constructor(
 
     private suspend fun vibrate(durationMs: Long): String = withContext(Dispatchers.Main) {
         runCatching {
+            // Cap vibration duration to prevent abuse (max 5 seconds)
+            val cappedDuration = durationMs.coerceIn(0L, 5000L)
             val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                 val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
                 vm.defaultVibrator
@@ -76,12 +78,12 @@ class AndroidUiToolProvider @Inject constructor(
             if (!vibrator.hasVibrator()) return@runCatching """{"ok":false,"error":"Device has no vibrator"}"""
 
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                vibrator.vibrate(VibrationEffect.createOneShot(cappedDuration, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
-                vibrator.vibrate(durationMs)
+                vibrator.vibrate(cappedDuration)
             }
-            """{"ok":true,"duration_ms":$durationMs}"""
+            """{"ok":true,"duration_ms":$cappedDuration}"""
         }.getOrElse { """{"ok":false,"error":"${it.message}"}""" }
     }
 
@@ -89,8 +91,12 @@ class AndroidUiToolProvider @Inject constructor(
         if (!isTtsInitialized || tts == null) {
             return """{"ok":false,"error":"TTS engine is not yet initialized or unavailable"}"""
         }
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "forge_tts_${System.currentTimeMillis()}")
-        """{"ok":true,"chars":${text.length}}"""
+        // Limit TTS input to prevent abuse (max 4000 chars ~ 5 min speech)
+        val truncated = if (text.length > 4000) {
+            text.take(4000)
+        } else text
+        tts?.speak(truncated, TextToSpeech.QUEUE_ADD, null, "forge_tts_${System.currentTimeMillis()}")
+        """{"ok":true,"chars":${truncated.length}${if (truncated.length < text.length) ",\"truncated\":true" else ""}}"""
     }.getOrElse { """{"ok":false,"error":"${it.message}"}""" }
 
     private fun tool(name: String, description: String, params: Map<String, Pair<String, String>>, required: List<String>) =

@@ -190,6 +190,9 @@ class SandboxManager @Inject constructor(
         val dst = resolvePath(to)
         if (!src.exists()) throw NoSuchFileException(src, reason = "Source missing")
         if (dst.exists()) throw IllegalStateException("Destination exists: $to")
+        // Validate both source and destination against security policy
+        securityPolicy.validateDelete(src)
+        securityPolicy.validateDelete(dst)
         dst.parentFile?.mkdirs()
         if (!src.renameTo(dst)) throw IllegalStateException("Rename failed: $from -> $to")
         "Renamed $from to $to"
@@ -208,6 +211,8 @@ class SandboxManager @Inject constructor(
     suspend fun moveToTrash(path: String): Result<String> = runCatching {
         val src = resolvePath(path)
         if (!src.exists()) throw NoSuchFileException(src, reason = "Source missing")
+        // Validate against security policy before moving to trash
+        securityPolicy.validateDelete(src)
         val root = currentWorkspaceDir()
         val trashRoot = File(root, ".trash").apply { mkdirs() }
         if (src.canonicalPath == trashRoot.canonicalPath) {

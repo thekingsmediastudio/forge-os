@@ -140,8 +140,12 @@ class AntiTheftManager @Inject constructor(
 
     fun isTrustedContact(phoneNumber: String): Boolean {
         val normalized = normalizePhoneNumber(phoneNumber)
+        // Exact match only — suffix matching is vulnerable to number spoofing.
+        // We also try matching with/without country code prefix for convenience.
         return _state.value.trustedContacts.any { trusted ->
-            normalized.endsWith(trusted) || trusted.endsWith(normalized)
+            normalized == trusted ||
+            // Allow matching without leading '+' (e.g. "1234567890" vs "+1234567890")
+            normalized.removePrefix("+") == trusted.removePrefix("+")
         }
     }
 
@@ -274,6 +278,11 @@ class AntiTheftManager @Inject constructor(
 
     // ── SMS Command Handler ──────────────────────────────────────────────────
 
+    /** Timestamp of the last WIPE request, for time-limited confirmation. */
+    @Volatile
+    private var wipeRequestTime: Long = 0L
+    private val wipeConfirmWindowMs = 60_000L // 60 seconds
+
     fun handleSmsCommand(sender: String, command: String): String {
         if (!isTrustedContact(sender)) {
             Log.w(TAG, "SMS command from untrusted number: $sender")
@@ -293,11 +302,19 @@ class AntiTheftManager @Inject constructor(
                 }
             }
             CMD_WIPE -> {
-                // Require confirmation for wipe
-                "WIPE requires confirmation. Reply with 'WIPE CONFIRM' to proceed."
+                // Start the confirmation window — WIPE CONFIRM must arrive within 60s
+                wipeRequestTime = System.currentTimeMillis()
+                "WIPE requires confirmation. Reply with 'WIPE CONFIRM' within 60 seconds to proceed."
             }
             "WIPE CONFIRM" -> {
-                if (wipeDevice()) "Device wipe initiated" else "Failed to wipe device"
+                val elapsed = System.currentTimeMillis() - wipeRequestTime
+                if (wipeRequestTime == 0L || elapsed > wipeConfirmWindowMs) {
+                    wipeRequestTime = 0L
+                    "WIPE confirmation expired or no WIPE request pending. Send 'WIPE' first."
+                } else {
+                    wipeRequestTime = 0L
+                    if (wipeDevice()) "Device wipe initiated" else "Failed to wipe device"
+                }
             }
             CMD_ALARM -> {
                 // TODO: Play loud alarm sound

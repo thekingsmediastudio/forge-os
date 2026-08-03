@@ -5,6 +5,7 @@ import com.forge.os.data.api.ToolDefinition
 import com.forge.os.domain.agent.ToolProvider
 import com.forge.os.domain.agent.params
 import com.forge.os.domain.agent.tool
+import com.forge.os.domain.security.SecurityPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,10 +23,21 @@ class ProjectToolProvider @Inject constructor(
     private val repository: ProjectsRepository,
     private val scopeManager: ProjectScopeManager,
     private val sandboxManager: SandboxManager,
+    private val securityPolicy: SecurityPolicy,
     // Enhanced Integration: Connect with other systems
     private val memoryManager: com.forge.os.domain.memory.MemoryManager,
     private val reflectionManager: com.forge.os.domain.agent.ReflectionManager,
 ) : ToolProvider {
+
+    /** Validate a project slug to prevent path traversal attacks. */
+    private fun validateSlug(slug: String): String? {
+        return try {
+            securityPolicy.validateProjectPath(slug)
+            null // valid
+        } catch (e: SecurityException) {
+            "❌ Blocked: ${e.message}"
+        }
+    }
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
@@ -185,9 +197,11 @@ class ProjectToolProvider @Inject constructor(
     private suspend fun projectReadFile(args: Map<String, Any>): String {
         val slug = args["slug"]?.toString() ?: return "Error: slug required"
         val path = args["path"]?.toString() ?: return "Error: path required"
-        
+
+        validateSlug(slug)?.let { return it }
+
         if (repository.get(slug) == null) return "❌ Project not found: $slug"
-        
+
         val projectPath = "projects/$slug/$path"
         return sandboxManager.readFile(projectPath).fold(
             onSuccess = { it },
@@ -199,9 +213,11 @@ class ProjectToolProvider @Inject constructor(
         val slug = args["slug"]?.toString() ?: return "Error: slug required"
         val path = args["path"]?.toString() ?: return "Error: path required"
         val content = args["content"]?.toString() ?: return "Error: content required"
-        
+
+        validateSlug(slug)?.let { return it }
+
         if (repository.get(slug) == null) return "❌ Project not found: $slug"
-        
+
         val projectPath = "projects/$slug/$path"
         val result = sandboxManager.writeFile(projectPath, content).fold(
             onSuccess = { 
@@ -278,9 +294,11 @@ class ProjectToolProvider @Inject constructor(
     private suspend fun projectListFiles(args: Map<String, Any>): String {
         val slug = args["slug"]?.toString() ?: return "Error: slug required"
         val path = args["path"]?.toString() ?: "."
-        
+
+        validateSlug(slug)?.let { return it }
+
         if (repository.get(slug) == null) return "❌ Project not found: $slug"
-        
+
         val projectPath = if (path == ".") "projects/$slug" else "projects/$slug/$path"
         return sandboxManager.listFiles(projectPath).fold(
             onSuccess = { files ->

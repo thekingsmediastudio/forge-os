@@ -29,6 +29,21 @@ class ContactsToolProvider @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : ToolProvider {
 
+    // Rate limiting: max 30 contact queries per hour
+    private val queryTimestamps = mutableListOf<Long>()
+    private val maxQueriesPerHour = 30
+
+    private fun checkRateLimit(): String? {
+        val now = System.currentTimeMillis()
+        val oneHourAgo = now - 3600_000L
+        queryTimestamps.removeAll { it < oneHourAgo }
+        if (queryTimestamps.size >= maxQueriesPerHour) {
+            return "❌ Rate limit: max $maxQueriesPerHour contact queries per hour. Try again later."
+        }
+        queryTimestamps.add(now)
+        return null
+    }
+
     override fun getTools(): List<ToolDefinition> = listOf(
         tool(
             name = "contacts_search",
@@ -55,16 +70,19 @@ class ContactsToolProvider @Inject constructor(
         "contacts_search" -> {
             if (!hasPermission(android.Manifest.permission.READ_CONTACTS))
                 return "Error: READ_CONTACTS permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."
+            checkRateLimit()?.let { return it }
             searchContacts(args["query"]?.toString() ?: "")
         }
         "contacts_list"   -> {
             if (!hasPermission(android.Manifest.permission.READ_CONTACTS))
                 return "Error: READ_CONTACTS permission not granted."
+            checkRateLimit()?.let { return it }
             listContacts(args["limit"]?.toString()?.toIntOrNull() ?: 50)
         }
         "contacts_get"    -> {
             if (!hasPermission(android.Manifest.permission.READ_CONTACTS))
                 return "Error: READ_CONTACTS permission not granted."
+            checkRateLimit()?.let { return it }
             getContact(args["id"]?.toString() ?: "")
         }
         else -> null

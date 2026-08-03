@@ -146,7 +146,22 @@ data class BehaviorRules(
         "file_download",
         "browser_download",
         "config_write",
-        "config_rollback"
+        "config_rollback",
+        // Anti-theft tools — all require explicit user confirmation
+        "antitheft_enable",
+        "antitheft_disable",
+        "antitheft_lock",
+        "antitheft_trigger",
+        "antitheft_alert",
+        "antitheft_add_contact",
+        "antitheft_remove_contact",
+        "antitheft_clear",
+        // Sensitive data tools
+        "sms_send",
+        "call_phone",
+        "location_current",
+        "contacts_list",
+        "contacts_get",
     ),
     val maxIterations: Int = 15,
     val replanThreshold: Double = 0.7,
