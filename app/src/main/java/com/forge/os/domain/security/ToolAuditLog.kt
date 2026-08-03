@@ -30,6 +30,7 @@ data class ToolAuditEntry(
     val durationMs: Long,
     val outputPreview: String,
     val source: String = "agent",   // agent | user | cron | plugin
+    val redacted: Boolean = false,  // true when secret values were stripped from args
 )
 
 @Singleton
@@ -42,17 +43,58 @@ class ToolAuditLog @Inject constructor(
     }
     private val maxInMemory = 300
 
+    /** Parameter names that likely hold secrets — values are replaced with "[REDACTED]". */
+    private val secretParamNames = setOf(
+        "token", "key", "secret", "password", "pat", "api_key", "apikey",
+        "auth", "bearer", "credential", "private_key", "access_token",
+        "refresh_token", "session_token", "secret_names",
+    )
+
+    /** Tools whose args may contain longer payloads that are security-relevant. */
+    private val verboseAuditTools = setOf(
+        "shell_exec", "python_run", "config_write", "git_push", "git_clone",
+        "plugin_install", "plugin_create", "http_fetch", "curl_exec",
+    )
+
     private val _entries = MutableStateFlow<List<ToolAuditEntry>>(loadFromDisk())
     val entries: StateFlow<List<ToolAuditEntry>> = _entries.asStateFlow()
 
+    /**
+     * Record an audit entry, redacting secret values from args before persisting.
+     */
     fun record(entry: ToolAuditEntry) {
+        val sanitized = sanitizeEntry(entry)
         try {
-            file.appendText(json.encodeToString(entry) + "\n")
+            file.appendText(json.encodeToString(sanitized) + "\n")
         } catch (e: Exception) {
             Timber.e(e, "ToolAuditLog: append failed")
         }
-        val next = (listOf(entry) + _entries.value).take(maxInMemory)
+        val next = (listOf(sanitized) + _entries.value).take(maxInMemory)
         _entries.value = next
+    }
+
+    /**
+     * Redact known secret parameter values from the args JSON string.
+     * Returns a copy of the entry with secrets replaced and `redacted=true` if any were found.
+     */
+    private fun sanitizeEntry(entry: ToolAuditEntry): ToolAuditEntry {
+        var args = entry.args
+        var wasRedacted = false
+
+        for (param in secretParamNames) {
+            // Match "param":"value" or "param": "value" in JSON-like strings
+            val pattern = Regex("""("$param"\s*:\s*")([^"]*)(")""", RegexOption.IGNORE_CASE)
+            if (pattern.containsMatchIn(args)) {
+                args = pattern.replace(args, """$1[REDACTED]$3""")
+                wasRedacted = true
+            }
+        }
+
+        // Use longer truncation for security-relevant tools
+        val maxArgsLen = if (entry.toolName in verboseAuditTools) 1000 else 400
+        val truncatedArgs = if (args.length > maxArgsLen) args.take(maxArgsLen) + "…" else args
+
+        return entry.copy(args = truncatedArgs, redacted = wasRedacted)
     }
 
     fun clear() {

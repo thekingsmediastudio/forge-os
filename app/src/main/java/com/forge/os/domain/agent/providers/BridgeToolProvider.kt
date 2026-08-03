@@ -7,6 +7,10 @@ import com.forge.os.data.api.ToolDefinition
 import com.forge.os.data.bridge.BridgeManifestParser
 import com.forge.os.data.bridge.ForgeBridgeManager
 import com.forge.os.domain.agent.ToolProvider
+import com.forge.os.domain.security.ToolAuditLog
+import com.forge.os.domain.security.ToolAuditEntry
+import timber.log.Timber
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +30,7 @@ import javax.inject.Singleton
 @Singleton
 class BridgeToolProvider @Inject constructor(
     private val bridgeManager: ForgeBridgeManager,
+    private val auditLog: ToolAuditLog,
 ) : ToolProvider {
 
     // ── Static management tools ───────────────────────────────────────────────
@@ -71,7 +76,28 @@ class BridgeToolProvider @Inject constructor(
         "bridge_tool_list" -> bridgeToolList(args["package"]?.toString() ?: "")
         else -> {
             if (bridgeManager.handles(toolName)) {
-                bridgeManager.dispatch(toolName, buildArgsJson(args))
+                val startMs = System.currentTimeMillis()
+                val argsJson = buildArgsJson(args)
+                val result = bridgeManager.dispatch(toolName, argsJson)
+                val durationMs = System.currentTimeMillis() - startMs
+
+                // Audit log bridge tool dispatches for security visibility
+                try {
+                    auditLog.record(ToolAuditEntry(
+                        id = UUID.randomUUID().toString(),
+                        timestamp = System.currentTimeMillis(),
+                        toolName = toolName,
+                        args = argsJson.take(400),
+                        success = result != null && !result.startsWith("Error") && !result.contains("\"ok\":false"),
+                        durationMs = durationMs,
+                        outputPreview = result?.take(200) ?: "null",
+                        source = "bridge",
+                    ))
+                } catch (e: Exception) {
+                    Timber.w(e, "Failed to audit bridge tool dispatch: $toolName")
+                }
+
+                result
             } else null
         }
     }

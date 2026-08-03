@@ -1,9 +1,13 @@
 package com.forge.os.domain.security
 
+import android.content.Context
 import com.forge.os.domain.config.ConfigRepository
 import com.forge.os.domain.model.TimeWindow
 import com.forge.os.domain.model.UserRole
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.io.File
 import java.util.Calendar
@@ -75,14 +79,26 @@ data class PermissionCheckResult(
 
 @Singleton
 class PermissionManager @Inject constructor(
-    private val configRepository: ConfigRepository
+    private val configRepository: ConfigRepository,
+    @ApplicationContext private val context: Context,
 ) {
-    private val permissionsFile by lazy {
-        File(configRepository.get().let {
-            // resolve workspace dir
-            ""
-        })
+    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+
+    /** Persisted daily usage counts: toolName → (dateString → count). */
+    @Serializable
+    private data class UsageStore(
+        val date: String = "",
+        val counts: Map<String, Int> = emptyMap(),
+    )
+
+    private val usageFile: File by lazy {
+        File(context.filesDir, "workspace/system/tool_usage.json").also {
+            it.parentFile?.mkdirs()
+        }
     }
+
+    @Volatile
+    private var usageStore: UsageStore = loadUsage()
 
     // In-memory permissions for Phase 1 (Phase 2 will persist to disk)
     private val permissions = mutableMapOf<String, PermissionSet>()
@@ -138,7 +154,8 @@ class PermissionManager @Inject constructor(
             return PermissionCheckResult(false, reason = "Tool '$toolName' not permitted for user")
         }
 
-        if (toolPerm.usedToday >= toolPerm.dailyQuota) {
+        val usedToday = getUsageCount(toolName)
+        if (usedToday >= toolPerm.dailyQuota) {
             return PermissionCheckResult(false, reason = "Daily quota for '$toolName' exceeded (${toolPerm.dailyQuota})")
         }
 
@@ -242,6 +259,64 @@ class PermissionManager @Inject constructor(
         sb.appendLine("  ${if (perms.delegationPermissions.canCreateAgents) "✅" else "❌"} Create sub-agents (max ${perms.delegationPermissions.maxSubAgents})")
 
         return sb.toString()
+    }
+
+    // ─── Usage tracking ─────────────────────────────────────────────────────
+
+    /** Increment the daily usage counter for [toolName]. Called after successful dispatch. */
+    fun incrementUsage(toolName: String) {
+        val today = todayKey()
+        val current = usageStore
+        val store = if (current.date != today) {
+            // New day — reset all counts
+            UsageStore(date = today, counts = mapOf(toolName to 1))
+        } else {
+            current.copy(counts = current.counts + (toolName to (current.counts[toolName] ?: 0) + 1))
+        }
+        usageStore = store
+        saveUsage(store)
+    }
+
+    /** Get today's usage count for [toolName]. */
+    fun getUsageCount(toolName: String): Int {
+        val store = usageStore
+        if (store.date != todayKey()) return 0
+        return store.counts[toolName] ?: 0
+    }
+
+    /** Get a summary of today's usage for all tools. */
+    fun getUsageSummary(): String {
+        val store = usageStore
+        if (store.date != todayKey() || store.counts.isEmpty()) return "No tool usage recorded today."
+        return buildString {
+            appendLine("📊 Today's tool usage (${store.date}):")
+            store.counts.entries.sortedByDescending { it.value }.forEach { (tool, count) ->
+                appendLine("  $tool: $count")
+            }
+        }
+    }
+
+    private fun todayKey(): String {
+        val cal = Calendar.getInstance()
+        return "%04d-%02d-%02d".format(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
+    }
+
+    private fun loadUsage(): UsageStore {
+        if (!usageFile.exists()) return UsageStore()
+        return try {
+            json.decodeFromString<UsageStore>(usageFile.readText())
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to load usage store")
+            UsageStore()
+        }
+    }
+
+    private fun saveUsage(store: UsageStore) {
+        try {
+            usageFile.writeText(json.encodeToString(store))
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to save usage store")
+        }
     }
 
     private fun isInTimeWindow(windows: List<TimeWindow>): Boolean {

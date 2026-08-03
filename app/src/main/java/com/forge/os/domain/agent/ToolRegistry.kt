@@ -960,6 +960,10 @@ class ToolRegistry @Inject constructor(
             }
             val r = ToolResult(toolCallId, toolName, output)
             recordAudit(toolName, argsJson, started, r, source)
+            // Track usage for quota enforcement
+            if (!r.isError) {
+                runCatching { permissionManager.incrementUsage(toolName) }
+            }
             r
         } catch (e: Exception) {
             Timber.e(e, "Tool $toolName failed")

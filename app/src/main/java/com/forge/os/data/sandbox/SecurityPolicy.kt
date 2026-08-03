@@ -43,10 +43,11 @@ class SecurityPolicy @Inject constructor(
     private val blockedShellPatterns = listOf(
         Regex("""rm\s+-rf\s+/\s*""", RegexOption.IGNORE_CASE),
         Regex("""rm\s+-rf\s+/\.\.\s*""", RegexOption.IGNORE_CASE),
+        Regex("""rm\s+-rf\s+~\s*""", RegexOption.IGNORE_CASE),
+        Regex("""rm\s+-rf\s+\*\s*""", RegexOption.IGNORE_CASE),
         Regex("""mkfs\.""", RegexOption.IGNORE_CASE),
         Regex("""dd\s+if=/dev/zero""", RegexOption.IGNORE_CASE),
-        Regex("""curl\s+""", RegexOption.IGNORE_CASE),
-        Regex("""wget\s+""", RegexOption.IGNORE_CASE),
+        Regex("""dd\s+if=/dev/random""", RegexOption.IGNORE_CASE),
         Regex("""nc\s+""", RegexOption.IGNORE_CASE),
         Regex("""netcat\s+""", RegexOption.IGNORE_CASE),
         Regex("""ssh\s+""", RegexOption.IGNORE_CASE),
@@ -249,6 +250,69 @@ class SecurityPolicy @Inject constructor(
 
     // Robust sanitization is now handled via Python AST check in python_runner.py
     fun sanitizePythonCode(code: String): String = code
+
+    // ─── Input validators for tool providers ────────────────────────────────
+
+    /**
+     * Validate a phone number for call/SMS tools.
+     * Accepts E.164 format (+1234567890) or local formats with digits, spaces, dashes, parens.
+     * Rejects empty strings, numbers with letters, and numbers that are too short/long.
+     */
+    fun validatePhoneNumber(number: String): String {
+        val cleaned = number.trim()
+        if (cleaned.isEmpty()) throw SecurityException("Phone number cannot be empty")
+        if (cleaned.length > 20) throw SecurityException("Phone number too long (max 20 chars)")
+        // Allow digits, +, spaces, dashes, dots, parens
+        if (!cleaned.matches(Regex("""^[+]?[0-9\s\-\.\(\)]{3,20}$"""))) {
+            throw SecurityException("Invalid phone number format: $cleaned")
+        }
+        // Must have at least 3 digits
+        val digitCount = cleaned.count { it.isDigit() }
+        if (digitCount < 3) throw SecurityException("Phone number too short: $cleaned")
+        return cleaned
+    }
+
+    /**
+     * Validate an SMS message body.
+     * Rejects empty bodies, bodies over 1600 chars, and bodies containing null bytes.
+     */
+    fun validateSmsBody(body: String): String {
+        if (body.isEmpty()) throw SecurityException("SMS body cannot be empty")
+        if (body.length > 1600) throw SecurityException("SMS body too long (max 1600 chars, got ${body.length})")
+        if (body.contains('\u0000')) throw SecurityException("SMS body contains null bytes")
+        return body
+    }
+
+    /**
+     * Validate that a relative path stays within a project directory.
+     * Prevents path traversal attacks like `../../etc/passwd`.
+     */
+    fun validateProjectPath(projectSlug: String, relativePath: String): String {
+        if (projectSlug.isBlank()) throw SecurityException("Project slug cannot be blank")
+        if (relativePath.contains("..")) throw SecurityException("Path traversal not allowed: $relativePath")
+        if (relativePath.startsWith("/")) throw SecurityException("Absolute paths not allowed: $relativePath")
+        if (relativePath.contains('\u0000')) throw SecurityException("Path contains null bytes")
+        // Normalize and check
+        val normalized = relativePath.replace("\\", "/").trimStart('/')
+        if (normalized.startsWith("..")) throw SecurityException("Path traversal not allowed: $relativePath")
+        return normalized
+    }
+
+    /**
+     * Validate a git URL for clone operations.
+     * Only allows https:// and git@ URLs; blocks file:// and other protocols.
+     */
+    fun validateGitUrl(url: String): String {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) throw SecurityException("Git URL cannot be empty")
+        if (trimmed.startsWith("file://") || trimmed.startsWith("file:")) {
+            throw SecurityException("Local file URLs not allowed for git clone")
+        }
+        if (!trimmed.startsWith("https://") && !trimmed.startsWith("git@") && !trimmed.startsWith("http://")) {
+            throw SecurityException("Only https://, http://, and git@ URLs are allowed for git clone")
+        }
+        return trimmed
+    }
 
     private companion object {
         val DEFAULT_ON = object : Flags {

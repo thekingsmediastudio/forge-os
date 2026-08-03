@@ -104,7 +104,7 @@ object AppModule {
 
     // Phase 1 — Kernel
     @Provides @Singleton fun provideConfigRepository(@ApplicationContext ctx: Context) = ConfigRepository(ctx)
-    @Provides @Singleton fun providePermissionManager(r: ConfigRepository) = PermissionManager(r)
+    @Provides @Singleton fun providePermissionManager(r: ConfigRepository, @ApplicationContext ctx: Context) = PermissionManager(r, ctx)
     @Provides @Singleton fun provideAlertManager() = AlertManager()
     @Provides @Singleton fun provideHeartbeatMonitor(
         @ApplicationContext ctx: Context,

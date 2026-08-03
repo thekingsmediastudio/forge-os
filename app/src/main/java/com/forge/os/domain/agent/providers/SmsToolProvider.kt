@@ -10,8 +10,10 @@ import com.forge.os.data.api.FunctionDefinition
 import com.forge.os.data.api.FunctionParameters
 import com.forge.os.data.api.ParameterProperty
 import com.forge.os.data.api.ToolDefinition
+import com.forge.os.data.sandbox.SecurityPolicy
 import com.forge.os.domain.agent.ToolProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,7 +31,24 @@ import javax.inject.Singleton
 @Singleton
 class SmsToolProvider @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val securityPolicy: SecurityPolicy,
 ) : ToolProvider {
+
+    /** Rate limiter: max 20 SMS per hour. */
+    private val smsTimestamps = ConcurrentHashMap<String, MutableList<Long>>()
+    private val maxSmsPerHour = 20
+
+    private fun checkSmsRateLimit(): String? {
+        val now = System.currentTimeMillis()
+        val hourAgo = now - 3600_000
+        val timestamps = smsTimestamps.getOrPut("sms") { mutableListOf() }
+        timestamps.removeAll { it < hourAgo }
+        if (timestamps.size >= maxSmsPerHour) {
+            return """{"ok":false,"error":"Rate limit: max $maxSmsPerHour SMS per hour. Try again later."}"""
+        }
+        timestamps.add(now)
+        return null
+    }
 
     override fun getTools(): List<ToolDefinition> = listOf(
         tool(
@@ -87,7 +106,16 @@ class SmsToolProvider @Inject constructor(
         "sms_send"    -> {
             if (!hasPermission(android.Manifest.permission.SEND_SMS))
                 return """{"ok":false,"error":"SEND_SMS permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."}"""
-            sendSms(args["to"]?.toString() ?: "", args["body"]?.toString() ?: "")
+            val to = args["to"]?.toString() ?: ""
+            val body = args["body"]?.toString() ?: ""
+            try {
+                securityPolicy.validatePhoneNumber(to)
+                securityPolicy.validateSmsBody(body)
+            } catch (e: SecurityException) {
+                return """{"ok":false,"error":"${e.message}"}"""
+            }
+            checkSmsRateLimit()?.let { return it }
+            sendSms(to, body)
         }
         else -> null
         }

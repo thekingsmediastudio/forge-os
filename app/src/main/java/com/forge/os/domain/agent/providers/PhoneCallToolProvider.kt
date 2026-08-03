@@ -8,11 +8,13 @@ import com.forge.os.data.api.FunctionDefinition
 import com.forge.os.data.api.FunctionParameters
 import com.forge.os.data.api.ParameterProperty
 import com.forge.os.data.api.ToolDefinition
+import com.forge.os.data.sandbox.SecurityPolicy
 import com.forge.os.domain.agent.ToolProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,7 +32,24 @@ import javax.inject.Singleton
 @Singleton
 class PhoneCallToolProvider @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val securityPolicy: SecurityPolicy,
 ) : ToolProvider {
+
+    /** Rate limiter: max 5 calls per hour. */
+    private val callTimestamps = ConcurrentHashMap<String, MutableList<Long>>()
+    private val maxCallsPerHour = 5
+
+    private fun checkCallRateLimit(): String? {
+        val now = System.currentTimeMillis()
+        val hourAgo = now - 3600_000
+        val timestamps = callTimestamps.getOrPut("calls") { mutableListOf() }
+        timestamps.removeAll { it < hourAgo }
+        if (timestamps.size >= maxCallsPerHour) {
+            return """{"ok":false,"error":"Rate limit: max $maxCallsPerHour calls per hour. Try again later."}"""
+        }
+        timestamps.add(now)
+        return null
+    }
 
     override fun getTools(): List<ToolDefinition> = listOf(
         tool(
@@ -74,11 +93,26 @@ class PhoneCallToolProvider @Inject constructor(
                 return "Error: READ_CALL_LOG permission not granted."
             callLog("missed", args["limit"]?.toString()?.toIntOrNull() ?: 20)
         }
-        "call_dial"       -> dial(args["number"]?.toString() ?: "")
+        "call_dial"       -> {
+            val number = args["number"]?.toString() ?: ""
+            try {
+                securityPolicy.validatePhoneNumber(number)
+            } catch (e: SecurityException) {
+                return """{"ok":false,"error":"${e.message}"}"""
+            }
+            dial(number)
+        }
         "call_phone"      -> {
             if (!hasPermission(android.Manifest.permission.CALL_PHONE))
                 return """{"ok":false,"error":"CALL_PHONE permission not granted. Grant it in Settings → Apps → Forge OS → Permissions."}"""
-            call(args["number"]?.toString() ?: "")
+            val number = args["number"]?.toString() ?: ""
+            try {
+                securityPolicy.validatePhoneNumber(number)
+            } catch (e: SecurityException) {
+                return """{"ok":false,"error":"${e.message}"}"""
+            }
+            checkCallRateLimit()?.let { return it }
+            call(number)
         }
         else -> null
         }
