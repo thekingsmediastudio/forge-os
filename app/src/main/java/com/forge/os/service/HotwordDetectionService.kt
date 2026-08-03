@@ -51,7 +51,7 @@ class HotwordDetectionService : Service() {
         private const val CHANNEL_ID = "hotword_detection"
         private const val NOTIFICATION_ID = 42
         private const val KEYWORD = "hello forge"
-        private const val FUZZY_MATCH_THRESHOLD = 0.7f // 70% of words must match
+        private const val FUZZY_MATCH_THRESHOLD = 0.5f // 50% of words must match (allows "forge" alone)
     }
 
     override fun onCreate() {
@@ -90,6 +90,11 @@ class HotwordDetectionService : Service() {
                 override fun onEndOfSpeech() {}
                 override fun onError(error: Int) {
                     Timber.d("HotwordDetectionService: STT error $error")
+                    // Restart VAD and listening after error
+                    scope.launch {
+                        delay(500) // Brief pause before restart
+                        voiceActivityDetector.start()
+                    }
                 }
                 override fun onResults(results: android.os.Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -99,6 +104,11 @@ class HotwordDetectionService : Service() {
                             Timber.d("HotwordDetectionService: wake word detected!")
                             hotwordEventBus.emit()
                         }
+                    }
+                    // Restart VAD and listening after results
+                    scope.launch {
+                        delay(500) // Brief pause before restart
+                        voiceActivityDetector.start()
                     }
                 }
                 override fun onPartialResults(partialResults: android.os.Bundle?) {
@@ -123,6 +133,8 @@ class HotwordDetectionService : Service() {
             voiceActivityDetector.speechDetected.collect { detected ->
                 if (detected) {
                     Timber.d("HotwordDetectionService: speech detected, starting STT")
+                    // Stop VAD to release mic for SpeechRecognizer
+                    voiceActivityDetector.stop()
                     startListening()
                 }
             }

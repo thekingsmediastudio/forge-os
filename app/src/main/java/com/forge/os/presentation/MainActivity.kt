@@ -557,6 +557,8 @@ class MainActivity : ComponentActivity() {
         } else if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.S_V2) {
             needsGrant(android.Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+        // Microphone (for hotword detection and voice mode)
+        needsGrant(android.Manifest.permission.RECORD_AUDIO)
 
         if (needed.isNotEmpty()) {
             requestDangerousPermissions.launch(needed.toTypedArray())
