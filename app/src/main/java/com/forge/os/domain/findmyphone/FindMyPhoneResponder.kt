@@ -225,10 +225,14 @@ class FindMyPhoneResponder @Inject constructor(
     private fun answerCallIfPossible(tm: TelecomManager, phoneNumber: String) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         try {
-            tm.answerRingingCall()
+            // Use reflection to avoid compile-time resolution issues on some SDK stubs
+            val method = TelecomManager::class.java.getMethod("answerRingingCall")
+            method.invoke(tm)
             Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")
         } catch (e: SecurityException) {
             Log.w(TAG, "Missing ANSWER_PHONE_CALLS permission", e)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to answer call", e)
         }
     }
 }
