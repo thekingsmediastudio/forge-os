@@ -1017,9 +1017,36 @@ private fun ModernMessageBubble(message: ChatMessage, onRetry: () -> Unit, onSpe
                 )
             }
         }
+        "verification"  -> ModernVerificationBubble(message.content, message.isError)
         "system"        -> ModernSystemBubble(message.content)
         "input_request" -> ModernInputRequestBubble(message.content)
         else            -> ModernAssistantBubble(message.content, message.isStreaming, onSpeak)
+    }
+}
+
+@Composable
+private fun ModernVerificationBubble(text: String, isError: Boolean) {
+    val bgColor = if (isError) 
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+    else 
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
+    
+    val textColor = if (isError)
+        MaterialTheme.colorScheme.onErrorContainer
+    else
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+    
+    Surface(
+        color = bgColor,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier.padding(vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = textColor,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        )
     }
 }
 

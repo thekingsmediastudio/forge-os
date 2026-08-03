@@ -321,6 +321,17 @@ class ChatViewModel @Inject constructor(
                             skillRecorder.recordToolUsage(event.name, lastCall.content, event.isError)
                         }
                     }
+                    is AgentEvent.Verification -> {
+                        // Show verification result as a subtle message
+                        val icon = if (event.passed) "✅" else "❌"
+                        val status = if (event.passed) "verified" else "verification failed"
+                        addMsg(ChatMessage(
+                            role = "verification",
+                            content = "$icon $status: ${event.detail}",
+                            toolName = event.toolName,
+                            isError = !event.passed
+                        ))
+                    }
                     is AgentEvent.Response -> {
                         upsertMsg(ChatMessage(id = streamId, role = "assistant", content = event.text, isStreaming = false))
                         apiHistory.add(ApiMessage(role = "user", content = input))
