@@ -1,5 +1,6 @@
 package com.forge.os.domain.findmyphone
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
@@ -8,7 +9,6 @@ import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.telecom.TelecomManager
 import android.util.Log
-import androidx.annotation.RequiresApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -221,8 +221,9 @@ class FindMyPhoneResponder @Inject constructor(
         ttsInitialized = false
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
+    @SuppressLint("MissingPermission")
     private fun answerCallIfPossible(tm: TelecomManager, phoneNumber: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         try {
             tm.answerRingingCall()
             Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")

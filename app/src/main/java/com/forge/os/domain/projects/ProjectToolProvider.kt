@@ -32,7 +32,7 @@ class ProjectToolProvider @Inject constructor(
     /** Validate a project slug to prevent path traversal attacks. */
     private fun validateSlug(slug: String): String? {
         return try {
-            securityPolicy.validateProjectPath(slug)
+            securityPolicy.validateProjectPath(slug, ".")
             null // valid
         } catch (e: SecurityException) {
             "❌ Blocked: ${e.message}"
