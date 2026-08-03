@@ -5,7 +5,7 @@ import com.forge.os.data.api.ToolDefinition
 import com.forge.os.domain.agent.ToolProvider
 import com.forge.os.domain.agent.params
 import com.forge.os.domain.agent.tool
-import com.forge.os.domain.security.SecurityPolicy
+import com.forge.os.data.sandbox.SecurityPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

@@ -3020,7 +3020,7 @@ To use Composio:
         return "✓ session marker recorded: $sid${if (note.isNotBlank()) "  — $note" else ""}"
     }
 
-    private fun projectServe(args: Map<String, Any>): String {
+    private suspend fun projectServe(args: Map<String, Any>): String {
         val rel = args["path"]?.toString() ?: return "Error: path required"
         val port = args["port"]?.toString()?.toIntOrNull() ?: 0
         // Sandbox-validate the serve path to prevent serving arbitrary directories

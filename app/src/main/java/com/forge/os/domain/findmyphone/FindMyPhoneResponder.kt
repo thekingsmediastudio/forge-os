@@ -57,12 +57,7 @@ class FindMyPhoneResponder @Inject constructor(
                 // Answer the call (requires API 26+)
                 val telecomManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     val tm = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                    try {
-                        tm.answerRingingCall()
-                        Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")
-                    } catch (e: SecurityException) {
-                        Log.w(TAG, "Missing ANSWER_PHONE_CALLS permission", e)
-                    }
+                    answerCallIfPossible(tm, phoneNumber)
                     tm
                 } else {
                     Log.w(TAG, "answerRingingCall requires API 26+, current: ${Build.VERSION.SDK_INT}")
@@ -224,5 +219,15 @@ class FindMyPhoneResponder @Inject constructor(
         tts?.shutdown()
         tts = null
         ttsInitialized = false
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun answerCallIfPossible(tm: TelecomManager, phoneNumber: String) {
+        try {
+            tm.answerRingingCall()
+            Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Missing ANSWER_PHONE_CALLS permission", e)
+        }
     }
 }
