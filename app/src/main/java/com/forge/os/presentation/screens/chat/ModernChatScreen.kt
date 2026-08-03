@@ -285,6 +285,7 @@ fun ModernChatScreen(
                 enabled = !isLoading,
                 pendingImages = pendingImages,
                 onRemoveImage = { viewModel.removeImageAttachment(it) },
+                filePickerLauncher = filePickerLauncher,
             )
         }
         
@@ -1738,6 +1739,7 @@ private fun ModernInputBar(
     enabled: Boolean,
     pendingImages: List<com.forge.os.domain.agent.ImageAttachment> = emptyList(),
     onRemoveImage: (com.forge.os.domain.agent.ImageAttachment) -> Unit = {},
+    filePickerLauncher: androidx.activity.compose.ManagedActivityResultLauncher<String, android.net.Uri?>? = null,
 ) {
     Column {
         // Pending files preview
@@ -1867,7 +1869,7 @@ private fun ModernInputBar(
                         text = { Text("Attach File", color = ModernTextPrimary, fontSize = 14.sp) },
                         onClick = { 
                             showPlusMenu = false
-                            filePickerLauncher.launch("*/*")
+                            filePickerLauncher?.launch("*/*")
                         },
                         leadingIcon = { Icon(Icons.Outlined.AttachFile, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
                     )

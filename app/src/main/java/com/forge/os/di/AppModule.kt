@@ -8,6 +8,7 @@ import com.forge.os.data.api.AiApiManager
 import com.forge.os.data.api.ApiCallLog
 import com.forge.os.data.api.CostMeter
 import com.forge.os.data.api.ForgeBridgeDiscovery
+import com.forge.os.data.api.ModelCapabilityResolver
 import com.forge.os.data.conversations.ConversationRepository
 import com.forge.os.data.mcp.McpClient
 import com.forge.os.data.mcp.McpServerRepository
