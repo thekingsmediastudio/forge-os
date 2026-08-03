@@ -47,6 +47,7 @@ class FindMyPhoneResponder @Inject constructor(
     /**
      * Handle an incoming call when Find My Phone is enabled.
      */
+    @android.annotation.SuppressLint("MissingPermission")
     fun handleIncomingCall(phoneNumber: String) {
         val state = findMyPhoneManager.state.value
         val durationMs = state.durationSeconds * 1000L
@@ -57,7 +58,6 @@ class FindMyPhoneResponder @Inject constructor(
                 val telecomManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     val tm = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
                     try {
-                        @android.annotation.SuppressLint("MissingPermission")
                         tm.answerRingingCall()
                         Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")
                     } catch (e: SecurityException) {
