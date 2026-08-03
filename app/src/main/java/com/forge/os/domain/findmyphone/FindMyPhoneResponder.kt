@@ -4,9 +4,11 @@ import android.content.Context
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.media.RingtoneManager
+import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.telecom.TelecomManager
 import android.util.Log
+import androidx.annotation.RequiresApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,10 +53,14 @@ class FindMyPhoneResponder @Inject constructor(
 
         scope.launch {
             try {
-                // Answer the call
-                val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                telecomManager.answerRingingCall()
-                Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")
+                // Answer the call (requires API 26+)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                    telecomManager.answerRingingCall()
+                    Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")
+                } else {
+                    Log.w(TAG, "answerRingingCall requires API 26+, current: ${Build.VERSION.SDK_INT}")
+                }
 
                 // Wait for call to connect
                 delay(TTS_DELAY_MS)

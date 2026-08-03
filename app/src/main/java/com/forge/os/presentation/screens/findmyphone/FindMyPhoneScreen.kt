@@ -73,7 +73,7 @@ fun FindMyPhoneScreen(
                         Text(
                             "Answer calls automatically to help locate your phone",
                             fontSize = 13.sp,
-                            color = forgePalette.textSecondary,
+                            color = forgePalette.textMuted,
                         )
                     }
                     Switch(
@@ -196,12 +196,12 @@ fun FindMyPhoneScreen(
                         Text(
                             "From: ${state.lastCaller}",
                             fontSize = 13.sp,
-                            color = forgePalette.textSecondary,
+                            color = forgePalette.textMuted,
                         )
                         Text(
                             "At: ${java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault()).format(state.lastTriggered)}",
                             fontSize = 13.sp,
-                            color = forgePalette.textSecondary,
+                            color = forgePalette.textMuted,
                         )
                     }
                 }

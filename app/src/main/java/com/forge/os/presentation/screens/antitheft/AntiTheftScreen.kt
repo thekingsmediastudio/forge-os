@@ -19,9 +19,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.forge.os.presentation.components.ModernCard
 import com.forge.os.presentation.components.SectionHeader
 import com.forge.os.presentation.components.StatusBadge
-import com.forge.os.presentation.theme.ModernAccent
-import com.forge.os.presentation.theme.ModernTextPrimary
-import com.forge.os.presentation.theme.ModernTextSecondary
 import com.forge.os.presentation.theme.forgePalette
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -90,7 +87,7 @@ fun AntiTheftScreen(
                         Column {
                             Text(
                                 "Anti-Theft Protection",
-                                color = ModernTextPrimary,
+                                color = forgePalette.textPrimary,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -100,7 +97,7 @@ fun AntiTheftScreen(
                                     state.enabled -> "Active — monitoring for theft"
                                     else -> "Disabled"
                                 },
-                                color = if (state.triggered) forgePalette.danger else ModernTextSecondary,
+                                color = if (state.triggered) forgePalette.danger else forgePalette.textMuted,
                                 fontSize = 13.sp
                             )
                         }
@@ -137,20 +134,20 @@ fun AntiTheftScreen(
                                 )
                                 Text(
                                     "Device Admin Required",
-                                    color = ModernTextPrimary,
+                                    color = forgePalette.textPrimary,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
                             Text(
                                 "Anti-theft requires device admin permission to lock and wipe your phone remotely.",
-                                color = ModernTextSecondary,
+                                color = forgePalette.textMuted,
                                 fontSize = 13.sp
                             )
                             Button(
                                 onClick = { deviceAdminLauncher.launch(viewModel.getDeviceAdminIntent()) },
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = ModernAccent)
+                                colors = ButtonDefaults.buttonColors(containerColor = forgePalette.orange)
                             ) {
                                 Text("Activate Device Admin", fontSize = 13.sp)
                             }
@@ -170,13 +167,13 @@ fun AntiTheftScreen(
                         Column(Modifier.weight(1f)) {
                             Text(
                                 "Enable Anti-Theft",
-                                color = ModernTextPrimary,
+                                color = forgePalette.textPrimary,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
                                 "Monitor for theft and respond to SMS commands",
-                                color = ModernTextSecondary,
+                                color = forgePalette.textMuted,
                                 fontSize = 12.sp
                             )
                         }
@@ -185,7 +182,7 @@ fun AntiTheftScreen(
                             onCheckedChange = { viewModel.setEnabled(it) },
                             enabled = state.deviceAdminActive,
                             colors = SwitchDefaults.colors(
-                                checkedTrackColor = ModernAccent,
+                                checkedTrackColor = forgePalette.orange,
                                 checkedThumbColor = forgePalette.onAccent
                             )
                         )
@@ -217,7 +214,7 @@ fun AntiTheftScreen(
                             }
                             Text(
                                 "Theft was detected. Device is locked and alerts have been sent to trusted contacts.",
-                                color = ModernTextSecondary,
+                                color = forgePalette.textMuted,
                                 fontSize = 13.sp
                             )
                             Button(
@@ -242,7 +239,7 @@ fun AntiTheftScreen(
                                 onClick = { viewModel.lockDevice() },
                                 modifier = Modifier.weight(1f),
                                 enabled = state.deviceAdminActive,
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ModernTextPrimary)
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = forgePalette.textPrimary)
                             ) {
                                 Icon(Icons.Outlined.Lock, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -251,7 +248,7 @@ fun AntiTheftScreen(
                             OutlinedButton(
                                 onClick = { viewModel.updateLocation() },
                                 modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ModernTextPrimary)
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = forgePalette.textPrimary)
                             ) {
                                 Icon(Icons.Outlined.LocationOn, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
@@ -262,7 +259,7 @@ fun AntiTheftScreen(
                             onClick = { viewModel.sendTestAlert() },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = state.trustedContacts.isNotEmpty(),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ModernAccent)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = forgePalette.orange)
                         ) {
                             Icon(Icons.Outlined.Send, null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
@@ -279,7 +276,7 @@ fun AntiTheftScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
                             "These contacts can send SMS commands (LOCK, LOCATE, WIPE, ALARM, STATUS)",
-                            color = ModernTextSecondary,
+                            color = forgePalette.textMuted,
                             fontSize = 12.sp
                         )
 
@@ -303,10 +300,10 @@ fun AntiTheftScreen(
                                         Icon(
                                             Icons.Outlined.Phone,
                                             contentDescription = null,
-                                            tint = ModernAccent,
+                                            tint = forgePalette.orange,
                                             modifier = Modifier.size(16.dp)
                                         )
-                                        Text(contact, color = ModernTextPrimary, fontSize = 14.sp)
+                                        Text(contact, color = forgePalette.textPrimary, fontSize = 14.sp)
                                     }
                                     IconButton(
                                         onClick = { viewModel.removeTrustedContact(contact) },
@@ -336,7 +333,7 @@ fun AntiTheftScreen(
                                     placeholder = { Text("Phone number") },
                                     singleLine = true,
                                     colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = ModernAccent,
+                                        focusedBorderColor = forgePalette.orange,
                                         unfocusedBorderColor = forgePalette.border
                                     )
                                 )
@@ -348,7 +345,7 @@ fun AntiTheftScreen(
                                             showAddContact = false
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = ModernAccent)
+                                    colors = ButtonDefaults.buttonColors(containerColor = forgePalette.orange)
                                 ) {
                                     Text("Add", fontSize = 12.sp)
                                 }
@@ -357,7 +354,7 @@ fun AntiTheftScreen(
                             OutlinedButton(
                                 onClick = { showAddContact = true },
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = ModernAccent)
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = forgePalette.orange)
                             ) {
                                 Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
@@ -375,7 +372,7 @@ fun AntiTheftScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
                             "Message sent to trusted contacts when theft is detected",
-                            color = ModernTextSecondary,
+                            color = forgePalette.textMuted,
                             fontSize = 12.sp
                         )
                         OutlinedTextField(
@@ -385,7 +382,7 @@ fun AntiTheftScreen(
                             minLines = 2,
                             maxLines = 4,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ModernAccent,
+                                focusedBorderColor = forgePalette.orange,
                                 unfocusedBorderColor = forgePalette.border
                             )
                         )
@@ -401,7 +398,7 @@ fun AntiTheftScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 "${state.lastLatitude}, ${state.lastLongitude}",
-                                color = ModernTextPrimary,
+                                color = forgePalette.textPrimary,
                                 fontSize = 14.sp
                             )
                             Text(
@@ -475,7 +472,7 @@ fun AntiTheftScreen(
                         .padding(16.dp),
                     containerColor = forgePalette.surface2
                 ) {
-                    Text(msg, color = ModernTextPrimary)
+                    Text(msg, color = forgePalette.textPrimary)
                 }
             }
         }
