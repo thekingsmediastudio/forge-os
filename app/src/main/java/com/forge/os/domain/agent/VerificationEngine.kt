@@ -76,13 +76,13 @@ class VerificationEngine @Inject constructor(
         return try {
             val file = sandboxManager.resolveSafe(path)
             when {
-                !file.exists() -> VerificationResult.Fail("File not created: $path")
-                file.length() == 0L -> VerificationResult.Fail("File is empty: $path")
+                !file.exists() -> VerificationResult.Fail("File not created: $path", retryable = true)
+                file.length() == 0L -> VerificationResult.Fail("File is empty: $path", retryable = true)
                 !file.canRead() -> VerificationResult.Fail("File not readable: $path")
                 else -> VerificationResult.Pass("File created: ${file.length()} bytes")
             }
         } catch (e: Exception) {
-            VerificationResult.Fail("Cannot verify: ${e.message}")
+            VerificationResult.Fail("Cannot verify: ${e.message}", retryable = true)
         }
     }
 
@@ -156,7 +156,7 @@ class VerificationEngine @Inject constructor(
                 VerificationResult.Fail("HTTP error: ${statusMatch?.groupValues?.get(1) ?: "unknown"}")
             }
             result.contains("timeout") || result.contains("Timeout") -> {
-                VerificationResult.Fail("Request timeout")
+                VerificationResult.Fail("Request timeout", retryable = true)
             }
             result.contains("❌") -> VerificationResult.Fail("Request failed")
             else -> VerificationResult.Pass("Request successful")
@@ -252,6 +252,6 @@ sealed class VerificationResult {
     /** Verification passed. */
     data class Pass(val detail: String) : VerificationResult()
     
-    /** Verification failed. */
-    data class Fail(val detail: String) : VerificationResult()
+    /** Verification failed. [retryable] indicates if the failure might succeed on retry. */
+    data class Fail(val detail: String, val retryable: Boolean = false) : VerificationResult()
 }

@@ -341,6 +341,9 @@ Tools available ({tool_count} total): {tool_catalog}
         val executionSession = executionHistoryManager.startSession(userMessage)
         var stepNumber = 0
         
+        // Track retried tools to avoid infinite retry loops
+        val retriedTools = mutableSetOf<String>()
+        
         // System Integration: Execution start feedback
         try {
             hapticFeedbackManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.THINKING_START)
@@ -800,6 +803,29 @@ Tools available ({tool_count} total): {tool_catalog}
                                     is VerificationResult.Fail -> {
                                         emit(AgentEvent.Verification(name, false, verification.detail))
                                         Timber.w("Verification failed for $name: ${verification.detail}")
+                                        
+                                        // Auto-retry for retryable failures (max 1 retry)
+                                        if (verification.retryable && !retriedTools.contains(toolCall.id)) {
+                                            retriedTools.add(toolCall.id)
+                                            emit(AgentEvent.Thinking("Verification failed, retrying $name..."))
+                                            Timber.d("Auto-retrying $name after verification failure")
+                                            
+                                            // Retry the tool call
+                                            val retryResult = toolRegistry.dispatch(name, toolCall.function.arguments, toolCall.id)
+                                            emit(AgentEvent.ToolResult(retryResult.toolName, retryResult.output, retryResult.isError))
+                                            
+                                            // Verify the retry
+                                            val retryVerification = verificationEngine.verify(name, argsMap, retryResult.output, retryResult.isError)
+                                            when (retryVerification) {
+                                                is VerificationResult.Pass -> {
+                                                    emit(AgentEvent.Verification(name, true, "Retry succeeded: ${retryVerification.detail}"))
+                                                }
+                                                is VerificationResult.Fail -> {
+                                                    emit(AgentEvent.Verification(name, false, "Retry failed: ${retryVerification.detail}"))
+                                                }
+                                                else -> {}
+                                            }
+                                        }
                                     }
                                     else -> {} // Skip or NotApplicable
                                 }
