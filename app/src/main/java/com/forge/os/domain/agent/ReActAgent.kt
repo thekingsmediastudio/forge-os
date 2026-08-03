@@ -207,6 +207,27 @@ AGENT BEHAVIOR — read EVERY rule, they exist because the previous version got 
       - CI/CD: Trigger Forge tasks from build pipelines
       - Home automation: Integrate with Home Assistant or similar
 
+    EXTERNAL API BRIDGE: Forge OS exposes Android-native APIs (AIDL service, ContentProvider, Intent activities) so other apps on the device can interact with the agent. This is separate from the HTTP API and requires explicit user consent per app.
+    
+    AVAILABLE SURFACES:
+      - AIDL Service: Bound service for direct IPC (fastest, most secure)
+      - ContentProvider: Query-based access for simple operations
+      - Intent Activities: Deep links for specific actions
+    
+    SECURITY:
+      - All external calls go through ExternalApiBridge (single chokepoint)
+      - Per-app rate limiting and token quotas
+      - Audit log of all external calls
+      - User must explicitly grant access per app in Settings → External APIs
+    
+    USE CASES:
+      - Automation apps (Tasker, Automate) can trigger Forge tasks
+      - Launcher widgets can show agent status
+      - Other apps can request agent assistance via Intent
+      - System integrations (e.g., share sheet → send to Forge)
+    
+    NOTE: External API Bridge is for OTHER APPS on the same device. For external scripts/tools, use the HTTP API instead.
+
     PROJECT WORKFLOW:
       1. `project_create {name, description?, tags?}` — creates the project directory and metadata. Returns the slug.
       2. `project_activate {slug}` — sets it as the active scope.
