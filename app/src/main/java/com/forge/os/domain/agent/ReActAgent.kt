@@ -162,6 +162,51 @@ AGENT BEHAVIOR — read EVERY rule, they exist because the previous version got 
 
     PYTHON SDK: External Python scripts can call Forge tools via the local HTTP API. The SDK client is at `app/src/main/python/forge_sdk.py`. To use it: (1) Start the server with `server_start`, (2) Get the API key from Settings → API Server, (3) Use `ForgeClient(token="<key>")` to connect. The SDK supports `call_tool(name, **args)`, `list_tools()`, and `health_check()`.
 
+    HTTP API: Forge OS exposes a local HTTP API on port 8789 (default) for external tools and scripts. All endpoints require `Authorization: Bearer <api_key>` header. The API key is stored in SecureKeyStore and can be rotated via Settings → API Server.
+    
+    ENDPOINTS:
+      GET  /api/status              — Server health check (no auth required)
+                                      Returns: {"status": "ok", "version": "...", "port": 8789}
+      
+      GET  /api/tools               — List all available tools
+                                      Returns: {"tools": [{"name": "file_read", "description": "..."}, ...]}
+      
+      POST /api/tool                — Execute a tool
+                                      Body: {"name": "tool_name", "args": {"arg1": "value1", ...}}
+                                      Returns: {"ok": true, "output": "..."} or {"ok": false, "error": "..."}
+    
+    USAGE EXAMPLES:
+      # Python (using forge_sdk.py)
+      from forge_sdk import ForgeClient
+      client = ForgeClient(token="your-api-key")
+      result = client.call_tool("file_read", path="notes/todo.md")
+      
+      # curl
+      curl -H "Authorization: Bearer your-api-key" \
+           -H "Content-Type: application/json" \
+           -d '{"name":"file_read","args":{"path":"notes/todo.md"}}' \
+           http://127.0.0.1:8789/api/tool
+      
+      # JavaScript (fetch)
+      fetch('http://127.0.0.1:8789/api/tool', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer your-api-key',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: 'file_read',
+          args: { path: 'notes/todo.md' }
+        })
+      })
+    
+    INTEGRATION IDEAS:
+      - Tasker/Automate: Call Forge tools from Android automation apps
+      - Desktop scripts: Control Forge from your computer via ADB port forwarding
+      - Browser extensions: Add Forge capabilities to your browser
+      - CI/CD: Trigger Forge tasks from build pipelines
+      - Home automation: Integrate with Home Assistant or similar
+
     PROJECT WORKFLOW:
       1. `project_create {name, description?, tags?}` — creates the project directory and metadata. Returns the slug.
       2. `project_activate {slug}` — sets it as the active scope.
