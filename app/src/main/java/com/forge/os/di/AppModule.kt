@@ -67,6 +67,9 @@ object AppModule {
         return Python.getInstance()
     }
 
+    @Provides @Singleton
+    fun provideOkHttpClient(): okhttp3.OkHttpClient = okhttp3.OkHttpClient.Builder().build()
+
     // SecurityPolicy is auto-provided via @Inject constructor - no manual @Provides needed
     // @Provides @Singleton fun provideSecurityPolicy(): SecurityPolicy = SecurityPolicy()
 

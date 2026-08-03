@@ -2,6 +2,7 @@ package com.forge.os.domain.sandbox
 
 import android.content.Context
 import com.forge.os.data.sandbox.SandboxManager
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -22,7 +23,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class PythonPackageManager @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
     private val sandboxManager: SandboxManager,
 ) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
