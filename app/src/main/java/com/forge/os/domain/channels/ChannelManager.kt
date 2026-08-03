@@ -794,6 +794,7 @@ class ChannelManager @Inject constructor(
                                 ),
                             )
                         }
+                        is AgentEvent.Verification -> { /* verification events; skip in channels */ }
                         AgentEvent.Done -> { /* handled below */ }
                     }
                 }

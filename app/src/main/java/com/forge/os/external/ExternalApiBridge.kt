@@ -242,6 +242,7 @@ class ExternalApiBridge @Inject constructor(
                     is AgentEvent.Thinking -> { /* internal */ }
                     is AgentEvent.ToolCall -> onChunk("[tool:${ev.name}]")
                     is AgentEvent.ToolResult -> { /* internal */ }
+                    is AgentEvent.Verification -> { /* internal */ }
                     is AgentEvent.Response -> { full.append(ev.text); onChunk(ev.text) }
                     is AgentEvent.Error -> { onError(500, ev.message); return@collect }
                     is AgentEvent.CostApprovalRequired -> { /* handled internally by agent loop if eco-mode is on */ }

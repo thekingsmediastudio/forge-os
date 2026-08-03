@@ -126,7 +126,8 @@ object AppModule {
         ks: SecureKeyStore, cr: ConfigRepository,
         cer: CustomEndpointRepository, log: ApiCallLog, cm: CostMeter,
         bridgeDiscovery: ForgeBridgeDiscovery,
-    ) = AiApiManager(ks, cr, cer, log, cm, ctx, bridgeDiscovery)
+        capabilityResolver: ModelCapabilityResolver,
+    ) = AiApiManager(ks, cr, cer, log, cm, ctx, bridgeDiscovery, capabilityResolver)
     @Provides @Singleton fun provideConversationRepository(@ApplicationContext ctx: Context) =
         ConversationRepository(ctx)
     @Provides @Singleton fun provideSkillRecorder(sm: SkillMemory) = SkillRecorder(sm)
@@ -257,9 +258,10 @@ object AppModule {
         permissionManager: com.forge.os.domain.security.PermissionManager,
         hapticFeedbackManager: com.forge.os.domain.haptic.HapticFeedbackManager,
         alertManager: com.forge.os.domain.heartbeat.AlertManager,
+        verificationEngine: com.forge.os.domain.agent.VerificationEngine,
     ) = ReActAgent(api, tr, cr, mm, pm, conversationIndex, executionPlanner, traceManager, reflector, userInputBroker,
         reflectionManager, executionHistoryManager, agentPersonality, userPreferencesManager,
-        doctorService, permissionManager, hapticFeedbackManager, alertManager)
+        doctorService, permissionManager, hapticFeedbackManager, alertManager, verificationEngine)
 
     // Phase H/I — Companion (Friend Mode)
     @Provides @Singleton fun providePersonaManager(@ApplicationContext ctx: Context) =

@@ -190,7 +190,7 @@ class ModelCapabilityResolver @Inject constructor(
 
     private suspend fun fetchOllamaVision(spec: ProviderSpec): Boolean? = withContext(Dispatchers.IO) {
         try {
-            val baseUrl = (spec as? ProviderSpec.Builtin)?.provider?.defaultBaseUrl 
+            val baseUrl = (spec as? ProviderSpec.Builtin)?.provider?.baseUrl 
                 ?: "http://localhost:11434"
             val model = spec.effectiveModel
             

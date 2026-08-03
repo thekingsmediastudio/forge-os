@@ -255,6 +255,7 @@ class DelegationManager @Inject constructor(
                                     transcriptBuf.appendLine("✗ error: ${ev.message}")
                                     repository.appendTranscript(record.id, "✗ ${ev.message}")
                                 }
+                                is AgentEvent.Verification -> { /* verification events; skip in transcript */ }
                                 is AgentEvent.CostApprovalRequired -> { /* sub-agents auto-approve within budget rules */ }
                                 is AgentEvent.Done       -> { /* loop exit */ }
                             }

@@ -54,12 +54,14 @@ class FindMyPhoneResponder @Inject constructor(
         scope.launch {
             try {
                 // Answer the call (requires API 26+)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val telecomManager = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
-                    telecomManager.answerRingingCall()
+                val telecomManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val tm = context.getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                    tm.answerRingingCall()
                     Log.i(TAG, "Call answered for Find My Phone from $phoneNumber")
+                    tm
                 } else {
                     Log.w(TAG, "answerRingingCall requires API 26+, current: ${Build.VERSION.SDK_INT}")
+                    null
                 }
 
                 // Wait for call to connect
@@ -86,11 +88,13 @@ class FindMyPhoneResponder @Inject constructor(
 
                 // End call after duration
                 delay(durationMs)
-                try {
-                    telecomManager.endCall()
-                    Log.i(TAG, "Call ended after Find My Phone response")
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not end call automatically", e)
+                if (telecomManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    try {
+                        telecomManager.endCall()
+                        Log.i(TAG, "Call ended after Find My Phone response")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not end call automatically", e)
+                    }
                 }
 
                 // Stop flashing if still active

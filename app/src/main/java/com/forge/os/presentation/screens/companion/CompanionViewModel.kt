@@ -301,7 +301,7 @@ class CompanionViewModel @Inject constructor(
                     }
                     AgentEvent.Done -> _phase.value = CompanionPhase.IDLE
                     is AgentEvent.CostApprovalRequired -> Unit
-                    is AgentEvent.ToolCall, is AgentEvent.ToolResult -> Unit
+                    is AgentEvent.ToolCall, is AgentEvent.ToolResult, is AgentEvent.Verification -> Unit
                 }
             }
             _phase.value = CompanionPhase.IDLE
