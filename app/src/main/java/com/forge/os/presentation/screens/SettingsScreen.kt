@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -141,13 +142,43 @@ fun SettingsScreen(
                 }
             }
 
+            // ── Search bar ──────────────────────────────────────────────
+            var settingsSearchQuery by remember { mutableStateOf("") }
+            ForgeSearchBar(
+                query = settingsSearchQuery,
+                onQueryChange = { settingsSearchQuery = it },
+                placeholder = "Search settings…",
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+            )
+
+            // ── Collapsible section state ────────────────────────────────
+            var collapsedSections = remember { mutableStateMapOf<String, Boolean>() }
+            fun isCollapsed(section: String) = collapsedSections[section] ?: false
+            fun toggleSection(section: String) {
+                collapsedSections[section] = !isCollapsed(section)
+            }
+            fun matchesSearch(vararg keywords: String): Boolean {
+                if (settingsSearchQuery.isBlank()) return true
+                val q = settingsSearchQuery.lowercase()
+                return keywords.any { it.lowercase().contains(q) }
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // ── Appearance ───────────────────────────────────────────
-                item { SectionHeader(title = "APPEARANCE") }
+                if (matchesSearch("appearance", "theme", "dark", "light", "haptic", "display")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "APPEARANCE",
+                        icon = "🎨",
+                        collapsed = isCollapsed("appearance"),
+                        onToggle = { toggleSection("appearance") }
+                    )
+                }
+                if (!isCollapsed("appearance")) {
                 item {
                     Box(modifier = Modifier.spotlightTarget("settings_appearance")) {
                         AppearanceCard(
@@ -158,18 +189,41 @@ fun SettingsScreen(
                         )
                     }
                 }
+                }
+                }
 
                 // ── Model ────────────────────────────────────────────────
-                item { SectionHeader(title = "MODEL") }
+                if (matchesSearch("model", "compact", "token", "budget", "cost", "threshold")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "MODEL",
+                        icon = "🤖",
+                        collapsed = isCollapsed("model"),
+                        onToggle = { toggleSection("model") }
+                    )
+                }
+                if (!isCollapsed("model")) {
                 item {
                     CompactModeCard(
                         enabled = compactModeEnabled,
                         onToggle = { viewModel.setCompactModeEnabled(it) }
                     )
                 }
+                }
+                }
 
                 // ── Built-in Providers ───────────────────────────────────
-                item { SectionHeader(title = "BUILT-IN PROVIDERS") }
+                if (matchesSearch("provider", "api", "key", "openai", "anthropic", "groq", "ollama", "gemini")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "PROVIDERS",
+                        icon = "🔑",
+                        collapsed = isCollapsed("providers"),
+                        onToggle = { toggleSection("providers") },
+                        badge = "${keyStatuses.count { it.hasKey }}/${keyStatuses.size}"
+                    )
+                }
+                if (!isCollapsed("providers")) {
                 item {
                     Box(modifier = Modifier.spotlightTarget("settings_api_keys")) {
                         Column {
@@ -183,21 +237,28 @@ fun SettingsScreen(
                         }
                     }
                 }
+                }
+                }
 
                 // ── Custom Endpoints ─────────────────────────────────────
+                if (matchesSearch("custom", "endpoint", "url", "add", "compatible")) {
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SectionHeader(title = "CUSTOM ENDPOINTS", modifier = Modifier.weight(1f))
-                        TextButton(onClick = { showAddDialog = true }) {
-                            Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Add", color = ModernAccent, fontSize = 13.sp)
+                    CollapsibleSectionHeader(
+                        title = "CUSTOM ENDPOINTS",
+                        icon = "🔗",
+                        collapsed = isCollapsed("endpoints"),
+                        onToggle = { toggleSection("endpoints") },
+                        badge = "${customStatuses.size}",
+                        action = {
+                            TextButton(onClick = { showAddDialog = true }) {
+                                Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add", color = ModernAccent, fontSize = 13.sp)
+                            }
                         }
-                    }
+                    )
                 }
+                if (!isCollapsed("endpoints")) {
                 if (customStatuses.isEmpty()) {
                     item {
                         Text(
@@ -215,21 +276,28 @@ fun SettingsScreen(
                         onDelete = { viewModel.deleteCustomEndpoint(cs.endpoint.id) }
                     )
                 }
+                }
+                }
 
                 // ── Custom API Keys ──────────────────────────────────────
+                if (matchesSearch("secret", "named", "api key", "token", "credential")) {
                 item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        SectionHeader(title = "CUSTOM API KEYS", modifier = Modifier.weight(1f))
-                        TextButton(onClick = { showAddSecretDialog = true }) {
-                            Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Add", color = ModernAccent, fontSize = 13.sp)
+                    CollapsibleSectionHeader(
+                        title = "CUSTOM API KEYS",
+                        icon = "🔐",
+                        collapsed = isCollapsed("secrets"),
+                        onToggle = { toggleSection("secrets") },
+                        badge = "${namedSecretStatuses.size}",
+                        action = {
+                            TextButton(onClick = { showAddSecretDialog = true }) {
+                                Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add", color = ModernAccent, fontSize = 13.sp)
+                            }
                         }
-                    }
+                    )
                 }
+                if (!isCollapsed("secrets")) {
                 item {
                     Text(
                         "Register an API key by name. The agent references it by name only — the raw value never enters the model.",
@@ -249,9 +317,21 @@ fun SettingsScreen(
                         onDelete = { viewModel.deleteNamedSecret(ns.secret.name) },
                     )
                 }
+                }
+                }
 
                 // ── Advanced Execution ───────────────────────────────────
-                item { SectionHeader(title = "ADVANCED EXECUTION") }
+                if (matchesSearch("advanced", "execution", "remote", "gpu", "worker", "python", "cost threshold")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "ADVANCED EXECUTION",
+                        icon = "⚡",
+                        collapsed = isCollapsed("advanced"),
+                        onToggle = { toggleSection("advanced") },
+                        isAdvanced = true
+                    )
+                }
+                if (!isCollapsed("advanced")) {
                 item {
                     AdvancedExecutionCard(
                         costThreshold = costThresholdUsd,
@@ -261,9 +341,21 @@ fun SettingsScreen(
                         onSetHybrid = { url, token -> viewModel.setHybridExecution(url, token) }
                     )
                 }
+                }
+                }
 
                 // ── Predictive Prefetch ──────────────────────────────────
-                item { SectionHeader(title = "PREDICTIVE PREFETCH") }
+                if (matchesSearch("prefetch", "predictive", "cache", "unsafe", "preload")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "PREDICTIVE PREFETCH",
+                        icon = "🚀",
+                        collapsed = isCollapsed("prefetch"),
+                        onToggle = { toggleSection("prefetch") },
+                        isAdvanced = true
+                    )
+                }
+                if (!isCollapsed("prefetch")) {
                 item {
                     PredictivePrefetchCard(
                         enabled = prefetchEnabled,
@@ -272,9 +364,20 @@ fun SettingsScreen(
                         onToggleAllowUnsafe = { viewModel.setPrefetchAllowUnsafe(it) }
                     )
                 }
+                }
+                }
 
                 // ── Intelligence Upgrades ────────────────────────────────
-                item { SectionHeader(title = "INTELLIGENCE UPGRADES") }
+                if (matchesSearch("intelligence", "reflection", "memory", "rag", "vision", "reasoning", "skill")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "INTELLIGENCE",
+                        icon = "🧠",
+                        collapsed = isCollapsed("intelligence"),
+                        onToggle = { toggleSection("intelligence") }
+                    )
+                }
+                if (!isCollapsed("intelligence")) {
                 item {
                     IntelligenceUpgradesCard(
                         reflection = reflectionEnabled,
@@ -287,9 +390,20 @@ fun SettingsScreen(
                         onReasoningToggle = { viewModel.setReasoningEnabled(it) }
                     )
                 }
+                }
+                }
 
                 // ── Backup ───────────────────────────────────────────────
-                item { SectionHeader(title = "BACKUP") }
+                if (matchesSearch("backup", "export", "zip", "archive", "save", "restore")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "BACKUP & DATA",
+                        icon = "💾",
+                        collapsed = isCollapsed("backup"),
+                        onToggle = { toggleSection("backup") }
+                    )
+                }
+                if (!isCollapsed("backup")) {
                 item {
                     BackupCard(
                         loading = backupLoading,
@@ -309,6 +423,8 @@ fun SettingsScreen(
                             }
                         }
                     )
+                }
+                }
                 }
 
                 // ── Ollama Note ──────────────────────────────────────────
@@ -340,18 +456,36 @@ fun SettingsScreen(
                 }
 
                 // ── Capability Padlocks ──────────────────────────────────
+                if (matchesSearch("padlock", "capability", "lock", "security", "restrict")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "CAPABILITY PADLOCKS",
+                        icon = "🔒",
+                        collapsed = isCollapsed("padlocks"),
+                        onToggle = { toggleSection("padlocks") },
+                        isAdvanced = true
+                    )
+                }
+                if (!isCollapsed("padlocks")) {
                 item { CapabilityPadlocksCard() }
-
-                // ── Wishlist Features ────────────────────────────────────
-                item { SectionHeader(title = "FEATURES") }
-                item { WishlistFeaturesCard() }
+                }
+                }
 
                 // ── Memory Channels ──────────────────────────────────────
-                item { SectionHeader(title = "MEMORY CHANNELS") }
+                if (matchesSearch("memory", "channel", "context", "work", "personal")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "MEMORY CHANNELS",
+                        icon = "🧵",
+                        collapsed = isCollapsed("channels"),
+                        onToggle = { toggleSection("channels") }
+                    )
+                }
+                if (!isCollapsed("channels")) {
                 item {
                     val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
                     val channelsEnabled by channelVm.channelsEnabled.collectAsState()
-                    
+
                     Box(modifier = Modifier.spotlightTarget("settings_channels")) {
                         SettingsToggleRow(
                             title = "Enable channels",
@@ -364,7 +498,7 @@ fun SettingsScreen(
                 item {
                     val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
                     val channelsEnabled by channelVm.channelsEnabled.collectAsState()
-                    
+
                     if (channelsEnabled) {
                         SettingsNavRow(
                             icon = Icons.Outlined.ManageAccounts,
@@ -374,9 +508,20 @@ fun SettingsScreen(
                         )
                     }
                 }
+                }
+                }
 
                 // ── Help & Tutorials ─────────────────────────────────────
-                item { SectionHeader(title = "HELP & TUTORIALS") }
+                if (matchesSearch("help", "tutorial", "guide", "replay", "learn")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "HELP & TUTORIALS",
+                        icon = "📚",
+                        collapsed = isCollapsed("help"),
+                        onToggle = { toggleSection("help") }
+                    )
+                }
+                if (!isCollapsed("help")) {
                 item {
                     val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
                     SettingsNavRow(
@@ -388,9 +533,20 @@ fun SettingsScreen(
                         }
                     )
                 }
+                }
+                }
 
                 // ── Routing & Security ───────────────────────────────────
-                item { SectionHeader(title = "ROUTING & SECURITY") }
+                if (matchesSearch("routing", "security", "model routing", "override", "personality", "backup", "restore")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "ROUTING & SECURITY",
+                        icon = "🛡️",
+                        collapsed = isCollapsed("routing"),
+                        onToggle = { toggleSection("routing") }
+                    )
+                }
+                if (!isCollapsed("routing")) {
                 item {
                     SettingsNavRow(
                         icon = Icons.Outlined.AltRoute,
@@ -423,15 +579,36 @@ fun SettingsScreen(
                         onClick = onNavigateToBackup
                     )
                 }
+                }
+                }
 
                 // ── Permissions ──────────────────────────────────────────
-                item { SectionHeader(title = "PERMISSIONS") }
+                if (matchesSearch("permission", "access", "allow", "grant")) {
                 item {
-                    PermissionsCard()
+                    CollapsibleSectionHeader(
+                        title = "PERMISSIONS",
+                        icon = "🔑",
+                        collapsed = isCollapsed("permissions"),
+                        onToggle = { toggleSection("permissions") }
+                    )
+                }
+                if (!isCollapsed("permissions")) {
+                item { PermissionsCard() }
+                }
                 }
 
                 // ── API Server ───────────────────────────────────────────
-                item { SectionHeader(title = "API SERVER") }
+                if (matchesSearch("api", "server", "http", "sdk", "port", "token")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "API SERVER",
+                        icon = "🖥️",
+                        collapsed = isCollapsed("apiserver"),
+                        onToggle = { toggleSection("apiserver") },
+                        isAdvanced = true
+                    )
+                }
+                if (!isCollapsed("apiserver")) {
                 item {
                     ApiServerCard(
                         running = apiServerRunning,
@@ -442,9 +619,20 @@ fun SettingsScreen(
                         onRegenerateToken = { viewModel.regenerateApiToken() }
                     )
                 }
+                }
+                }
 
                 // ── About ────────────────────────────────────────────────
-                item { SectionHeader(title = "ABOUT") }
+                if (matchesSearch("about", "version", "forge", "build", "labs")) {
+                item {
+                    CollapsibleSectionHeader(
+                        title = "ABOUT",
+                        icon = "ℹ️",
+                        collapsed = isCollapsed("about"),
+                        onToggle = { toggleSection("about") }
+                    )
+                }
+                if (!isCollapsed("about")) {
                 item {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -484,6 +672,8 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+                }
                 }
 
                 item { Spacer(Modifier.height(32.dp)) }
@@ -1921,6 +2111,101 @@ private fun ApiServerCard(
                     Text("Start API Server", fontSize = 13.sp, color = Color.White)
                 }
             }
+        }
+    }
+}
+
+// ── Collapsible Section Header ──────────────────────────────────────────────
+
+/**
+ * Section header with expand/collapse toggle, icon, optional badge, and optional action.
+ * Used to group settings into collapsible sections for progressive disclosure.
+ */
+@Composable
+private fun CollapsibleSectionHeader(
+    title: String,
+    icon: String,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    badge: String? = null,
+    isAdvanced: Boolean = false,
+    action: (@Composable () -> Unit)? = null
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = Color.Transparent,
+        onClick = onToggle
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .background(
+                        if (isAdvanced) forgePalette.danger.copy(alpha = 0.08f)
+                        else ModernAccent.copy(alpha = 0.08f),
+                        RoundedCornerShape(8.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(icon, fontSize = 16.sp)
+            }
+            Spacer(Modifier.width(12.dp))
+
+            // Title
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        color = ModernTextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.sp
+                    )
+                    if (isAdvanced) {
+                        Spacer(Modifier.width(6.dp))
+                        StatusBadge(
+                            status = "DEV",
+                            color = forgePalette.danger
+                        )
+                    }
+                }
+            }
+
+            // Badge
+            if (badge != null) {
+                Surface(
+                    color = forgePalette.surface2,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        badge,
+                        color = forgePalette.textDim,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+            }
+
+            // Action slot
+            if (action != null) {
+                action()
+            }
+
+            // Chevron
+            Text(
+                if (collapsed) "▸" else "▾",
+                color = forgePalette.textDim,
+                fontSize = 14.sp
+            )
         }
     }
 }

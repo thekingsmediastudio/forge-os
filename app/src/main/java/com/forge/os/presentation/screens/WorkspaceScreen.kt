@@ -8,10 +8,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -56,6 +60,7 @@ fun WorkspaceScreen(
     var newDialog by remember { mutableStateOf<NewKind?>(null) }
     var renameTarget by remember { mutableStateOf<WorkspaceFileItem?>(null) }
     var deleteTarget by remember { mutableStateOf<WorkspaceFileItem?>(null) }
+    var gridView by remember { mutableStateOf(false) }
 
     val multiSelect = state.selection.isNotEmpty()
 
@@ -89,6 +94,11 @@ fun WorkspaceScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { gridView = !gridView }) {
+                            Icon(
+                                if (gridView) Icons.Default.ViewList else Icons.Default.GridView,
+                                if (gridView) "List view" else "Grid view")
+                        }
                         IconButton(onClick = { showSort = true }) {
                             Icon(Icons.Default.Sort, "Sort")
                         }
@@ -134,6 +144,30 @@ fun WorkspaceScreen(
 
             if (state.entries.isEmpty()) {
                 EmptyState(query = state.query)
+            } else if (gridView) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    gridItems(state.entries, key = { it.path.ifEmpty { it.name } }) { file ->
+                        FileGridCard(
+                            file = file,
+                            isSelected = file.path in state.selection,
+                            multiSelectActive = multiSelect,
+                            onTap = {
+                                if (multiSelect) {
+                                    viewModel.toggleSelection(file.path)
+                                } else if (file.isDirectory) {
+                                    viewModel.openDirectory(file.path)
+                                } else {
+                                    onOpenFile(file.path)
+                                }
+                            },
+                            onLongPress = { viewModel.toggleSelection(file.path) })
+                    }
+                }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(state.entries, key = { it.path.ifEmpty { it.name } }) { file ->
@@ -336,10 +370,11 @@ private fun FileRow(
                 if (multiSelectActive) {
                     Checkbox(checked = isSelected, onCheckedChange = { onLongPress() })
                 } else {
+                    val (icon, tint) = fileIconAndTint(file)
                     Icon(
-                        imageVector = if (file.isDirectory) Icons.Default.Folder else Icons.Default.InsertDriveFile,
+                        imageVector = icon,
                         contentDescription = null,
-                        tint = if (file.isDirectory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        tint = tint)
                 }
             },
             trailingContent = {
@@ -358,6 +393,72 @@ private fun FileRow(
                 }
             },
             modifier = Modifier.background(bg))
+    }
+}
+
+/** Extension-aware icon + tint for a workspace file. */
+@Composable
+private fun fileIconAndTint(file: WorkspaceFileItem): Pair<androidx.compose.ui.graphics.vector.ImageVector, androidx.compose.ui.graphics.Color> {
+    if (file.isDirectory) return Icons.Default.Folder to MaterialTheme.colorScheme.primary
+    val ext = file.name.substringAfterLast('.', "").lowercase()
+    val scheme = MaterialTheme.colorScheme
+    return when (ext) {
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "svg" ->
+            Icons.Default.Image to scheme.tertiary
+        "mp4", "mkv", "avi", "mov", "webm", "3gp" ->
+            Icons.Default.PlayCircle to scheme.tertiary
+        "mp3", "wav", "ogg", "flac", "m4a", "aac" ->
+            Icons.Default.MusicNote to scheme.tertiary
+        "pdf" ->
+            Icons.Default.PictureAsPdf to scheme.error
+        "zip", "tar", "gz", "7z", "rar", "json", "xml", "csv", "txt", "md", "log" ->
+            Icons.Default.Description to scheme.secondary
+        "py", "kt", "java", "js", "ts", "sh", "c", "cpp", "go", "rs", "html", "css" ->
+            Icons.Default.Code to scheme.secondary
+        else ->
+            Icons.Default.InsertDriveFile to scheme.onSurfaceVariant
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun FileGridCard(
+    file: WorkspaceFileItem,
+    isSelected: Boolean,
+    multiSelectActive: Boolean,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit) {
+    val bg = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
+    val (icon, tint) = fileIconAndTint(file)
+    Surface(
+        color = bg,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onTap, onLongClick = onLongPress)) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(tint.copy(alpha = 0.12f), androidx.compose.foundation.shape.RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(26.dp))
+            }
+            Text(
+                file.name,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = if (file.isDirectory) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(
+                if (file.isDirectory) "Folder" else humanSize(file.size),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

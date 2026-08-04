@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.forge.os.data.api.CostMeter
+import com.forge.os.presentation.components.BudgetBar
+import com.forge.os.presentation.components.SparkBarChart
 import com.forge.os.presentation.screens.common.ForgeOsPalette
 import com.forge.os.presentation.screens.common.ModuleScaffold
 
@@ -62,14 +64,36 @@ fun CostStatsScreen(
         }
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+            // Daily budget
+            var dailyBudget by remember { mutableStateOf(5.0) }
+            Section("TODAY") {
+                statRow("Spent today", "${"%.4f".format(snap.dailyUsd)}")
+                Spacer(Modifier.height(8.dp))
+                BudgetBar(current = snap.dailyUsd, total = dailyBudget)
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Daily budget: ", color = ForgeOsPalette.TextMuted, fontSize = 11.sp)
+                    listOf(1.0, 5.0, 10.0, 25.0).forEach { b ->
+                        Text(
+                            "${b.toInt()}",
+                            color = if (dailyBudget == b) ForgeOsPalette.Orange else ForgeOsPalette.TextMuted,
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .clickable { dailyBudget = b }
+                                .padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
             // Totals
             Section("TOTALS") {
-                statRow("Lifetime", "$${"%.4f".format(snap.lifetimeUsd)} (${snap.callCount} calls)")
-                statRow("Session", "$${"%.4f".format(snap.sessionUsd)} (${snap.sessionCalls} calls)")
+                statRow("Lifetime", "${"%.4f".format(snap.lifetimeUsd)} (${snap.callCount} calls)")
+                statRow("Session", "${"%.4f".format(snap.sessionUsd)} (${snap.sessionCalls} calls)")
                 // Phase M-3 — agent vs companion split.
-                statRow("Agent",     "$${"%.4f".format(snap.agentUsd)} (${snap.agentCalls} calls)")
-                statRow("Companion", "$${"%.4f".format(snap.companionUsd)} (${snap.companionCalls} calls)")
-                statRow("Last call", "$${"%.4f".format(snap.lastCallUsd)} (in ${snap.lastInputTokens}, out ${snap.lastOutputTokens} tok)")
+                statRow("Agent",     "${"%.4f".format(snap.agentUsd)} (${snap.agentCalls} calls)")
+                statRow("Companion", "${"%.4f".format(snap.companionUsd)} (${snap.companionCalls} calls)")
+                statRow("Last call", "${"%.4f".format(snap.lastCallUsd)} (in ${snap.lastInputTokens}, out ${snap.lastOutputTokens} tok)")
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("RESET SESSION", color = ForgeOsPalette.Orange, fontSize = 11.sp,
@@ -84,8 +108,16 @@ fun CostStatsScreen(
                 if (snap.perModel.isEmpty()) {
                     Text("No usage yet.", color = ForgeOsPalette.TextMuted, fontSize = 11.sp)
                 } else {
-                    snap.perModel.entries.sortedByDescending { it.value.usd }.forEach { (model, st) ->
-                        statRow(model, "$${"%.4f".format(st.usd)}  •  ${st.calls} calls  •  in ${st.inputTokens}/out ${st.outputTokens}")
+                    val sorted = snap.perModel.entries.sortedByDescending { it.value.usd }
+                    // Bar chart of per-model spend
+                    SparkBarChart(
+                        values = sorted.map { it.value.usd.toFloat() },
+                        labels = sorted.map { it.key.substringAfter('/').take(8) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    sorted.forEach { (model, st) ->
+                        statRow(model, "${"%.4f".format(st.usd)}  •  ${st.calls} calls  •  in ${st.inputTokens}/out ${st.outputTokens}")
                     }
                 }
             }
@@ -134,9 +166,9 @@ fun CostStatsScreen(
 private fun Section(title: String, content: @Composable () -> Unit) {
     Column(
         Modifier.fillMaxWidth()
-            .background(ForgeOsPalette.Surface, RoundedCornerShape(6.dp))
-            .border(1.dp, ForgeOsPalette.Border, RoundedCornerShape(6.dp))
-            .padding(12.dp)) {
+            .background(ForgeOsPalette.Surface, RoundedCornerShape(12.dp))
+            .border(1.dp, ForgeOsPalette.Border, RoundedCornerShape(12.dp))
+            .padding(14.dp)) {
         Text(title, color = ForgeOsPalette.Orange,
             fontSize = 11.sp, letterSpacing = 1.sp)
         Spacer(Modifier.height(8.dp))

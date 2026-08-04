@@ -3,6 +3,7 @@ package com.forge.os.presentation.screens.projects
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -82,11 +83,17 @@ fun ProjectsScreen(
                     val active = state.active
                     Row(
                         Modifier.fillMaxWidth()
-                            .background(ForgeOsPalette.Surface2, RoundedCornerShape(6.dp))
-                            .padding(10.dp),
+                            .background(ForgeOsPalette.Surface2, RoundedCornerShape(12.dp))
+                            .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        Text("ACTIVE: ${active?.name ?: "(none)"}",
-                            color = if (active == null) ForgeOsPalette.TextMuted else ForgeOsPalette.Orange, fontSize = 11.sp)
+                        Icon(Icons.Default.CheckCircle, null,
+                            tint = if (active == null) ForgeOsPalette.TextDim else ForgeOsPalette.Orange,
+                            modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (active != null) "Active: ${active.name}" else "No active project",
+                            color = if (active == null) ForgeOsPalette.TextMuted else ForgeOsPalette.Orange,
+                            fontSize = 12.sp)
                         Spacer(Modifier.weight(1f))
                         if (active != null) TextButton(onClick = { viewModel.activate(null) }) {
                             Text("CLEAR", color = ForgeOsPalette.TextMuted, fontSize = 10.sp)
@@ -94,8 +101,17 @@ fun ProjectsScreen(
                     }
                 }
                 if (state.projects.isEmpty()) item {
-                    Text("No projects yet.\nTap + to create your first scoped workspace.",
-                        color = ForgeOsPalette.TextMuted, fontSize = 11.sp)
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("📁", fontSize = 40.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Text("No projects yet",
+                            color = ForgeOsPalette.TextPrimary, fontSize = 15.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("Tap + to create your first scoped workspace",
+                            color = ForgeOsPalette.TextMuted, fontSize = 12.sp)
+                    }
                 }
                 items(state.projects, key = { it.slug }) { p ->
                     ProjectCard(
@@ -133,13 +149,24 @@ private fun ProjectCard(
     onClick: () -> Unit) {
     Column(
         Modifier.fillMaxWidth()
-            .background(ForgeOsPalette.Surface, RoundedCornerShape(6.dp))
-            .border(1.dp, if (active) ForgeOsPalette.Orange else ForgeOsPalette.Border,
-                RoundedCornerShape(6.dp))
-            .clickable { onClick() }.padding(12.dp)) {
+            .background(ForgeOsPalette.Surface, RoundedCornerShape(12.dp))
+            .border(
+                1.dp,
+                if (active) ForgeOsPalette.Orange else ForgeOsPalette.Border,
+                RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Folder icon
+            Box(
+                Modifier.size(36.dp)
+                    .background(ForgeOsPalette.Orange.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center) {
+                Text("📁", fontSize = 18.sp)
+            }
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(project.name, color = ForgeOsPalette.TextPrimary, fontSize = 13.sp)
+                Text(project.name, color = ForgeOsPalette.TextPrimary, fontSize = 14.sp)
                 Text("workspace/projects/${project.slug}",
                     color = ForgeOsPalette.TextDim, fontSize = 10.sp)
             }
@@ -150,12 +177,30 @@ private fun ProjectCard(
             }
         }
         if (project.description.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            Text(project.description, color = ForgeOsPalette.TextMuted, fontSize = 11.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(project.description, color = ForgeOsPalette.TextMuted, fontSize = 12.sp)
         }
-        Spacer(Modifier.height(4.dp))
-        Text("$fileCount files • ${project.scopedTools.size} tools • ${project.scopedMemoryTags.size} mem tags",
-            color = ForgeOsPalette.TextDim, fontSize = 10.sp)
+        Spacer(Modifier.height(8.dp))
+        // Stat chips row
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            ProjectStatChip("📄", "$fileCount files")
+            ProjectStatChip("🔧", "${project.scopedTools.size} tools")
+            if (project.scopedMemoryTags.isNotEmpty()) {
+                ProjectStatChip("🏷", "${project.scopedMemoryTags.size} tags")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectStatChip(icon: String, label: String) {
+    Row(
+        Modifier.background(ForgeOsPalette.Surface2, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(icon, fontSize = 10.sp)
+        Spacer(Modifier.width(4.dp))
+        Text(label, color = ForgeOsPalette.TextMuted, fontSize = 10.sp)
     }
 }
 
@@ -201,32 +246,102 @@ private fun DetailDialog(
     onDelete: () -> Unit,
     onDismiss: () -> Unit) {
     var description by remember { mutableStateOf(project.description) }
-    var scopedTools by remember { mutableStateOf(project.scopedTools.joinToString(",")) }
+    var toolList by remember { mutableStateOf(project.scopedTools) }
+    var newTool by remember { mutableStateOf("") }
     var scopedTags by remember { mutableStateOf(project.scopedMemoryTags.joinToString(",")) }
     var agentId by remember { mutableStateOf(project.scopedAgentId ?: "") }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = ForgeOsPalette.Surface,
+            title = { Text("Delete project?", color = ForgeOsPalette.Danger, fontSize = 14.sp) },
+            text = {
+                Text(
+                    "\"${project.name}\" and its workspace folder will be permanently removed. This cannot be undone.",
+                    color = ForgeOsPalette.TextMuted, fontSize = 12.sp)
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete() }) {
+                    Text("DELETE", color = ForgeOsPalette.Danger)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("CANCEL", color = ForgeOsPalette.TextMuted)
+                }
+            })
+        return
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = ForgeOsPalette.Surface,
         title = { Text(project.name, color = ForgeOsPalette.Orange, fontSize = 14.sp) },
         text = {
-            Column(Modifier.fillMaxWidth().heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 Text(project.slug, color = ForgeOsPalette.TextDim, fontSize = 10.sp)
                 Spacer(Modifier.height(6.dp))
                 Lab("description", description) { description = it }
-                Lab("scoped tools (comma-sep)", scopedTools) { scopedTools = it }
+
+                // Scoped tools as chips + add field
+                Text("scoped tools", color = ForgeOsPalette.TextMuted, fontSize = 10.sp)
+                Spacer(Modifier.height(4.dp))
+                if (toolList.isNotEmpty()) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        toolList.forEach { tool ->
+                            Row(
+                                Modifier.background(ForgeOsPalette.Surface2, RoundedCornerShape(8.dp))
+                                    .padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Text(tool, color = ForgeOsPalette.TextPrimary, fontSize = 11.sp)
+                                Spacer(Modifier.width(2.dp))
+                                Text("✕", color = ForgeOsPalette.TextDim, fontSize = 10.sp,
+                                    modifier = Modifier.clickable { toolList = toolList - tool }
+                                        .padding(horizontal = 4.dp))
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newTool, onValueChange = { newTool = it },
+                        modifier = Modifier.weight(1f), singleLine = true,
+                        placeholder = { Text("add tool…", color = ForgeOsPalette.TextDim, fontSize = 11.sp) },
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = ForgeOsPalette.TextPrimary, fontSize = 12.sp))
+                    Spacer(Modifier.width(6.dp))
+                    TextButton(
+                        onClick = {
+                            val t = newTool.trim()
+                            if (t.isNotEmpty() && t !in toolList) {
+                                toolList = toolList + t
+                                newTool = ""
+                            }
+                        },
+                        enabled = newTool.isNotBlank()) {
+                        Text("ADD", color = ForgeOsPalette.Orange, fontSize = 11.sp)
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+
                 Lab("scoped memory tags (comma-sep)", scopedTags) { scopedTags = it }
                 Lab("scoped agent id (optional)", agentId) { agentId = it }
             }
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onDelete) {
+                TextButton(onClick = { confirmDelete = true }) {
                     Text("DELETE", color = ForgeOsPalette.Danger)
                 }
                 TextButton(onClick = {
                     onSave(project.copy(
                         description = description,
-                        scopedTools = scopedTools.split(",").map { it.trim() }.filter { it.isNotBlank() },
+                        scopedTools = toolList,
                         scopedMemoryTags = scopedTags.split(",").map { it.trim() }.filter { it.isNotBlank() },
                         scopedAgentId = agentId.ifBlank { null }))
                 }) { Text("SAVE", color = ForgeOsPalette.Success) }
