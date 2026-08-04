@@ -297,6 +297,20 @@ class ToolRegistry @Inject constructor(
             recordAudit(toolName, argsJson, started, r, source)
             return r
         }
+        // Destructive-tool confirmation gate (SUPERVISED/BALANCED autonomy). Suspends
+        // the agent coroutine until the user allows/denies via UserInputBroker, or a
+        // timeout auto-declines. FULL_TRUST sets autoConfirmToolCalls=true so
+        // requiresConfirmation is false and this is skipped entirely.
+        if (check.requiresConfirmation) {
+            val allowed = runCatching {
+                userInputBroker.awaitConfirmation(toolName, summarizeArgs(argsJson))
+            }.getOrDefault(false)
+            if (!allowed) {
+                val r = ToolResult(toolCallId, toolName, "🚫 User declined '$toolName' — action not performed.", isError = true)
+                recordAudit(toolName, argsJson, started, r, source)
+                return r
+            }
+        }
         return try {
             val args = parseArgs(argsJson)
             val output = if (toolName == "python_run") {
@@ -2822,6 +2836,12 @@ To use Composio:
      *    wrapping single-key salvage; otherwise an empty map is returned and
      *    the failure is logged so the user can see WHY parsing failed.
      */
+    /** Short, display-safe preview of tool args for the confirmation dialog. */
+    private fun summarizeArgs(argsJson: String): String {
+        val compact = argsJson.replace(Regex("\\s+"), " ").trim()
+        return if (compact.length <= 200) compact else compact.take(197) + "…"
+    }
+
     private fun parseArgs(json: String): Map<String, Any> {
         if (json.isBlank()) return emptyMap()
         val root: JsonObject = try {

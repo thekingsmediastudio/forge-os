@@ -17,6 +17,16 @@ import javax.inject.Singleton
  */
 data class PendingQuestion(val routeKey: String, val question: String)
 
+/** A destructive-tool confirmation routed to a mailbox, mirroring [PendingQuestion].
+ *  [confirmId] correlates the request with the UI dialog; [argsSummary] is a
+ *  short, display-safe preview of the tool arguments. */
+data class PendingConfirmation(
+    val routeKey: String,
+    val confirmId: String,
+    val toolName: String,
+    val argsSummary: String
+)
+
 /**
  * Coordinates mid-run user input requests between the agent loop (ToolRegistry)
  * and whichever surface is currently driving the agent (the in-app chat,
@@ -72,5 +82,48 @@ class UserInputBroker @Inject constructor() {
     suspend fun submitResponse(routeKey: String, response: String) {
         val ch = responseChannels[routeKey] ?: return
         ch.send(response)
+    }
+
+    // ─── Destructive-tool confirmation ──────────────────────────────────────
+    // Separate flow/channels from free-text questions so the two never cross.
+
+    private val _confirmations = MutableSharedFlow<PendingConfirmation>(extraBufferCapacity = 16)
+    /** Hot flow of pending destructive-tool confirmations. Subscribers filter
+     *  on the route key they own. */
+    val confirmations: SharedFlow<PendingConfirmation> = _confirmations.asSharedFlow()
+
+    private val confirmChannels = ConcurrentHashMap<String, Channel<Boolean>>()
+    private val pendingConfirm = ConcurrentHashMap.newKeySet<String>()
+
+    /** Default how long a confirmation request waits for a user answer before
+     *  auto-declining. Prevents non-UI routes (Telegram, cron) from hanging forever. */
+    var confirmationTimeoutMs: Long = 120_000
+
+    /** Called by ToolRegistry when a tool needs user confirmation. Publishes the
+     *  request on the active route and suspends until [submitConfirmation] or a
+     *  timeout. Returns `true` if the user allowed the action, `false` otherwise. */
+    suspend fun awaitConfirmation(toolName: String, argsSummary: String): Boolean {
+        val route = currentCoroutineContext()[InputRoute]?.routeKey ?: InputRoute.UI
+        val ch = confirmChannels.computeIfAbsent(route) { Channel(Channel.RENDEZVOUS) }
+        val id = "conf_${System.currentTimeMillis()}"
+        pendingConfirm.add(route)
+        return try {
+            _confirmations.emit(PendingConfirmation(route, id, toolName, argsSummary))
+            kotlinx.coroutines.withTimeoutOrNull(confirmationTimeoutMs) { ch.receive() } ?: false
+        } catch (e: Exception) {
+            false
+        } finally {
+            pendingConfirm.remove(route)
+        }
+    }
+
+    /** True when an agent run on [routeKey] is suspended awaiting a confirmation. */
+    fun isAwaitingConfirmation(routeKey: String): Boolean = routeKey in pendingConfirm
+
+    /** Called by the surface that owns the route to deliver the user's decision.
+     *  Safe to call when nothing is waiting — the value is dropped. */
+    suspend fun submitConfirmation(routeKey: String, allow: Boolean) {
+        val ch = confirmChannels[routeKey] ?: return
+        ch.send(allow)
     }
 }

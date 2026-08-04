@@ -148,6 +148,21 @@ class UserPreferencesManager @Inject constructor(
     }
 
     /**
+     * Update the user's profile (collected during onboarding, editable in Settings).
+     */
+    fun updateProfile(profile: UserProfile) {
+        updatePreferences(getPreferences().copy(profile = profile))
+        Timber.i("Updated user profile: ${profile.name}")
+    }
+
+    /**
+     * Get the user's profile.
+     */
+    fun getProfile(): UserProfile {
+        return getPreferences().profile
+    }
+
+    /**
      * Record an interaction pattern (e.g., "user often creates Python projects").
      */
     fun recordInteractionPattern(pattern: String, frequency: Int = 1) {
@@ -251,11 +266,26 @@ class UserPreferencesManager @Inject constructor(
 @Serializable
 data class UserPreferences(
     val uiPreferences: UIPreferences = UIPreferences(),
+    val profile: UserProfile = UserProfile(),
     val rememberedProjects: List<RememberedProject> = emptyList(),
     val interactionPatterns: Map<String, Int> = emptyMap(),
     val customShortcuts: Map<String, String> = emptyMap(),
     val createdAt: Long = System.currentTimeMillis(),
     val lastModified: Long = System.currentTimeMillis()
+)
+
+@Serializable
+data class UserProfile(
+    val name: String = "",
+    val pronouns: String = "",
+    val occupation: String = "",
+    val language: String = "en",
+    val timezone: String = "",
+    val dailyRhythm: String = "",
+    val interests: List<String> = emptyList(),
+    val techLevel: String = "",
+    val replyLength: String = "",
+    val alwaysRemember: String = ""
 )
 
 @Serializable

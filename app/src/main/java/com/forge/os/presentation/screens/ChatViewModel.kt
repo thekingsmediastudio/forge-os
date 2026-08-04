@@ -107,6 +107,10 @@ class ChatViewModel @Inject constructor(
     private val _pendingCostApproval = MutableStateFlow<ExecutionPlanner.CostEstimate?>(null)
     val pendingCostApproval: StateFlow<ExecutionPlanner.CostEstimate?> = _pendingCostApproval
 
+    /** Non-null when a destructive tool is paused awaiting user confirmation. */
+    private val _pendingConfirmation = MutableStateFlow<com.forge.os.domain.agent.PendingConfirmation?>(null)
+    val pendingConfirmation: StateFlow<com.forge.os.domain.agent.PendingConfirmation?> = _pendingConfirmation
+
     /** Multimodal support — pending image attachments for the next message. */
     private val _pendingImages = MutableStateFlow<List<ImageAttachment>>(emptyList())
     val pendingImages: StateFlow<List<ImageAttachment>> = _pendingImages
@@ -138,6 +142,14 @@ class ChatViewModel @Inject constructor(
                 if (q.routeKey != InputRoute.UI) return@collect
                 val requestId = "ireq_${System.currentTimeMillis()}"
                 _pendingInputRequest.value = InputRequest(q.question, requestId)
+            }
+        }
+
+        // Listen for destructive-tool confirmation requests destined for the UI.
+        viewModelScope.launch {
+            userInputBroker.confirmations.collect { c ->
+                if (c.routeKey != InputRoute.UI) return@collect
+                _pendingConfirmation.value = c
             }
         }
 
@@ -368,6 +380,7 @@ class ChatViewModel @Inject constructor(
             _isLoading.value = false
             _pendingInputRequest.value = null
             _pendingCostApproval.value = null
+            _pendingConfirmation.value = null
             persistCurrent()
             // Drain anything the user typed while we were busy (FIFO).
             val next = pendingSends.removeFirstOrNull()
@@ -492,6 +505,22 @@ Tip: Use snapshot_create before processing large uploads.
         viewModelScope.launch {
             userInputBroker.submitResponse(InputRoute.UI, "reject")
         }
+    }
+
+    /** User allowed the pending destructive tool. */
+    fun confirmTool() {
+        val c = _pendingConfirmation.value ?: return
+        _pendingConfirmation.value = null
+        addMsg(ChatMessage(role = "system", content = "🛡️ Allowed: ${c.toolName}"))
+        viewModelScope.launch { userInputBroker.submitConfirmation(InputRoute.UI, true) }
+    }
+
+    /** User declined the pending destructive tool. */
+    fun denyTool() {
+        val c = _pendingConfirmation.value ?: return
+        _pendingConfirmation.value = null
+        addMsg(ChatMessage(role = "system", content = "🚫 Declined: ${c.toolName}"))
+        viewModelScope.launch { userInputBroker.submitConfirmation(InputRoute.UI, false) }
     }
 
     private fun handleLocalCommand(input: String): Boolean {

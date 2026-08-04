@@ -160,6 +160,7 @@ private fun ChatScreenContent(
     val sysStatus by viewModel.systemStatus.collectAsState()
     val inputRequest by viewModel.pendingInputRequest.collectAsState()
     val costApproval by viewModel.pendingCostApproval.collectAsState()
+    val toolConfirmation by viewModel.pendingConfirmation.collectAsState()
 
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -357,6 +358,54 @@ private fun ChatScreenContent(
                     dismissButton = {
                         TextButton(onClick = { viewModel.rejectCost() }) {
                             Text("REJECT", color = TextMuted, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    },
+                    containerColor = Surface,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+
+        // Destructive-tool confirmation dialog
+        AnimatedVisibility(visible = toolConfirmation != null) {
+            toolConfirmation?.let { conf ->
+                AlertDialog(
+                    onDismissRequest = { viewModel.denyTool() },
+                    title = {
+                        Text("🛡️ CONFIRM ACTION", color = Orange, fontFamily = FontFamily.Monospace,
+                             fontSize = 14.sp, letterSpacing = 2.sp)
+                    },
+                    text = {
+                        Column {
+                            Text("The agent wants to run a sensitive action.",
+                                 color = TextPrimary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            Spacer(Modifier.height(12.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("TOOL", color = TextMuted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                Text(conf.toolName, color = Orange, fontSize = 12.sp,
+                                     fontFamily = FontFamily.Monospace, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                            }
+                            if (conf.argsSummary.isNotBlank() && conf.argsSummary != "{}") {
+                                Spacer(Modifier.height(8.dp))
+                                Text("ARGS", color = TextMuted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                Spacer(Modifier.height(2.dp))
+                                Text(conf.argsSummary, color = TextPrimary, fontSize = 11.sp,
+                                     fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { viewModel.confirmTool() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Orange, contentColor = Color.Black),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("ALLOW", fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.denyTool() }) {
+                            Text("DENY", color = TextMuted, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                         }
                     },
                     containerColor = Surface,
