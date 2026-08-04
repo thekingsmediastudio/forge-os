@@ -2,7 +2,7 @@ import ast
 
 
 BLOCKED_IMPORTS = {
-    'socket', 'subprocess', 'urllib.request', 'http.client',
+    'subprocess', 'urllib.request', 'http.client',
     'ftplib', 'smtplib', 'telnetlib', 'ssl', 'ctypes', 'mmap',
     'multiprocessing', 'concurrent.futures', 'asyncio'
 }

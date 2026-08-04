@@ -254,7 +254,14 @@ class ChatViewModel @Inject constructor(
         val images = _pendingImages.value
         _pendingImages.value = emptyList()
 
-        addMsg(ChatMessage(role = "user", content = input))
+        // Attach first file info to the user message so it renders in the bubble
+        val firstAttachment = images.firstOrNull()
+        addMsg(ChatMessage(
+            role = "user",
+            content = input,
+            attachmentPath = firstAttachment?.filePath,
+            attachmentMime = firstAttachment?.mimeType,
+        ))
         hapticManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.LIGHT_TICK)
         skillRecorder.noteUserRequest(input)
         if (handleLocalCommand(input)) { persistCurrent(); return }

@@ -137,19 +137,33 @@ fun ModernChatScreen(
                     }
                     
                     val mimeType = context.contentResolver.getType(it) ?: "application/octet-stream"
-                    
+
+                    // Read bytes once for both base64 and workspace save
+                    val fileBytes = context.contentResolver.openInputStream(it)?.use { s -> s.readBytes() }
+
                     // Only encode images to base64 (for vision models)
-                    val base64 = if (mimeType.startsWith("image/")) {
-                        val inputStream = context.contentResolver.openInputStream(it)
-                        val bytes = inputStream?.readBytes()
-                        inputStream?.close()
-                        bytes?.let { b -> android.util.Base64.encodeToString(b, android.util.Base64.NO_WRAP) }
+                    val base64 = if (mimeType.startsWith("image/") && fileBytes != null) {
+                        android.util.Base64.encodeToString(fileBytes, android.util.Base64.NO_WRAP)
                     } else {
                         null
                     }
-                    
+
+                    // Persist the file into the workspace uploads/ folder so the agent can access it
+                    val savedPath = fileBytes?.let { bytes ->
+                        try {
+                            val uploadsDir = java.io.File(context.filesDir, "workspace/uploads")
+                            uploadsDir.mkdirs()
+                            val destFile = java.io.File(uploadsDir, fileName)
+                            destFile.writeBytes(bytes)
+                            destFile.absolutePath
+                        } catch (e: Exception) {
+                            timber.log.Timber.e(e, "Failed to save upload to workspace")
+                            null
+                        }
+                    }
+
                     val attachment = com.forge.os.domain.agent.FileAttachment(
-                        filePath = it.toString(),
+                        filePath = savedPath ?: it.toString(),
                         fileName = fileName,
                         mimeType = mimeType,
                         fileSize = fileSize,
@@ -738,7 +752,7 @@ private fun groupMessages(messages: List<ChatMessage>): List<MessageGroup> {
 
     for (msg in messages) {
         when (msg.role) {
-            "tool_call", "tool_result" -> {
+            "tool_call", "tool_result", "verification" -> {
                 pendingSteps.add(msg)
             }
             "assistant" -> {
@@ -802,7 +816,7 @@ private fun AiActivityMessage(
     var showSheet by remember { mutableStateOf(false) }
 
     val runningStep = steps.lastOrNull { it.role == "tool_call" }
-    val doneCount = steps.count { it.role == "tool_result" && !it.isError }
+    val doneCount = steps.count { (it.role == "tool_result" || it.role == "verification") && !it.isError }
     val hasError = steps.any { it.isError }
     val isRunning = response == null || isStreaming
 
@@ -955,6 +969,7 @@ private fun AiActivityMessage(
 @Composable
 private fun ActivityStepRow(step: ChatMessage) {
     val isToolCall = step.role == "tool_call"
+    val isVerification = step.role == "verification"
     val isError = step.isError
 
     Row(
@@ -968,6 +983,7 @@ private fun ActivityStepRow(step: ChatMessage) {
         val stepDotColor = when {
             isError -> forgePalette.danger
             isToolCall -> forgePalette.thinking
+            isVerification -> forgePalette.success
             else -> forgePalette.success
         }
         Box(
@@ -980,7 +996,11 @@ private fun ActivityStepRow(step: ChatMessage) {
         Column(modifier = Modifier.weight(1f)) {
             // Step title
             Text(
-                step.toolName ?: if (isToolCall) "tool_call" else "tool_result",
+                step.toolName ?: when {
+                    isToolCall -> "tool_call"
+                    isVerification -> "verification"
+                    else -> "tool_result"
+                },
                 color = if (isError) forgePalette.danger else ModernTextSecondary,
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
@@ -996,6 +1016,14 @@ private fun ActivityStepRow(step: ChatMessage) {
                     lineHeight = 15.sp,
                 )
             }
+            // File attachment inline (image preview, audio player, or file card)
+            if (step.attachmentPath != null && step.attachmentMime != null) {
+                Spacer(Modifier.height(4.dp))
+                FileAttachmentBubble(
+                    path = step.attachmentPath,
+                    mime = step.attachmentMime,
+                )
+            }
         }
     }
 }
@@ -1003,7 +1031,7 @@ private fun ActivityStepRow(step: ChatMessage) {
 @Composable
 private fun ModernMessageBubble(message: ChatMessage, onRetry: () -> Unit, onSpeak: (String) -> Unit) {
     when (message.role) {
-        "user"          -> ModernUserBubble(message.content)
+        "user"          -> ModernUserBubble(message.content, message.attachmentPath, message.attachmentMime)
         "assistant"     -> if (message.isError) ModernErrorBubble(message, onRetry)
                            else ModernAssistantBubble(message.content, message.isStreaming, onSpeak)
         "tool_call"     -> ModernToolCallChip(message.toolName ?: "tool", message.content)
@@ -1015,6 +1043,7 @@ private fun ModernMessageBubble(message: ChatMessage, onRetry: () -> Unit, onSpe
                 FileAttachmentBubble(
                     path = message.attachmentPath,
                     mime = message.attachmentMime,
+                    modifier = Modifier.padding(start = 44.dp),
                 )
             }
         }
@@ -1053,7 +1082,11 @@ private fun ModernVerificationBubble(text: String, isError: Boolean) {
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun ModernUserBubble(text: String) {
+private fun ModernUserBubble(
+    text: String,
+    attachmentPath: String? = null,
+    attachmentMime: String? = null,
+) {
     var showSheet by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (showSheet) 0.97f else 1f,
@@ -1088,14 +1121,47 @@ private fun ModernUserBubble(text: String) {
                     shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 8.dp)
                 )
             ) {
-                SelectionContainer {
-                    Text(
-                        text,
-                        color = ModernTextPrimary,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
+                Column {
+                    // Show attachment preview if present
+                    if (attachmentPath != null && attachmentMime != null) {
+                        val file = remember(attachmentPath) { java.io.File(attachmentPath) }
+                        if (file.exists()) {
+                            if (attachmentMime.startsWith("image/")) {
+                                coil.compose.AsyncImage(
+                                    model = attachmentPath,
+                                    contentDescription = file.name,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 200.dp)
+                                        .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 0.dp)),
+                                    contentScale = ContentScale.Fit,
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(
+                                        "\uD83D\uDCCE ${file.name}",
+                                        color = ModernTextSecondary,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    SelectionContainer {
+                        Text(
+                            text,
+                            color = ModernTextPrimary,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1463,7 +1529,7 @@ private fun BubbleActionButton(label: String, onClick: () -> Unit) {
  * - Everything else: filename + open/share button
  */
 @Composable
-private fun FileAttachmentBubble(path: String, mime: String) {
+private fun FileAttachmentBubble(path: String, mime: String, modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val file = remember(path) { java.io.File(path) }
     if (!file.exists()) return
@@ -1472,8 +1538,7 @@ private fun FileAttachmentBubble(path: String, mime: String) {
     val isAudio = mime.startsWith("audio/")
 
     Column(
-        modifier = Modifier
-            .padding(start = 44.dp)
+        modifier = modifier
             .widthIn(max = 520.dp)
     ) {
         when {
