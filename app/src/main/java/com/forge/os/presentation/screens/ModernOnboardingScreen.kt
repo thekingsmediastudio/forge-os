@@ -729,15 +729,16 @@ private fun LlmSetupPage(state: OnboardingState, vm: OnboardingViewModel) {
 private fun ReadyPage(state: OnboardingState) {
     val name = state.userName.trim().ifBlank { "there" }
     val examples = remember(state.interests) {
+        val q = "\""
         buildList {
-            if (state.interests.any { "Coding" in it }) add("💻" to "\"Refactor this file and show me the diff\"")
-            if (state.interests.any { "Planning" in it }) add("📅" to "\"What's on my calendar today?\"")
-            if (state.interests.any { "Writing" in it }) add("✍️" to "\"Draft a friendly follow-up email\"")
-            if (state.interests.any { "Learning" in it }) add("📚" to "\"Explain coroutines like I'm five\"")
-            if (state.interests.any { "Automation" in it }) add("🏠" to "\"Turn off the lights at 11pm\"")
-            if (size < 3) add("⏰" to "\"Remind me to drink water every 2 hours\"")
-            if (size < 3) add("💰" to "\"How much did I spend on API calls?\"")
-            if (size < 3) add("📁" to "\"Summarize the files in my workspace\"")
+            if (state.interests.any { "Coding" in it }) add("💻" to "${q}Refactor this file and show me the diff$q")
+            if (state.interests.any { "Planning" in it }) add("📅" to "${q}What's on my calendar today?$q")
+            if (state.interests.any { "Writing" in it }) add("✍️" to "${q}Draft a friendly follow-up email$q")
+            if (state.interests.any { "Learning" in it }) add("📚" to "${q}Explain coroutines like I'm five$q")
+            if (state.interests.any { "Automation" in it }) add("🏠" to "${q}Turn off the lights at 11pm$q")
+            if (size < 3) add("⏰" to "${q}Remind me to drink water every 2 hours$q")
+            if (size < 3) add("💰" to "${q}How much did I spend on API calls?$q")
+            if (size < 3) add("📁" to "${q}Summarize the files in my workspace$q")
         }.take(3)
     }
 
@@ -756,8 +757,9 @@ private fun ReadyPage(state: OnboardingState) {
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(6.dp))
+        val agentLabel = state.agentName.trim().ifBlank { "Forge" }
         Text(
-            "${state.agentName.trim().ifBlank { \"Forge\" }} is ready — ${state.autonomy.label.lowercase()} mode, " +
+            "$agentLabel is ready — ${state.autonomy.label.lowercase()} mode, " +
                 "${state.provider.displayName} brain",
             color = forgePalette.textMuted,
             fontSize = 12.sp,
