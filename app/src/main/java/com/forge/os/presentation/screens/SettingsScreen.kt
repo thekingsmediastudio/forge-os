@@ -66,6 +66,7 @@ fun SettingsScreen(
     val remotePythonWorkerUrl by viewModel.remotePythonWorkerUrl.collectAsState()
     val remotePythonWorkerAuthToken by viewModel.remotePythonWorkerAuthToken.collectAsState()
     val hapticFeedbackEnabled by viewModel.hapticFeedbackEnabled.collectAsState()
+    val hotwordEnabled by viewModel.hotwordEnabled.collectAsState()
     val prefetchEnabled by viewModel.prefetchEnabled.collectAsState()
     val prefetchAllowUnsafe by viewModel.prefetchAllowUnsafe.collectAsState()
     val reflectionEnabled by viewModel.reflectionEnabled.collectAsState()
@@ -185,7 +186,20 @@ fun SettingsScreen(
                             selected = themeMode,
                             onSelect = { viewModel.setThemeMode(it) },
                             hapticEnabled = hapticFeedbackEnabled,
-                            onHapticToggle = { viewModel.setHapticFeedbackEnabled(it) }
+                            onHapticToggle = { viewModel.setHapticFeedbackEnabled(it) },
+                            hotwordEnabled = hotwordEnabled,
+                            onHotwordToggle = { enabled ->
+                                viewModel.setHotwordEnabled(enabled)
+                                // When enabling, make sure we can show the bubble over other apps.
+                                if (enabled && !android.provider.Settings.canDrawOverlays(context)) {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                            android.net.Uri.parse("package:${context.packageName}")
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            }
                         )
                     }
                 }
@@ -1202,7 +1216,9 @@ private fun AppearanceCard(
     selected: ThemeMode,
     onSelect: (ThemeMode) -> Unit,
     hapticEnabled: Boolean,
-    onHapticToggle: (Boolean) -> Unit
+    onHapticToggle: (Boolean) -> Unit,
+    hotwordEnabled: Boolean,
+    onHotwordToggle: (Boolean) -> Unit
 ) {
     ModernCard {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1245,6 +1261,15 @@ private fun AppearanceCard(
                 subtitle = "Tactile response when agent is active",
                 checked = hapticEnabled,
                 onCheckedChange = onHapticToggle
+            )
+
+            HorizontalDivider(color = forgePalette.divider, thickness = 0.5.dp)
+
+            SettingsToggleRow(
+                title = "\"Hello Forge\" wake word",
+                subtitle = "Always-on mic listening. Off saves battery & frees your mic.",
+                checked = hotwordEnabled,
+                onCheckedChange = onHotwordToggle
             )
         }
     }

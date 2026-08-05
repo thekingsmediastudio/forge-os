@@ -122,6 +122,8 @@ data class ExternalApiSettings(
 data class AppearanceSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val hapticFeedbackEnabled: Boolean = true,
+    /** When true, the "Hello Forge" wake-word foreground service listens on the mic. */
+    val hotwordEnabled: Boolean = false,
 )
 
 @Serializable

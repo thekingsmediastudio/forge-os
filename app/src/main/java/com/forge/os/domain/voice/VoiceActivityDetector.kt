@@ -93,8 +93,9 @@ class VoiceActivityDetector @Inject constructor() {
                         }
                     }
                 }
-                // Small delay to prevent busy-waiting
-                delay(10)
+                // Small delay to prevent busy-waiting. 50ms keeps ~100ms detection
+                // latency (3-frame minimum) while cutting CPU wakeups ~5x vs 10ms.
+                delay(50)
             }
         }
     }

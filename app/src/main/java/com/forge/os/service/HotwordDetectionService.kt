@@ -46,12 +46,33 @@ class HotwordDetectionService : Service() {
     private var speechRecognizer: SpeechRecognizer? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var vadJob: Job? = null
+    private var voiceModeJob: Job? = null
 
     companion object {
         private const val CHANNEL_ID = "hotword_detection"
         private const val NOTIFICATION_ID = 42
         private const val KEYWORD = "hello forge"
         private const val FUZZY_MATCH_THRESHOLD = 0.5f // 50% of words must match (allows "forge" alone)
+
+        /**
+         * Set to true while voice mode owns the mic. When true the service
+         * releases its VAD/SpeechRecognizer so voice mode doesn't hit
+         * ERROR_RECOGNIZER_BUSY; set back to false to resume listening.
+         */
+        @Volatile var voiceModeActive = false
+
+        fun start(context: android.content.Context) {
+            val intent = Intent(context, HotwordDetectionService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: android.content.Context) {
+            context.stopService(Intent(context, HotwordDetectionService::class.java))
+        }
     }
 
     override fun onCreate() {
@@ -102,7 +123,7 @@ class HotwordDetectionService : Service() {
                         Timber.d("HotwordDetectionService: STT result: $transcript")
                         if (fuzzyMatch(transcript, KEYWORD)) {
                             Timber.d("HotwordDetectionService: wake word detected!")
-                            hotwordEventBus.emit()
+                            onWakeWordDetected()
                         }
                     }
                     // Restart VAD and listening after results
@@ -117,7 +138,7 @@ class HotwordDetectionService : Service() {
                         Timber.d("HotwordDetectionService: STT partial: $partial")
                         if (fuzzyMatch(partial, KEYWORD)) {
                             Timber.d("HotwordDetectionService: wake word detected (partial)!")
-                            hotwordEventBus.emit()
+                            onWakeWordDetected()
                         }
                     }
                 }
@@ -125,18 +146,41 @@ class HotwordDetectionService : Service() {
             })
         }
 
-        // Start VAD
-        voiceActivityDetector.start()
+        // Start VAD (unless voice mode currently owns the mic)
+        if (!voiceModeActive) {
+            voiceActivityDetector.start()
+        }
 
         // Collect VAD events and trigger STT when speech detected
         vadJob = scope.launch {
             voiceActivityDetector.speechDetected.collect { detected ->
-                if (detected) {
+                if (detected && !voiceModeActive) {
                     Timber.d("HotwordDetectionService: speech detected, starting STT")
                     // Stop VAD to release mic for SpeechRecognizer
                     voiceActivityDetector.stop()
                     startListening()
                 }
+            }
+        }
+
+        // Watch for voice mode taking over the mic; release/reacquire accordingly.
+        voiceModeJob = scope.launch {
+            var wasActive = voiceModeActive
+            while (isActive) {
+                val active = voiceModeActive
+                if (active != wasActive) {
+                    wasActive = active
+                    if (active) {
+                        Timber.d("HotwordDetectionService: voice mode active, releasing mic")
+                        speechRecognizer?.stopListening()
+                        voiceActivityDetector.stop()
+                    } else {
+                        Timber.d("HotwordDetectionService: voice mode ended, resuming VAD")
+                        delay(300) // let voice mode fully release the mic first
+                        voiceActivityDetector.start()
+                    }
+                }
+                delay(200)
             }
         }
 
@@ -147,6 +191,7 @@ class HotwordDetectionService : Service() {
     override fun onDestroy() {
         Timber.d("HotwordDetectionService: onDestroy")
         vadJob?.cancel()
+        voiceModeJob?.cancel()
         voiceActivityDetector.stop()
         speechRecognizer?.destroy()
         speechRecognizer = null
@@ -163,6 +208,32 @@ class HotwordDetectionService : Service() {
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
         speechRecognizer?.startListening(intent)
+    }
+
+    /**
+     * Emit the wake-word event to the in-app bus, and — when the app isn't in the
+     * foreground — also raise the floating system-overlay bubble so the activation
+     * is visible over other apps (the in-app Dialog only renders while foreground).
+     */
+    private fun onWakeWordDetected() {
+        hotwordEventBus.emit()
+        if (!isAppInForeground()) {
+            try {
+                startService(Intent(this, HotwordOverlayService::class.java))
+            } catch (e: Exception) {
+                Timber.w("HotwordDetectionService: couldn't start overlay: ${e.message}")
+            }
+        }
+    }
+
+    private fun isAppInForeground(): Boolean {
+        val activityManager = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+        val processes = activityManager.runningAppProcesses ?: return false
+        val myPackage = packageName
+        return processes.any {
+            it.processName == myPackage &&
+                it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+        }
     }
 
     /**

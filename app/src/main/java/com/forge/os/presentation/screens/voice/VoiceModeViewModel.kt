@@ -119,6 +119,8 @@ class VoiceModeViewModel @Inject constructor(
 
     /** Enter voice mode — resumes the provided conversation when possible. */
     fun enterVoiceMode(conversationId: String? = null) {
+        // Signal the hotword service to release the mic so we don't contend for it.
+        com.forge.os.service.HotwordDetectionService.voiceModeActive = true
         voiceHistory.clear()
         voiceMessages.clear()
 
@@ -170,6 +172,8 @@ class VoiceModeViewModel @Inject constructor(
         voiceInputManager.stopSpeaking()
         persistConversation()
         _state.value = VoiceModeState(phase = VoicePhase.IDLE)
+        // Hand the mic back to the hotword service.
+        com.forge.os.service.HotwordDetectionService.voiceModeActive = false
     }
 
     /** Tap the orb to toggle listening / interrupt speaking. */

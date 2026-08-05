@@ -80,6 +80,15 @@ class ConfigRepository @Inject constructor(
         save(current.copy(appearance = current.appearance.copy(themeMode = mode)))
     }
 
+    /** Synchronous check used by MainActivity before starting the hotword service. */
+    fun isHotwordEnabled(): Boolean = get().appearance.hotwordEnabled
+
+    fun setHotwordEnabled(enabled: Boolean) {
+        val current = get()
+        if (current.appearance.hotwordEnabled == enabled) return
+        save(current.copy(appearance = current.appearance.copy(hotwordEnabled = enabled)))
+    }
+
     suspend fun update(mutation: (ForgeConfig) -> ForgeConfig): ForgeConfig =
         withContext(Dispatchers.IO) {
             val current = get()

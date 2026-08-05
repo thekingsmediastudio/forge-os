@@ -456,16 +456,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Start the hotword detection service if RECORD_AUDIO is granted. */
+    /** Start the hotword detection service only when the user enabled it and mic is granted. */
     private fun startHotwordDetectionService() {
+        if (!configRepository.isHotwordEnabled()) return
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
             == PackageManager.PERMISSION_GRANTED) {
-            val intent = android.content.Intent(this, com.forge.os.service.HotwordDetectionService::class.java)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
+            com.forge.os.service.HotwordDetectionService.start(this)
         }
     }
 

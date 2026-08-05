@@ -1,5 +1,6 @@
 package com.forge.os.presentation.screens
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.forge.os.domain.config.ConfigRepository
@@ -13,7 +14,9 @@ import com.forge.os.domain.security.ProviderSchema
 import com.forge.os.domain.security.SecureKeyStore
 import com.forge.os.presentation.theme.ThemeMode
 import com.forge.os.domain.backup.BackupManager
+import com.forge.os.service.HotwordDetectionService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,7 +46,8 @@ class SettingsViewModel @Inject constructor(
     private val namedSecrets: NamedSecretRegistry,
     private val configRepository: ConfigRepository,
     private val backupManager: BackupManager,
-    private val forgeHttpServer: com.forge.os.data.server.ForgeHttpServer
+    private val forgeHttpServer: com.forge.os.data.server.ForgeHttpServer,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = configRepository.themeMode
@@ -71,6 +75,9 @@ class SettingsViewModel @Inject constructor(
 
     private val _hapticFeedbackEnabled = MutableStateFlow(true)
     val hapticFeedbackEnabled: StateFlow<Boolean> = _hapticFeedbackEnabled
+
+    private val _hotwordEnabled = MutableStateFlow(false)
+    val hotwordEnabled: StateFlow<Boolean> = _hotwordEnabled
 
     private val _backupLoading = MutableStateFlow(false)
     val backupLoading: StateFlow<Boolean> = _backupLoading
@@ -159,6 +166,7 @@ class SettingsViewModel @Inject constructor(
             _remotePythonWorkerUrl.value = cfg.hybridExecution.remotePythonWorkerUrl
             _remotePythonWorkerAuthToken.value = cfg.hybridExecution.remotePythonWorkerAuthToken
             _hapticFeedbackEnabled.value = cfg.appearance.hapticFeedbackEnabled
+            _hotwordEnabled.value = cfg.appearance.hotwordEnabled
             _prefetchEnabled.value = cfg.prefetchSettings.enabled
             _prefetchAllowUnsafe.value = cfg.prefetchSettings.allowUnsafeTools
 
@@ -234,6 +242,26 @@ class SettingsViewModel @Inject constructor(
             }
             _hapticFeedbackEnabled.value = enabled
             _saveMessage.value = if (enabled) "✅ Haptic feedback enabled" else "✅ Haptic feedback disabled"
+        }
+    }
+
+    fun setHotwordEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                configRepository.setHotwordEnabled(enabled)
+            }
+            // Start or stop the foreground service immediately to match the setting.
+            if (enabled) {
+                HotwordDetectionService.start(appContext)
+            } else {
+                HotwordDetectionService.stop(appContext)
+            }
+            _hotwordEnabled.value = enabled
+            _saveMessage.value = if (enabled) {
+                "🎤 Listening for \"Hello Forge\""
+            } else {
+                "🎤 Wake word off — mic released"
+            }
         }
     }
 
