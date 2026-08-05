@@ -48,6 +48,52 @@ class HotwordDetectionService : Service() {
     private var vadJob: Job? = null
     private var voiceModeJob: Job? = null
 
+    /** Recognition listener shared across recognizer instances (recreated on release/resume). */
+    private val recognitionListener = object : RecognitionListener {
+        override fun onReadyForSpeech(params: android.os.Bundle?) {}
+        override fun onBeginningOfSpeech() {}
+        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onBufferReceived(buffer: ByteArray?) {}
+        override fun onEndOfSpeech() {}
+        override fun onError(error: Int) {
+            Timber.d("HotwordDetectionService: STT error $error")
+            isListening = false
+            // Don't restart while voice mode owns the mic — would cause an ERROR_CLIENT race.
+            if (voiceModeActive) return
+            scope.launch {
+                delay(500)
+                if (!voiceModeActive) voiceActivityDetector.start()
+            }
+        }
+        override fun onResults(results: android.os.Bundle?) {
+            isListening = false
+            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            matches?.firstOrNull()?.let { transcript ->
+                Timber.d("HotwordDetectionService: STT result: $transcript")
+                if (fuzzyMatch(transcript, KEYWORD)) {
+                    Timber.d("HotwordDetectionService: wake word detected!")
+                    onWakeWordDetected()
+                }
+            }
+            if (voiceModeActive) return
+            scope.launch {
+                delay(500)
+                if (!voiceModeActive) voiceActivityDetector.start()
+            }
+        }
+        override fun onPartialResults(partialResults: android.os.Bundle?) {
+            val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            matches?.firstOrNull()?.let { partial ->
+                Timber.d("HotwordDetectionService: STT partial: $partial")
+                if (fuzzyMatch(partial, KEYWORD)) {
+                    Timber.d("HotwordDetectionService: wake word detected (partial)!")
+                    onWakeWordDetected()
+                }
+            }
+        }
+        override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
+    }
+
     companion object {
         private const val CHANNEL_ID = "hotword_detection"
         private const val NOTIFICATION_ID = 42
@@ -101,53 +147,11 @@ class HotwordDetectionService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Initialize SpeechRecognizer
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
-            setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: android.os.Bundle?) {}
-                override fun onBeginningOfSpeech() {}
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() {}
-                override fun onError(error: Int) {
-                    Timber.d("HotwordDetectionService: STT error $error")
-                    // Restart VAD and listening after error
-                    scope.launch {
-                        delay(500) // Brief pause before restart
-                        voiceActivityDetector.start()
-                    }
-                }
-                override fun onResults(results: android.os.Bundle?) {
-                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    matches?.firstOrNull()?.let { transcript ->
-                        Timber.d("HotwordDetectionService: STT result: $transcript")
-                        if (fuzzyMatch(transcript, KEYWORD)) {
-                            Timber.d("HotwordDetectionService: wake word detected!")
-                            onWakeWordDetected()
-                        }
-                    }
-                    // Restart VAD and listening after results
-                    scope.launch {
-                        delay(500) // Brief pause before restart
-                        voiceActivityDetector.start()
-                    }
-                }
-                override fun onPartialResults(partialResults: android.os.Bundle?) {
-                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    matches?.firstOrNull()?.let { partial ->
-                        Timber.d("HotwordDetectionService: STT partial: $partial")
-                        if (fuzzyMatch(partial, KEYWORD)) {
-                            Timber.d("HotwordDetectionService: wake word detected (partial)!")
-                            onWakeWordDetected()
-                        }
-                    }
-                }
-                override fun onEvent(eventType: Int, params: android.os.Bundle?) {}
-            })
-        }
-
-        // Start VAD (unless voice mode currently owns the mic)
+        // Initialize SpeechRecognizer (only when voice mode isn't holding the mic)
         if (!voiceModeActive) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                setRecognitionListener(recognitionListener)
+            }
             voiceActivityDetector.start()
         }
 
@@ -172,12 +176,11 @@ class HotwordDetectionService : Service() {
                     wasActive = active
                     if (active) {
                         Timber.d("HotwordDetectionService: voice mode active, releasing mic")
-                        speechRecognizer?.stopListening()
-                        voiceActivityDetector.stop()
+                        releaseMic()
                     } else {
                         Timber.d("HotwordDetectionService: voice mode ended, resuming VAD")
-                        delay(300) // let voice mode fully release the mic first
-                        voiceActivityDetector.start()
+                        delay(400) // let voice mode fully release the mic first
+                        if (!voiceModeActive) resumeListening()
                     }
                 }
                 delay(200)
@@ -201,13 +204,57 @@ class HotwordDetectionService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private var isListening = false
+
     private fun startListening() {
+        // Never start while voice mode owns the mic — that's the ERROR_CLIENT race.
+        if (voiceModeActive) return
+        val recognizer = speechRecognizer ?: return
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
-        speechRecognizer?.startListening(intent)
+        isListening = true
+        recognizer.startListening(intent)
+    }
+
+    /** Stop listening but keep the recognizer instance alive for reuse. */
+    private fun stopListening() {
+        if (!isListening) return
+        isListening = false
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {
+            Timber.w("HotwordDetectionService: stopListening failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Fully release the mic so voice mode can take it: stop VAD and destroy the
+     * recognizer. A fresh recognizer is created in [resumeListening] afterward,
+     * which avoids reusing a recognizer left in a bad (ERROR_CLIENT) state.
+     */
+    private fun releaseMic() {
+        Timber.d("HotwordDetectionService: releasing mic")
+        voiceActivityDetector.stop()
+        stopListening()
+        try {
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            Timber.w("HotwordDetectionService: destroy failed: ${e.message}")
+        }
+        speechRecognizer = null
+    }
+
+    /** Recreate the recognizer and resume VAD after voice mode hands the mic back. */
+    private fun resumeListening() {
+        if (speechRecognizer == null) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
+                setRecognitionListener(recognitionListener)
+            }
+        }
+        voiceActivityDetector.start()
     }
 
     /**

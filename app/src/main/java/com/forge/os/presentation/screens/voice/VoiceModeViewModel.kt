@@ -119,7 +119,9 @@ class VoiceModeViewModel @Inject constructor(
 
     /** Enter voice mode — resumes the provided conversation when possible. */
     fun enterVoiceMode(conversationId: String? = null) {
-        // Signal the hotword service to release the mic so we don't contend for it.
+        // Claim the mic so the hotword service releases its recognizer before we
+        // start ours — this prevents the ERROR_CLIENT/ERROR_RECOGNIZER_BUSY race.
+        com.forge.os.domain.voice.MicOwnership.claim(com.forge.os.domain.voice.MicOwnership.Owner.VOICE_MODE)
         com.forge.os.service.HotwordDetectionService.voiceModeActive = true
         voiceHistory.clear()
         voiceMessages.clear()
@@ -162,7 +164,12 @@ class VoiceModeViewModel @Inject constructor(
         _state.value = VoiceModeState(
             phase = VoicePhase.IDLE,
             conversationId = conv.id)
-        startListening()
+        // Give the hotword service a beat to release its recognizer before we start
+        // ours — starting immediately is what triggers the ERROR_CLIENT mic race.
+        viewModelScope.launch {
+            delay(300)
+            if (_state.value.phase == VoicePhase.IDLE) startListening()
+        }
     }
 
     /** Exit voice mode — stops everything, saves the conversation. */
@@ -174,6 +181,7 @@ class VoiceModeViewModel @Inject constructor(
         _state.value = VoiceModeState(phase = VoicePhase.IDLE)
         // Hand the mic back to the hotword service.
         com.forge.os.service.HotwordDetectionService.voiceModeActive = false
+        com.forge.os.domain.voice.MicOwnership.release(com.forge.os.domain.voice.MicOwnership.Owner.VOICE_MODE)
     }
 
     /** Tap the orb to toggle listening / interrupt speaking. */
@@ -229,7 +237,21 @@ class VoiceModeViewModel @Inject constructor(
                     }
                 }
             }
-            VoiceRecognitionError.Busy -> {
+            VoiceRecognitionError.Busy,
+            VoiceRecognitionError.ClientError,
+            VoiceRecognitionError.AudioError,
+            VoiceRecognitionError.ServerError -> {
+                // Transient mic/service errors (e.g. the hotword↔voice-mode handoff).
+                // Back off and retry instead of killing the session with a raw code.
+                consecutiveRetryCount++
+                if (consecutiveRetryCount >= 4) {
+                    _state.value = _state.value.copy(
+                        phase = VoicePhase.IDLE,
+                        error = "Mic is busy — tap the orb to try again.",
+                        rmsLevel = 0f)
+                    consecutiveRetryCount = 0
+                    return
+                }
                 viewModelScope.launch {
                     delay(800)
                     if (_state.value.phase == VoicePhase.LISTENING) {

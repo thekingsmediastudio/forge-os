@@ -155,12 +155,22 @@ class VoiceInputManager @Inject constructor(
             override fun onError(error: Int) {
                 _isListening.value = false
                 _rmsLevel.value = 0f
+                // ERROR_CLIENT / ERROR_RECOGNIZER_BUSY usually mean a start-race or a
+                // recognizer left in a bad state. Recreate the recognizer so the next
+                // startListening() gets a clean instance instead of reusing a stuck one.
+                if (error == SpeechRecognizer.ERROR_CLIENT ||
+                    error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                    resetSpeechRecognizer()
+                }
                 val recognitionError = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH -> VoiceRecognitionError.NoMatch
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> VoiceRecognitionError.SpeechTimeout
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> VoiceRecognitionError.Busy
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> VoiceRecognitionError.PermissionDenied
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> VoiceRecognitionError.Network
+                    SpeechRecognizer.ERROR_CLIENT -> VoiceRecognitionError.ClientError
+                    SpeechRecognizer.ERROR_AUDIO -> VoiceRecognitionError.AudioError
+                    SpeechRecognizer.ERROR_SERVER -> VoiceRecognitionError.ServerError
                     else -> VoiceRecognitionError.Other(error)
                 }
                 _recognitionError.value = recognitionError
@@ -196,6 +206,25 @@ class VoiceInputManager @Inject constructor(
         Timber.i("SpeechRecognizer initialized successfully on main thread")
     }
     
+    /**
+     * Destroy the current recognizer so the next [startListening] recreates it fresh.
+     * Used to recover from ERROR_CLIENT / ERROR_RECOGNIZER_BUSY where the recognizer
+     * is left in a stuck state. Must run on the main thread.
+     */
+    private fun resetSpeechRecognizer() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { resetSpeechRecognizer() }
+            return
+        }
+        try {
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            Timber.w("resetSpeechRecognizer destroy failed: ${e.message}")
+        }
+        speechRecognizer = null
+        speechRecognizerInitialized = false
+    }
+
     /**
      * Start listening for voice input.
      */
@@ -330,6 +359,9 @@ sealed class VoiceRecognitionError(val message: String) {
     object Busy : VoiceRecognitionError("Recognition service busy")
     object PermissionDenied : VoiceRecognitionError("Insufficient microphone permissions")
     object Network : VoiceRecognitionError("Speech recognition network error")
+    object ClientError : VoiceRecognitionError("Couldn't start the microphone — retrying…")
+    object AudioError : VoiceRecognitionError("Problem capturing audio — retrying…")
+    object ServerError : VoiceRecognitionError("Speech service error — retrying…")
     data class Other(val code: Int) : VoiceRecognitionError("Speech recognition error: $code")
 }
 
