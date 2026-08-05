@@ -420,6 +420,7 @@ private fun OnboardingField(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChipRow(
     options: List<String>,
@@ -427,7 +428,10 @@ private fun ChipRow(
     onToggle: (String) -> Unit,
     single: Boolean = false
 ) {
-    FlowRowCompat { 
+    FlowRow(
+        horizontalArrangement = Arrangement.Start,
+        verticalArrangement = Arrangement.Top
+    ) {
         options.forEach { opt ->
             val sel = opt in selected
             Surface(
@@ -441,16 +445,6 @@ private fun ChipRow(
             }
         }
     }
-}
-
-/** Simple wrap-layout row of chips. */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
-@Composable
-private fun FlowRowCompat(content: @Composable () -> Unit) {
-    androidx.compose.foundation.layout.FlowRow(
-        horizontalArrangement = Arrangement.Start,
-        verticalArrangement = Arrangement.Top
-    ) { content() }
 }
 
 // ── Page 3: About You ────────────────────────────────────────────────

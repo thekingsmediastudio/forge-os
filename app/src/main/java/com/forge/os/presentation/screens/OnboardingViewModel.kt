@@ -231,7 +231,7 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    private fun applyAutonomy(level: AutonomyLevel) {
+    private suspend fun applyAutonomy(level: AutonomyLevel) {
         val fullConfirmList = listOf(
             "file_delete", "shell_exec", "git_push", "git_pull", "git_clone", "git_checkout",
             "file_download", "browser_download", "config_write", "config_rollback",
