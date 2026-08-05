@@ -425,8 +425,8 @@ private fun OnboardingField(
 private fun ChipRow(
     options: List<String>,
     selected: Set<String>,
-    onToggle: (String) -> Unit,
-    single: Boolean = false
+    single: Boolean = false,
+    onToggle: (String) -> Unit
 ) {
     FlowRow(
         horizontalArrangement = Arrangement.Start,
@@ -469,9 +469,10 @@ private fun AboutYouPage(state: OnboardingState, vm: OnboardingViewModel) {
 
         FieldLabel("A TYPICAL DAY FOR YOU IS…")
         ChipRow(
-            listOf("🌅 Early bird", "🌙 Night owl", "📆 9-to-5", "🔄 Irregular"),
-            setOf(state.dailyRhythm).filter { it.isNotBlank() }.toSet()
-        ) { v -> vm.update { it.copy(dailyRhythm = v) } }
+            options = listOf("🌅 Early bird", "🌙 Night owl", "📆 9-to-5", "🔄 Irregular"),
+            selected = setOf(state.dailyRhythm).filter { it.isNotBlank() }.toSet(),
+            onToggle = { v -> vm.update { it.copy(dailyRhythm = v) } }
+        )
         Text("Used for cron timing, quiet hours & proactive check-ins",
             color = forgePalette.textDim, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp))
         Spacer(Modifier.height(16.dp))
@@ -488,21 +489,24 @@ private fun YourStylePage(state: OnboardingState, vm: OnboardingViewModel) {
 
         FieldLabel("YOU'LL MOSTLY USE FORGE FOR…")
         ChipRow(
-            listOf("💻 Coding", "✍️ Writing", "📅 Planning", "🎨 Design", "📚 Learning", "🏠 Automation", "💬 Company"),
-            state.interests
-        ) { vm.toggleInterest(it) }
+            options = listOf("💻 Coding", "✍️ Writing", "📅 Planning", "🎨 Design", "📚 Learning", "🏠 Automation", "💬 Company"),
+            selected = state.interests,
+            onToggle = { tag -> vm.toggleInterest(tag) }
+        )
 
         FieldLabel("YOUR TECHNICAL LEVEL")
         ChipRow(
-            listOf("🌱 Beginner — explain simply", "⚙️ Intermediate", "🚀 Expert — skip basics"),
-            setOf(state.techLevel).filter { it.isNotBlank() }.toSet()
-        ) { v -> vm.update { it.copy(techLevel = v) } }
+            options = listOf("🌱 Beginner — explain simply", "⚙️ Intermediate", "🚀 Expert — skip basics"),
+            selected = setOf(state.techLevel).filter { it.isNotBlank() }.toSet(),
+            onToggle = { v -> vm.update { it.copy(techLevel = v) } }
+        )
 
         FieldLabel("REPLY LENGTH YOU PREFER")
         ChipRow(
-            listOf("⚡ Short & fast", "⚖️ Balanced", "📖 Detailed"),
-            setOf(state.replyLength).filter { it.isNotBlank() }.toSet()
-        ) { v -> vm.update { it.copy(replyLength = v) } }
+            options = listOf("⚡ Short & fast", "⚖️ Balanced", "📖 Detailed"),
+            selected = setOf(state.replyLength).filter { it.isNotBlank() }.toSet(),
+            onToggle = { v -> vm.update { it.copy(replyLength = v) } }
+        )
 
         FieldLabel("ANYTHING FORGE SHOULD ALWAYS REMEMBER?")
         OutlinedTextField(
@@ -549,15 +553,17 @@ private fun AgentPage(state: OnboardingState, vm: OnboardingViewModel) {
 
         FieldLabel("ITS ROLE IN YOUR LIFE")
         ChipRow(
-            listOf("🛠️ Builder", "🧭 Assistant", "🤝 Companion", "🎓 Tutor"),
-            setOf(state.agentRole).filter { it.isNotBlank() }.toSet()
-        ) { v -> vm.update { it.copy(agentRole = v) } }
+            options = listOf("🛠️ Builder", "🧭 Assistant", "🤝 Companion", "🎓 Tutor"),
+            selected = setOf(state.agentRole).filter { it.isNotBlank() }.toSet(),
+            onToggle = { v -> vm.update { it.copy(agentRole = v) } }
+        )
 
         FieldLabel("PERSONALITY TRAITS")
         ChipRow(
-            listOf("Concise", "Friendly", "Technical", "Formal", "Playful", "Patient", "Blunt"),
-            state.traits
-        ) { vm.toggleTrait(it) }
+            options = listOf("Concise", "Friendly", "Technical", "Formal", "Playful", "Patient", "Blunt"),
+            selected = state.traits,
+            onToggle = { trait -> vm.toggleTrait(trait) }
+        )
 
         FieldLabel("CHATTINESS — ${(state.chattiness * 100).toInt()}%")
         Slider(
@@ -572,11 +578,12 @@ private fun AgentPage(state: OnboardingState, vm: OnboardingViewModel) {
 
         FieldLabel("AUTONOMY — HOW MUCH FREEDOM IT GETS")
         ChipRow(
-            AutonomyLevel.entries.map { "${it.emoji} ${it.label}" },
-            setOf("${state.autonomy.emoji} ${state.autonomy.label}")
-        ) { label ->
-            vm.update { s -> s.copy(autonomy = AutonomyLevel.entries.first { "${it.emoji} ${it.label}" == label }) }
-        }
+            options = AutonomyLevel.entries.map { "${it.emoji} ${it.label}" },
+            selected = setOf("${state.autonomy.emoji} ${state.autonomy.label}"),
+            onToggle = { label ->
+                vm.update { s -> s.copy(autonomy = AutonomyLevel.entries.first { "${it.emoji} ${it.label}" == label }) }
+            }
+        )
 
         Spacer(Modifier.height(6.dp))
         AutonomySummary(state.autonomy)
@@ -638,9 +645,10 @@ private fun LlmSetupPage(state: OnboardingState, vm: OnboardingViewModel) {
 
         FieldLabel("PROVIDER")
         ChipRow(
-            ApiKeyProvider.entries.map { it.displayName },
-            setOf(state.provider.displayName)
-        ) { label -> vm.selectProvider(ApiKeyProvider.entries.first { it.displayName == label }) }
+            options = ApiKeyProvider.entries.map { it.displayName },
+            selected = setOf(state.provider.displayName),
+            onToggle = { label -> vm.selectProvider(ApiKeyProvider.entries.first { it.displayName == label }) }
+        )
 
         FieldLabel("API KEY")
         OutlinedTextField(
