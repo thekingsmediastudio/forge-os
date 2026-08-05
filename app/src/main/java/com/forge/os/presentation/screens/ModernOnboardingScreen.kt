@@ -7,8 +7,14 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -150,7 +156,7 @@ private fun HeroPage() {
     var punIndex by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
-            delay(5000)
+            delay(2800)
             punIndex = (punIndex + 1) % PUNS.size
         }
     }
@@ -167,7 +173,20 @@ private fun HeroPage() {
         Spacer(Modifier.height(32.dp))
 
         Box(Modifier.fillMaxWidth().height(130.dp), contentAlignment = Alignment.Center) {
-            Crossfade(targetState = punIndex, label = "pun") { i ->
+            AnimatedContent(
+                targetState = punIndex,
+                label = "pun",
+                transitionSpec = {
+                    (slideInVertically(
+                        initialOffsetY = { it / 3 },
+                        animationSpec = tween(380)
+                    ) + fadeIn(animationSpec = tween(380))) togetherWith
+                        (slideOutVertically(
+                            targetOffsetY = { -it / 3 },
+                            animationSpec = tween(380)
+                        ) + fadeOut(animationSpec = tween(300)))
+                }
+            ) { i ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(PUNS[i].first, fontSize = 34.sp)
                     Spacer(Modifier.height(8.dp))

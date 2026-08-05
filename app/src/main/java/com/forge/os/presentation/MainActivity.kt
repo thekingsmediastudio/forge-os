@@ -132,10 +132,8 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val context = LocalContext.current
                     val nav = intent?.getStringExtra("nav")
-                    val permissionManager = remember { com.forge.os.domain.permissions.PermissionManager(context) }
                     val startDest = when {
                         !OnboardingViewModel.isOnboarded(context) -> "onboarding"
-                        permissionManager.shouldShowPermissionOnboarding() -> "permissionOnboarding"
                         nav == "companion" -> "companion"
                         nav == "external"  -> "external"
                         nav == "chat"      -> "chat"
@@ -196,17 +194,8 @@ class MainActivity : ComponentActivity() {
                         composable("onboarding") {
                             com.forge.os.presentation.screens.ModernOnboardingScreen(
                                 onDone = {
-                                    navController.navigate("permissionOnboarding") {
-                                        popUpTo("onboarding") { inclusive = true }
-                                    }
-                                }
-                            )
-                        }
-                        composable("permissionOnboarding") {
-                            com.forge.os.presentation.screens.onboarding.PermissionOnboardingScreen(
-                                onComplete = {
                                     navController.navigate("chat") {
-                                        popUpTo("permissionOnboarding") { inclusive = true }
+                                        popUpTo("onboarding") { inclusive = true }
                                     }
                                 }
                             )
