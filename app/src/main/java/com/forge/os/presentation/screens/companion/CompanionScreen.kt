@@ -175,7 +175,14 @@ fun CompanionScreen(
                         color = ForgeOsPalette.TextDim, fontSize = 14.sp)
                 }
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(8.dp))
+            // Voice input — recognized speech lands in the text field for editing
+            com.forge.os.presentation.screens.voice.VoiceInputButton(
+                onVoiceInput = { spoken ->
+                    input = if (input.isBlank()) spoken else "$input $spoken"
+                },
+                modifier = Modifier.height(44.dp).width(44.dp))
+            Spacer(Modifier.width(8.dp))
             Box(
                 Modifier
                     .background(CompanionAccent, RoundedCornerShape(22.dp))
