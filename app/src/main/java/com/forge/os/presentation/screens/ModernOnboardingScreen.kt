@@ -835,7 +835,7 @@ private fun OnboardingBottomBar(
     onFinish: () -> Unit
 ) {
     val isLast = currentPage == PAGE_COUNT - 1
-    Surface(color = forgePalette.surface, tonalElevation = 2.dp) {
+    Surface(color = forgePalette.bg, tonalElevation = 0.dp) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically

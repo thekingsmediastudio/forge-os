@@ -1198,28 +1198,83 @@ private fun ModernUserBubble(
                     val nonImageAttachments = attachments.filter { !it.isImage() }
 
                     if (imageAttachments.size > 1) {
-                        androidx.compose.foundation.lazy.LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(imageAttachments.size) { idx ->
-                                val att = imageAttachments[idx]
-                                val file = java.io.File(att.filePath)
-                                if (file.exists()) {
+                        // WhatsApp-style grid layout for multiple images
+                        val images = imageAttachments.take(4) // max 4 in grid
+                        val extraCount = imageAttachments.size - 4
+                        val gridModifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 0.dp))
+
+                        when (images.size) {
+                            2 -> {
+                                // Side-by-side
+                                Row(modifier = gridModifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    images.forEach { att ->
+                                        coil.compose.AsyncImage(
+                                            model = att.filePath,
+                                            contentDescription = att.fileName,
+                                            modifier = Modifier.weight(1f).height(200.dp),
+                                            contentScale = ContentScale.Crop,
+                                        )
+                                    }
+                                }
+                            }
+                            3 -> {
+                                // 1 large left + 2 stacked right
+                                Row(modifier = gridModifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                     coil.compose.AsyncImage(
-                                        model = att.filePath,
-                                        contentDescription = att.fileName,
-                                        modifier = Modifier
-                                            .width(200.dp)
-                                            .heightIn(max = 200.dp)
-                                            .clip(
-                                                if (idx == 0) RoundedCornerShape(
-                                                    topStart = 22.dp, topEnd = 8.dp,
-                                                    bottomStart = 22.dp, bottomEnd = 0.dp
-                                                ) else RoundedCornerShape(8.dp)
-                                            ),
+                                        model = images[0].filePath,
+                                        contentDescription = images[0].fileName,
+                                        modifier = Modifier.weight(1f).height(200.dp),
                                         contentScale = ContentScale.Crop,
                                     )
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        images.drop(1).forEach { att ->
+                                            coil.compose.AsyncImage(
+                                                model = att.filePath,
+                                                contentDescription = att.fileName,
+                                                modifier = Modifier.fillMaxWidth().height(99.dp),
+                                                contentScale = ContentScale.Crop,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {
+                                // 2×2 grid (4+ images)
+                                Column(modifier = gridModifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        images.take(2).forEach { att ->
+                                            coil.compose.AsyncImage(
+                                                model = att.filePath,
+                                                contentDescription = att.fileName,
+                                                modifier = Modifier.weight(1f).height(99.dp),
+                                                contentScale = ContentScale.Crop,
+                                            )
+                                        }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        images.drop(2).take(2).forEachIndexed { idx, att ->
+                                            Box {
+                                                coil.compose.AsyncImage(
+                                                    model = att.filePath,
+                                                    contentDescription = att.fileName,
+                                                    modifier = Modifier.weight(1f).height(99.dp),
+                                                    contentScale = ContentScale.Crop,
+                                                )
+                                                // Show "+N more" overlay on last cell
+                                                if (idx == 1 && extraCount > 0) {
+                                                    Box(
+                                                        Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.5f)),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        Text("+$extraCount", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
