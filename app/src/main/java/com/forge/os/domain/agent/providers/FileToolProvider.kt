@@ -50,10 +50,18 @@ class FileToolProvider @Inject constructor(
             "Describe the canonical Forge OS workspace layout and folder purposes.",
             emptyMap(), required = emptyList()),
         tool("python_packages",
-            "List installed Python packages in the local Chaquopy environment. " +
-            "Use this to check if a library is available before trying to import it. " +
-            "Note: Runtime pip install is NOT supported. Packages must be declared in build.gradle.",
-            emptyMap(), required = emptyList())
+            "List installed Python packages in the local Chaquopy environment " +
+            "(built-in from build.gradle plus any installed via python_install). " +
+            "Use this to check if a library is available before trying to import it.",
+            emptyMap(), required = emptyList()),
+        tool("python_install",
+            "Install a pure-Python package at runtime into workspace/python_packages/ " +
+            "(no pip needed — downloads the wheel from PyPI and unpacks it; the folder is " +
+            "auto-added to sys.path on the next python_run). Only pure-Python wheels work; " +
+            "native packages (numpy, lxml, pydantic-core, cryptography…) must still be " +
+            "declared in app/build.gradle under the chaquopy pip block.",
+            params("name" to "string:PyPI package name, e.g. 'tabulate' or 'requests'"),
+            required = listOf("name"))
     )
 
     override suspend fun dispatch(toolName: String, args: Map<String, Any>): String? {
@@ -67,6 +75,7 @@ class FileToolProvider @Inject constructor(
             "workspace_info"     -> workspaceInfo()
             "workspace_describe" -> WorkspaceLayout.describe()
             "python_packages"    -> pythonPackages()
+            "python_install"     -> pythonInstall(args)
             else -> null
         }
     }
@@ -224,5 +233,10 @@ class FileToolProvider @Inject constructor(
         // Use PythonPackageManager to generate code that shows both built-in and user-installed packages
         val code = pythonPackageManager.buildListPackagesCode()
         return sandboxManager.executePython(code).getOrElse { "❌ python failed: ${it.message}" }
+    }
+
+    private suspend fun pythonInstall(args: Map<String, Any>): String {
+        val name = args["name"]?.toString() ?: return "Error: name required"
+        return pythonPackageManager.install(name)
     }
 }

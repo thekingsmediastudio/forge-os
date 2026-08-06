@@ -31,7 +31,12 @@ class VisionTool @Inject constructor(
      *  2. User-configured vision route (Settings → Model Routing → Vision)
      *  3. Any available spec whose model ID is recognised as vision-capable
      *     by [isVisionCapable] — covers name-based and provider-based detection
-     *  4. Any spec from a provider known to support vision (OpenAI, Anthropic, Google)
+     *  4. On empty/failed response: retry once with the next vision-capable spec
+     *
+     * The result is prefixed with a `[via provider/model]` routing line so it's
+     * always visible which model actually answered — a thin/ignored-prompt
+     * answer usually means a weak auto-routed model, which the explicit
+     * `model` param can then override.
      *
      * @param path   Relative path inside the workspace (e.g. "uploads/photo.jpg")
      * @param prompt The question or instruction for the vision model
@@ -42,45 +47,51 @@ class VisionTool @Inject constructor(
         val file = File(workspace, path)
         if (!file.exists()) return "Error: File not found at workspace/$path"
 
-        val base64 = try {
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-                ?: return "Error: Could not decode image at $path — unsupported format or corrupt file"
-            val out = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
-            Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+        // Keep raw bytes when the format is already provider-supported so the
+        // MIME label always matches the payload. Only re-encode (to JPEG) when
+        // the source is something vision APIs typically reject (bmp, heic…).
+        val ext = file.extension.lowercase()
+        val rawOk = ext in setOf("jpg", "jpeg", "png", "webp", "gif") && file.length() <= 20L * 1024 * 1024
+        val (base64, mimeType) = try {
+            if (rawOk) {
+                val mime = when (ext) {
+                    "png"  -> "image/png"
+                    "webp" -> "image/webp"
+                    "gif"  -> "image/gif"
+                    else   -> "image/jpeg"
+                }
+                Base64.encodeToString(file.readBytes(), Base64.NO_WRAP) to mime
+            } else {
+                val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    ?: return "Error: Could not decode image at $path — unsupported format or corrupt file"
+                val out = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP) to "image/jpeg"
+            }
         } catch (e: Exception) {
             return "Error: Failed to process image: ${e.message}"
         }
-
-        val mimeType = when (file.extension.lowercase()) {
-            "png"  -> "image/png"
-            "webp" -> "image/webp"
-            "gif"  -> "image/gif"
-            else   -> "image/jpeg"
-        }
         val dataUrl = "data:$mimeType;base64,$base64"
+
+        val available = apiManager.availableSpecsExpanded()
 
         // Resolve which spec to use
         val spec: ProviderSpec? = when {
             // 1. Explicit model requested
             model != null -> {
-                apiManager.availableSpecsExpanded().firstOrNull { it.effectiveModel == model }
+                available.firstOrNull { it.effectiveModel == model }
                     ?: return "Error: Model '$model' not found. Check your API keys."
             }
-            // 2-4. Let Mode.VISION routing handle it (checks config override, then auto-detects)
-            else -> null
+            // 2-3. Mode.VISION routing (config override, then auto-detect)
+            else -> apiManager.pickProviderForMode(Mode.VISION)
+                ?: available.firstOrNull { isVisionCapable(it) }
         }
 
-        // If no explicit spec, verify that Mode.VISION can find something before calling
         if (spec == null) {
-            val available = apiManager.availableSpecsExpanded()
-            val hasVision = available.any { isVisionCapable(it) }
-            if (!hasVision) {
-                return buildString {
-                    append("Error: No vision-capable model found. ")
-                    append("Add an API key for one of: GPT-4o (OpenAI), Claude 3+ (Anthropic), or Gemini (Google Gemini). ")
-                    append("You can also set a dedicated vision model in Settings → Model Routing → Vision.")
-                }
+            return buildString {
+                append("Error: No vision-capable model found. ")
+                append("Add an API key for one of: GPT-4o (OpenAI), Claude 3+ (Anthropic), or Gemini (Google Gemini). ")
+                append("You can also set a dedicated vision model in Settings → Model Routing → Vision.")
             }
         }
 
@@ -93,18 +104,45 @@ class VisionTool @Inject constructor(
                 )
             )
         )
+        // The instruction lives only in the user turn next to the image; a
+        // short system prompt keeps weak chat models from defaulting to a
+        // generic caption instead of following the requested analysis.
+        val systemPrompt = "You are a precise image-analysis engine. " +
+            "Follow the user's instruction about the image exactly; do not default to a generic description."
 
-        return try {
-            val resp = apiManager.chatWithFallback(
-                messages = messages,
-                spec = spec,
-                mode = Mode.VISION,
-            )
-            resp.content ?: "Error: Vision model returned no text."
-        } catch (e: Exception) {
-            Timber.w(e, "VisionTool: analysis failed")
-            "Error: Vision analysis failed — ${e.message}"
+        val first = callVision(spec, messages, systemPrompt)
+        if (first != null) return first
+
+        // 4. Retry once with the next vision-capable spec before giving up
+        val fallback = available.firstOrNull { it != spec && isVisionCapable(it) }
+        if (fallback != null) {
+            Timber.i("VisionTool: ${specLabel(spec)} gave no usable answer; retrying with ${specLabel(fallback)}")
+            callVision(fallback, messages, systemPrompt)?.let { return it }
         }
+        return "Error: Vision model(s) returned no text. Try passing an explicit model (e.g. model=gpt-4o)."
+    }
+
+    private suspend fun callVision(
+        spec: ProviderSpec,
+        messages: List<ApiMessage>,
+        systemPrompt: String,
+    ): String? = try {
+        val resp = apiManager.chatWithFallback(
+            messages = messages,
+            systemPrompt = systemPrompt,
+            spec = spec,
+            mode = Mode.VISION,
+        )
+        val text = resp.content?.takeIf { it.isNotBlank() } ?: return null
+        "[via ${specLabel(spec)}]\n$text"
+    } catch (e: Exception) {
+        Timber.w(e, "VisionTool: ${specLabel(spec)} failed")
+        null
+    }
+
+    private fun specLabel(spec: ProviderSpec): String = when (spec) {
+        is ProviderSpec.Builtin -> "${spec.provider.displayName}/${spec.effectiveModel}"
+        is ProviderSpec.Custom  -> "custom:${spec.endpoint.name}/${spec.effectiveModel}"
     }
 
     /**

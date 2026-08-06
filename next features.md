@@ -11,7 +11,7 @@ This document collects every feature idea discussed during the session (user-sug
 | 1 | Separate memory / individualized channels | ✅ Done |
 | 2 | forge-os Python package (developer SDK) | ✅ Done — `forge_sdk.py` + `ForgeHttpServer` |
 | 6 | "Hello Forge" hotword wake | ✅ Done |
-| 7 | Pip package bundling | ✅ Done — `PythonPackageManager` + `workspace/python_packages/` |
+| 7 | Pip package bundling | ✅ Done — `python_install` tool (pure-Python wheels → `workspace/python_packages/`, auto sys.path); native pkgs stay build-time |
 | 8 | Secrets as env variables | ✅ Done |
 | 9 | Browser reveal (headless → visible) | ✅ Done — `browser_reveal` |
 | 10 | Notification click actions | ✅ Done — `NotificationActionReceiver` |

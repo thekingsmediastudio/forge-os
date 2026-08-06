@@ -171,6 +171,7 @@ class ToolsViewModel @Inject constructor(
             "python_run" to "Execute Python in Chaquopy (on-device)",
             "python_run_remote" to "Execute Python on a remote worker endpoint",
             "python_packages" to "List installed Python packages",
+            "python_install" to "Install a pure-Python package from PyPI",
             "workspace_info" to "Workspace stats (size, file count)",
             "workspace_describe" to "Describe workspace folder layout",
             "file_download" to "Stream a URL into workspace",

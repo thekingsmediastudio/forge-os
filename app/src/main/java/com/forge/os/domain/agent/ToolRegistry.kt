@@ -2111,10 +2111,11 @@ To use Composio:
         // Otherwise fall back to local
         val localResult = fileToolProvider.dispatch("python_run", args) ?: "❌ Local execution failed"
         
-        // Phase 3 optimization: if local fails with ImportError, suggest checking packages or using remote
+        // Phase 3 optimization: if local fails with ImportError, point at the right recovery path
         if (localResult.contains("ImportError") || localResult.contains("ModuleNotFoundError")) {
             return localResult + "\n\n💡 HINT: This module is missing in the local Chaquopy sandbox. " +
-                "Call 'python_packages' to see what's installed, or try using the Remote GPU Worker " +
+                "Call 'python_packages' to see what's installed, try 'python_install {name}' " +
+                "to add it at runtime (pure-Python packages only), or use the Remote GPU Worker " +
                 "by including 'import torch' or similar in your script (if configured)."
         }
         

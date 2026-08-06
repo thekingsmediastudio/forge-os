@@ -11,9 +11,11 @@ import javax.inject.Singleton
  * Executes Python files and code within a project context.
  * Validates that required packages are available (pre-installed in build.gradle).
  * 
- * IMPORTANT: Chaquopy does NOT support runtime pip install. Packages must be
- * pre-declared in build.gradle at build time. This runner validates requirements
- * at runtime and provides helpful error messages.
+ * IMPORTANT: Pure-Python packages CAN be installed at runtime via the
+ * `python_install` tool (wheels unpacked into workspace/python_packages/).
+ * Only native packages (C extensions) must be pre-declared in build.gradle
+ * at build time. This runner validates requirements and provides helpful
+ * error messages pointing at the right path.
  * 
  * Pre-installed packages (available in all projects):
  * - requests, beautifulsoup4, lxml, numpy, pandas, scikit-learn, matplotlib,
@@ -161,8 +163,10 @@ class ProjectPythonRunner @Inject constructor(
             return buildString {
                 appendLine("❌ Missing Python packages: $missingList")
                 appendLine()
-                appendLine("💡 Chaquopy does NOT support runtime pip install.")
-                appendLine("   Packages must be pre-declared in build.gradle at build time.")
+                appendLine("💡 Try the `python_install` tool first — it installs pure-Python")
+                appendLine("   wheels into workspace/python_packages/ at runtime (no rebuild).")
+                appendLine("   Only native packages (C extensions) must be pre-declared in")
+                appendLine("   build.gradle at build time:")
                 appendLine()
                 appendLine("To add packages:")
                 appendLine("1. Edit app/build.gradle.kts")

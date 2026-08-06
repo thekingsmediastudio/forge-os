@@ -7,8 +7,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import timber.log.Timber
 import java.io.File
+import java.util.concurrent.TimeUnit
+import java.util.zip.ZipFile
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -70,38 +77,188 @@ if '$packagesDir' not in sys.path:
 """.trimIndent()
     }
 
+    // ── Runtime install (pure-Python wheels only) ────────────────────────────
+
+    private val http by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+    }
+
+    private sealed class InstallOutcome {
+        data class Ok(val message: String) : InstallOutcome()
+        data class Err(val message: String) : InstallOutcome()
+    }
+
     /**
-     * Generate pip install command that targets the packages folder.
+     * Install a package at runtime WITHOUT pip (Chaquopy doesn't ship pip).
+     *
+     * Strategy: query PyPI's JSON API, pick a pure-Python wheel
+     * (`py3-none-any` / `py2.py3-none-any`), download it, and unzip it into
+     * `workspace/python_packages/` — a wheel is just a zip, and the packages
+     * dir is already prepended to sys.path before every python_run, so the
+     * package becomes importable immediately.
+     *
+     * Only pure-Python wheels are accepted: native wheels (pydantic-core,
+     * lxml, cryptography…) contain platform .so files that cannot load on
+     * Android — those must still go through the build.gradle chaquopy block.
      */
+    suspend fun install(name: String): String = withContext(Dispatchers.IO) {
+        val pkg = name.trim().lowercase()
+        if (pkg.isEmpty() || !pkg.matches(Regex("^[a-z0-9][a-z0-9._-]*$")))
+            return@withContext "❌ Invalid package name: '$name'"
+
+        when (val outcome = installOne(pkg, emptySet())) {
+            is InstallOutcome.Ok -> {
+                recordInstalled(listOf(pkg))
+                outcome.message
+            }
+            is InstallOutcome.Err -> outcome.message
+        }
+    }
+
+    private fun installOne(
+        pkg: String,
+        installed: Set<String>,
+        depth: Int = 0,
+    ): InstallOutcome {
+        if (depth > 8) return InstallOutcome.Err("❌ $pkg: dependency depth exceeded")
+        if (pkg in installed) return InstallOutcome.Ok("")
+
+        // 1. Query PyPI JSON API
+        val metaUrl = "https://pypi.org/pypi/$pkg/json"
+        val meta = try {
+            http.newCall(Request.Builder().url(metaUrl).build()).execute().use { r ->
+                if (!r.isSuccessful)
+                    return InstallOutcome.Err("❌ $pkg: not found on PyPI (HTTP ${r.code})")
+                json.parseToJsonElement(r.body?.string() ?: return InstallOutcome.Err("❌ $pkg: empty PyPI response")).jsonObject
+            }
+        } catch (e: Exception) {
+            return InstallOutcome.Err("❌ $pkg: PyPI lookup failed — ${e.message}")
+        }
+
+        val info = meta["info"]?.jsonObject
+        val requiresDist = info?.get("requires_dist")?.jsonArray
+            ?.mapNotNull { it.jsonPrimitive.content } ?: emptyList()
+
+        // 2. Collect release files across all versions (newest first), keep wheels
+        val urls = meta["urls"]?.jsonArray
+        val releases = meta["releases"]?.jsonObject
+        val wheels = mutableListOf<Pair<String, String>>() // filename → url
+
+        fun collectWheels(arr: kotlinx.serialization.json.JsonArray?) {
+            arr?.forEach { el ->
+                val o = el.jsonObject
+                val filename = o["filename"]?.jsonPrimitive?.content ?: return@forEach
+                if (!filename.endsWith(".whl")) return@forEach
+                val url = o["url"]?.jsonPrimitive?.content ?: return@forEach
+                wheels += filename to url
+            }
+        }
+        collectWheels(urls)
+        // Fallback: older releases if current has no pure wheel
+        if (wheels.none { isPurePythonWheel(it.first) }) {
+            releases?.keys?.sortedDescending()?.take(8)?.forEach { v ->
+                collectWheels(releases[v]?.jsonArray)
+            }
+        }
+
+        // 3. Pick the newest pure-Python wheel
+        val pure = wheels.filter { isPurePythonWheel(it.first) }
+        if (pure.isEmpty()) {
+            val anyWheel = wheels.firstOrNull()?.first
+            return InstallOutcome.Err(buildString {
+                append("❌ $pkg has no pure-Python wheel")
+                if (anyWheel != null)
+                    append(" (found native wheel '$anyWheel' — contains platform code that can't run on Android). ")
+                else
+                    append(". ")
+                append("Native packages must be declared in app/build.gradle under the chaquopy pip block.")
+            })
+        }
+        val (wheelFile, wheelUrl) = pure.first()
+
+        // 4. Download the wheel
+        val tmp = File(context.cacheDir, wheelFile)
+        try {
+            http.newCall(Request.Builder().url(wheelUrl).build()).execute().use { r ->
+                if (!r.isSuccessful)
+                    return InstallOutcome.Err("❌ $pkg: wheel download failed (HTTP ${r.code})")
+                tmp.outputStream().use { out ->
+                    r.body?.byteStream()?.copyTo(out)
+                        ?: return InstallOutcome.Err("❌ $pkg: empty wheel body")
+                }
+            }
+        } catch (e: Exception) {
+            return InstallOutcome.Err("❌ $pkg: wheel download failed — ${e.message}")
+        }
+
+        // 5. Unzip into python_packages/ (skip dist-info metadata dirs)
+        val dest = getPackagesDir()
+        val extracted = try {
+            var count = 0
+            ZipFile(tmp).use { zip ->
+                val entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    val e = entries.nextElement()
+                    if (e.isDirectory) continue
+                    if (e.name.contains(".dist-info/") || e.name.contains(".data/")) continue
+                    val target = File(dest, e.name)
+                    if (!target.canonicalPath.startsWith(dest.canonicalPath)) continue // zip-slip guard
+                    target.parentFile?.mkdirs()
+                    zip.getInputStream(e).use { ins ->
+                        target.outputStream().use { out -> ins.copyTo(out) }
+                    }
+                    count++
+                }
+            }
+            count
+        } catch (e: Exception) {
+            return InstallOutcome.Err("❌ $pkg: failed to unpack wheel — ${e.message}")
+        } finally {
+            tmp.delete()
+        }
+
+        // 6. Best-effort: install pure-Python dependencies declared in metadata
+        val depNotes = StringBuilder()
+        val depNames = requiresDist.mapNotNull { parseDepName(it) }
+            .filter { it !in installed && it != pkg }
+            .distinct()
+        val newInstalled = installed + pkg
+        for (dep in depNames) {
+            when (val res = installOne(dep, newInstalled, depth + 1)) {
+                is InstallOutcome.Ok -> if (res.message.isNotBlank()) depNotes.append('\n').append(res.message)
+                is InstallOutcome.Err -> depNotes.append("\n  ⚠️ dep '$dep' skipped: ${res.message.take(120)}")
+            }
+        }
+
+        return InstallOutcome.Ok(
+            "✅ $pkg installed → python_packages/ ($extracted files from $wheelFile)$depNotes" +
+            "\nImport it in your next python_run — no restart needed.")
+    }
+
+    private fun isPurePythonWheel(filename: String): Boolean {
+        val tag = filename.removeSuffix(".whl").substringAfterLast('-')
+        return tag == "py3-none-any" || tag == "py2.py3-none-any" || tag == "py2-none-any"
+    }
+
+    /** Extract a bare dependency name from a requires_dist line, skipping extras/markers. */
+    private fun parseDepName(line: String): String? {
+        // e.g. "charset-normalizer (<4,>=2)" ; "idna ; extra == 'crypto'"
+        if (line.contains(";") && line.substringAfter(';').contains("extra")) return null // skip optional extras
+        val head = line.substringBefore(';').trim()
+        val name = head.takeWhile { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
+        return name.lowercase().takeIf { it.isNotBlank() }
+    }
+
+    /** pip is unavailable under Chaquopy; kept only for API compatibility. */
+    @Deprecated("Use install() — pip is not available under Chaquopy")
     suspend fun buildPipInstallCode(packages: List<String>): String {
-        val packagesDir = getPackagesDir().absolutePath.replace("\\", "/")
-        val pkgList = packages.joinToString(", ") { "\"${it.replace("\"", "")}\"" }
-        return """
-import sys
-import os
-
-# Ensure packages directory exists
-_packages_dir = '$packagesDir'
-os.makedirs(_packages_dir, exist_ok=True)
-
-# Add to path so pip can check existing installs
-if _packages_dir not in sys.path:
-    sys.path.insert(0, _packages_dir)
-
-_pkgs = [$pkgList]
-try:
-    from pip._internal.cli.main import main as _pip_main
-    _rc = _pip_main(['install', '--quiet', '--target', _packages_dir] + _pkgs)
-    if _rc == 0:
-        print("✅ Installed to python_packages/: " + ", ".join(_pkgs))
-    else:
-        print("❌ pip exited with code " + str(_rc))
-except ImportError:
-    print("❌ pip is not available in this Python environment.")
-    print("💡 Packages must be declared in build.gradle under chaquopy pip block.")
-except Exception as _e:
-    print("❌ pip install failed: " + str(_e))
-""".trimIndent()
+        return "# pip is not available under Chaquopy.\n" +
+            "# Use the python_install tool — it downloads pure-Python wheels into python_packages/.\n" +
+            "print(\"Use python_install tool for: ${packages.joinToString(", ")}\")"
     }
 
     /**
@@ -143,6 +300,11 @@ except Exception as _e:
 
     /**
      * Generate code to list both built-in and user-installed packages.
+     *
+     * Uses `importlib.metadata` (dist-name based, no code execution) instead of
+     * `__import__` — the AST security guard in forge_sandbox/security.py blocks
+     * `__import__()` calls, which made the previous version of this script fail
+     * its own sandbox check every time.
      */
     suspend fun buildListPackagesCode(): String {
         val packagesDir = getPackagesDir().absolutePath.replace("\\", "/")
@@ -153,29 +315,55 @@ except Exception as _e:
 import sys
 import os
 
-# Built-in packages (from Chaquopy)
+# Make user-installed packages visible to metadata lookup too
+_packages_dir = '$packagesDir'
+if _packages_dir not in sys.path:
+    sys.path.insert(0, _packages_dir)
+
+from importlib.metadata import version, PackageNotFoundError
+
+# Built-in packages (from Chaquopy) — checked by dist name, no code executed
 print("=== Built-in Packages (Chaquopy) ===")
-_builtin = ['numpy', 'pillow', 'requests', 'beautifulsoup4', 'pandas', 'lxml', 
+_builtin = ['numpy', 'pillow', 'requests', 'beautifulsoup4', 'pandas', 'lxml',
             'python-dateutil', 'pyyaml', 'openpyxl', 'xlrd', 'xlwt', 'psutil']
 for pkg in _builtin:
     try:
-        __import__(pkg.replace('-', '_').replace('beautifulsoup4', 'bs4'))
-        print(f"  ✅ {pkg}")
-    except ImportError:
+        print(f"  ✅ {pkg} {version(pkg)}")
+    except PackageNotFoundError:
         print(f"  ❌ {pkg} (not available)")
+    except Exception as e:
+        # Chaquopy wheels may omit dist-info metadata; note it instead of lying
+        print(f"  ❔ {pkg} (installed but metadata missing: {type(e).__name__})")
 
-# User-installed packages (from python_packages/)
+# User-installed packages — union of the manifest and what's actually on disk
+# (disk wins: wheels are unpacked without dist-info, so version() may miss them)
 print()
 print("=== User-Installed Packages (python_packages/) ===")
-_user_installed = [$installedNames]
-if _user_installed:
-    for pkg in _user_installed:
-        print(f"  📦 {pkg}")
+_manifest = [$installedNames]
+_on_disk = []
+if os.path.isdir(_packages_dir):
+    for entry in sorted(os.listdir(_packages_dir)):
+        if entry in ('manifest.json', '__pycache__'):
+            continue
+        full = os.path.join(_packages_dir, entry)
+        if os.path.isdir(full) or entry.endswith('.py'):
+            _on_disk.append(entry[:-3] if entry.endswith('.py') else entry)
+_seen = set()
+_merged = []
+for _name in _manifest + _on_disk:
+    _key = _name.lower().replace('-', '_')
+    if _key not in _seen:
+        _seen.add(_key)
+        _merged.append(_name)
+if _merged:
+    for pkg in _merged:
+        try:
+            print(f"  📦 {pkg} {version(pkg)}")
+        except Exception:
+            print(f"  📦 {pkg}")
 else:
-    print("  (none yet)")
+    print("  (none yet — install with python_install)")
 
-# Check if packages dir is in path
-_packages_dir = '$packagesDir'
 print()
 if _packages_dir in sys.path:
     print(f"✅ python_packages/ is in sys.path")

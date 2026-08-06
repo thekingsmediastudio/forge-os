@@ -247,7 +247,7 @@ data class ToolRegistryConfig(
         "memory_store_image", "memory_get_skill", "memory_list_skills",
         "telegram_react", "telegram_reply", "telegram_send_file",
         "message_bus_publish", "message_bus_read", "message_bus_topics",
-        "python_run_remote", "python_packages",
+        "python_run_remote", "python_packages", "python_install",
         "image_analyze", "mcp_call_tool",
         "delegate_ghost",
         "system_backup_export", "system_backup_import",
