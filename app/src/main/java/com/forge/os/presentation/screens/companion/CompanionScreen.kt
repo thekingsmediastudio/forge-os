@@ -218,10 +218,19 @@ private fun Bubble(m: CompanionMessage) {
                     fontSize = 9.sp, letterSpacing = 1.sp)
                 Spacer(Modifier.height(2.dp))
             }
-            Text(
-                m.content,
-                color = if (m.isError) ForgeOsPalette.Danger else ForgeOsPalette.TextPrimary,
-                fontSize = 14.sp)
+            if (isUser) {
+                Text(
+                    m.content,
+                    color = if (m.isError) ForgeOsPalette.Danger else ForgeOsPalette.TextPrimary,
+                    fontSize = 14.sp)
+            } else {
+                // Rich rendering for companion replies: markdown, code blocks,
+                // links, lists, tables. User messages stay plain text.
+                com.forge.os.presentation.screens.MarkdownText(
+                    text = m.content,
+                    baseColor = if (m.isError) ForgeOsPalette.Danger else ForgeOsPalette.TextPrimary,
+                    baseFontSize = 14f)
+            }
             // Phase K-4: tiny tag chip on user bubbles after classification.
             m.tags?.let { t ->
                 Spacer(Modifier.height(4.dp))
