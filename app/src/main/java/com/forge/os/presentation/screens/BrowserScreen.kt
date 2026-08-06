@@ -116,6 +116,7 @@ fun BrowserScreen(
     var showBookmarks by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var showDownloads by remember { mutableStateOf(false) }
+    var showSiteInfo by remember { mutableStateOf(false) }
     // 0f–1f pull-to-refresh drag progress for the indicator overlay
     var pullProgress by remember { mutableStateOf(0f) }
 
@@ -307,6 +308,7 @@ fun BrowserScreen(
                 history.map { OmniboxSuggestion(it.url, it.title.ifBlank { it.url }, isHistory = true) } +
                     bookmarks.map { OmniboxSuggestion(it.url, it.title.ifBlank { it.url }) }
             },
+            onSecurityClick = { showSiteInfo = true },
             onBackClick = { activeWebView?.goBack() },
             onForwardClick = { activeWebView?.goForward() },
             onRefreshClick = { activeWebView?.reload() },
@@ -491,6 +493,25 @@ fun BrowserScreen(
             onDismiss = { showDownloads = false },
             onRemove = { id -> viewModel.downloadsStore.remove(id) },
             onClear = { viewModel.downloadsStore.clear() })
+    }
+
+    if (showSiteInfo) {
+        SiteInfoDialog(
+            url = currentUrl,
+            certificate = activeWebView?.certificate,
+            onDismiss = { showSiteInfo = false },
+            onClearSiteData = {
+                val host = runCatching { android.net.Uri.parse(currentUrl).host }.getOrNull()
+                if (host != null) {
+                    runCatching {
+                        android.webkit.WebStorage.getInstance().deleteAllData()
+                        val cm = CookieManager.getInstance()
+                        cm.removeAllCookies(null)
+                        cm.flush()
+                    }
+                }
+                showSiteInfo = false
+            })
     }
 
     if (showClearDialog) {
@@ -846,6 +867,65 @@ private fun DownloadsDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Close", color = Orange) }
+        },
+        containerColor = Surface)
+}
+
+@Composable
+private fun SiteInfoDialog(
+    url: String,
+    certificate: android.net.http.SslCertificate?,
+    onDismiss: () -> Unit,
+    onClearSiteData: () -> Unit) {
+    val uri = remember(url) { runCatching { android.net.Uri.parse(url) }.getOrNull() }
+    val isHttps = url.startsWith("https://")
+    val host = uri?.host ?: url
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (isHttps) Icons.Filled.Lock else Icons.Filled.Clear,
+                    contentDescription = null,
+                    tint = if (isHttps) forgePalette.success else forgePalette.danger,
+                    modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (isHttps) "Connection is secure" else "Connection is not secure",
+                    color = TextPrimary,
+                    fontSize = 15.sp)
+            }
+        },
+        text = {
+            Column {
+                Text(host, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (isHttps)
+                        "Your connection to this site is encrypted using HTTPS."
+                    else
+                        "This site uses plain HTTP. Information you send (including passwords) can be intercepted.",
+                    color = TextMuted,
+                    fontSize = 12.sp)
+                if (certificate != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Text("CERTIFICATE", color = TextMuted, fontSize = 10.sp, letterSpacing = 2.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Issued to: ${certificate.issuedTo.cName}", color = TextPrimary, fontSize = 12.sp)
+                    Text("Issued by: ${certificate.issuedBy.cName}", color = TextPrimary, fontSize = 12.sp)
+                    Text(
+                        "Valid until: ${certificate.validNotAfter}",
+                        color = TextMuted,
+                        fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = Orange) }
+        },
+        dismissButton = {
+            TextButton(onClick = onClearSiteData) {
+                Text("Clear site data", color = forgePalette.danger, fontSize = 12.sp) }
         },
         containerColor = Surface)
 }

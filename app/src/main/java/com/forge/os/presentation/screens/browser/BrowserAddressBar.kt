@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
@@ -73,6 +74,7 @@ fun BrowserAddressBar(
     canGoForward: Boolean = false,
     isBookmarked: Boolean = false,
     suggestions: List<OmniboxSuggestion> = emptyList(),
+    onSecurityClick: () -> Unit = {},
     onBackClick: () -> Unit = {},
     onForwardClick: () -> Unit = {},
     onRefreshClick: () -> Unit = {},
@@ -165,9 +167,21 @@ fun BrowserAddressBar(
                         if (!isEditing && isSecure) {
                             Icon(
                                 Icons.Filled.Lock,
-                                contentDescription = "Secure",
+                                contentDescription = "Site security info",
                                 tint = forgePalette.success,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clickable { onSecurityClick() }
+                            )
+                            Box(modifier = Modifier.size(6.dp))
+                        } else if (!isEditing && url.startsWith("http://")) {
+                            Icon(
+                                Icons.Filled.Info,
+                                contentDescription = "Not secure",
+                                tint = forgePalette.danger,
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clickable { onSecurityClick() }
                             )
                             Box(modifier = Modifier.size(6.dp))
                         }

@@ -7,6 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -78,9 +82,7 @@ fun SettingsScreen(
     val apiServerPort by viewModel.apiServerPort.collectAsState()
     val apiServerKey by viewModel.apiServerKey.collectAsState()
     val context = LocalContext.current
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showAddSecretDialog by remember { mutableStateOf(false) }
-    
+
     // Tutorial state
     val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
     val tutorialManager = tutorialVm.tutorialManager
@@ -152,548 +154,43 @@ fun SettingsScreen(
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
             )
 
-            // ── Collapsible section state ────────────────────────────────
-            var collapsedSections = remember { mutableStateMapOf<String, Boolean>() }
-            fun isCollapsed(section: String) = collapsedSections[section] ?: false
-            fun toggleSection(section: String) {
-                collapsedSections[section] = !isCollapsed(section)
-            }
-            fun matchesSearch(vararg keywords: String): Boolean {
-                if (settingsSearchQuery.isBlank()) return true
-                val q = settingsSearchQuery.lowercase()
-                return keywords.any { it.lowercase().contains(q) }
-            }
+            // ── Grid home + section detail navigation ───────────────────
+            var currentSection by remember { mutableStateOf<String?>(null) }
+            val sections = settingsSections(
+                providerBadge = "${keyStatuses.count { it.hasKey }}/${keyStatuses.size}",
+                endpointsBadge = "${customStatuses.size}",
+                secretsBadge = "${namedSecretStatuses.size}"
+            )
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // ── Appearance ───────────────────────────────────────────
-                if (matchesSearch("appearance", "theme", "dark", "light", "haptic", "display")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "APPEARANCE",
-                        icon = "🎨",
-                        collapsed = isCollapsed("appearance"),
-                        onToggle = { toggleSection("appearance") }
-                    )
-                }
-                if (!isCollapsed("appearance")) {
-                item {
-                    Box(modifier = Modifier.spotlightTarget("settings_appearance")) {
-                        AppearanceCard(
-                            selected = themeMode,
-                            onSelect = { viewModel.setThemeMode(it) },
-                            hapticEnabled = hapticFeedbackEnabled,
-                            onHapticToggle = { viewModel.setHapticFeedbackEnabled(it) },
-                            hotwordEnabled = hotwordEnabled,
-                            onHotwordToggle = { enabled ->
-                                viewModel.setHotwordEnabled(enabled)
-                                // When enabling, make sure we can show the bubble over other apps.
-                                if (enabled && !android.provider.Settings.canDrawOverlays(context)) {
-                                    context.startActivity(
-                                        android.content.Intent(
-                                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                            android.net.Uri.parse("package:${context.packageName}")
-                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                }
-                            }
-                        )
-                    }
-                }
-                }
-                }
-
-                // ── Model ────────────────────────────────────────────────
-                if (matchesSearch("model", "compact", "token", "budget", "cost", "threshold")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "MODEL",
-                        icon = "🤖",
-                        collapsed = isCollapsed("model"),
-                        onToggle = { toggleSection("model") }
-                    )
-                }
-                if (!isCollapsed("model")) {
-                item {
-                    CompactModeCard(
-                        enabled = compactModeEnabled,
-                        onToggle = { viewModel.setCompactModeEnabled(it) }
-                    )
-                }
-                }
-                }
-
-                // ── Built-in Providers ───────────────────────────────────
-                if (matchesSearch("provider", "api", "key", "openai", "anthropic", "groq", "ollama", "gemini")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "PROVIDERS",
-                        icon = "🔑",
-                        collapsed = isCollapsed("providers"),
-                        onToggle = { toggleSection("providers") },
-                        badge = "${keyStatuses.count { it.hasKey }}/${keyStatuses.size}"
-                    )
-                }
-                if (!isCollapsed("providers")) {
-                item {
-                    Box(modifier = Modifier.spotlightTarget("settings_api_keys")) {
-                        Column {
-                            keyStatuses.forEach { status ->
-                                ApiKeyCard(
-                                    status = status,
-                                    onSave = { key -> viewModel.saveKey(status.provider, key) },
-                                    onDelete = { viewModel.deleteKey(status.provider) }
-                                )
-                            }
-                        }
-                    }
-                }
-                }
-                }
-
-                // ── Custom Endpoints ─────────────────────────────────────
-                if (matchesSearch("custom", "endpoint", "url", "add", "compatible")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "CUSTOM ENDPOINTS",
-                        icon = "🔗",
-                        collapsed = isCollapsed("endpoints"),
-                        onToggle = { toggleSection("endpoints") },
-                        badge = "${customStatuses.size}",
-                        action = {
-                            TextButton(onClick = { showAddDialog = true }) {
-                                Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Add", color = ModernAccent, fontSize = 13.sp)
-                            }
-                        }
-                    )
-                }
-                if (!isCollapsed("endpoints")) {
-                if (customStatuses.isEmpty()) {
-                    item {
-                        Text(
-                            "None yet. Use Add to wire any OpenAI- or Anthropic-compatible URL.",
-                            color = forgePalette.textDim,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp
-                        )
-                    }
-                }
-                items(customStatuses) { cs ->
-                    CustomEndpointCard(
-                        status = cs,
-                        onSetKey = { k -> viewModel.setCustomKey(cs.endpoint.id, k) },
-                        onDelete = { viewModel.deleteCustomEndpoint(cs.endpoint.id) }
-                    )
-                }
-                }
-                }
-
-                // ── Custom API Keys ──────────────────────────────────────
-                if (matchesSearch("secret", "named", "api key", "token", "credential")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "CUSTOM API KEYS",
-                        icon = "🔐",
-                        collapsed = isCollapsed("secrets"),
-                        onToggle = { toggleSection("secrets") },
-                        badge = "${namedSecretStatuses.size}",
-                        action = {
-                            TextButton(onClick = { showAddSecretDialog = true }) {
-                                Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Add", color = ModernAccent, fontSize = 13.sp)
-                            }
-                        }
-                    )
-                }
-                if (!isCollapsed("secrets")) {
-                item {
-                    Text(
-                        "Register an API key by name. The agent references it by name only — the raw value never enters the model.",
-                        color = forgePalette.textDim,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                }
-                if (namedSecretStatuses.isEmpty()) {
-                    item {
-                        Text("None yet.", color = forgePalette.textDim, fontSize = 12.sp)
-                    }
-                }
-                items(namedSecretStatuses) { ns ->
-                    NamedSecretCard(
-                        status = ns,
-                        onDelete = { viewModel.deleteNamedSecret(ns.secret.name) },
-                    )
-                }
-                }
-                }
-
-                // ── Advanced Execution ───────────────────────────────────
-                if (matchesSearch("advanced", "execution", "remote", "gpu", "worker", "python", "cost threshold")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "ADVANCED EXECUTION",
-                        icon = "⚡",
-                        collapsed = isCollapsed("advanced"),
-                        onToggle = { toggleSection("advanced") },
-                        isAdvanced = true
-                    )
-                }
-                if (!isCollapsed("advanced")) {
-                item {
-                    AdvancedExecutionCard(
-                        costThreshold = costThresholdUsd,
-                        onSetCostThreshold = { viewModel.setCostThresholdUsd(it) },
-                        remoteUrl = remotePythonWorkerUrl,
-                        remoteToken = remotePythonWorkerAuthToken,
-                        onSetHybrid = { url, token -> viewModel.setHybridExecution(url, token) }
-                    )
-                }
-                }
-                }
-
-                // ── Predictive Prefetch ──────────────────────────────────
-                if (matchesSearch("prefetch", "predictive", "cache", "unsafe", "preload")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "PREDICTIVE PREFETCH",
-                        icon = "🚀",
-                        collapsed = isCollapsed("prefetch"),
-                        onToggle = { toggleSection("prefetch") },
-                        isAdvanced = true
-                    )
-                }
-                if (!isCollapsed("prefetch")) {
-                item {
-                    PredictivePrefetchCard(
-                        enabled = prefetchEnabled,
-                        onToggleEnabled = { viewModel.setPrefetchEnabled(it) },
-                        allowUnsafe = prefetchAllowUnsafe,
-                        onToggleAllowUnsafe = { viewModel.setPrefetchAllowUnsafe(it) }
-                    )
-                }
-                }
-                }
-
-                // ── Intelligence Upgrades ────────────────────────────────
-                if (matchesSearch("intelligence", "reflection", "memory", "rag", "vision", "reasoning", "skill")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "INTELLIGENCE",
-                        icon = "🧠",
-                        collapsed = isCollapsed("intelligence"),
-                        onToggle = { toggleSection("intelligence") }
-                    )
-                }
-                if (!isCollapsed("intelligence")) {
-                item {
-                    IntelligenceUpgradesCard(
-                        reflection = reflectionEnabled,
-                        onReflectionToggle = { viewModel.setReflectionEnabled(it) },
-                        memoryRag = memoryRagEnabled,
-                        onMemoryRagToggle = { viewModel.setMemoryRagEnabled(it) },
-                        vision = visionEnabled,
-                        onVisionToggle = { viewModel.setVisionEnabled(it) },
-                        reasoning = reasoningEnabled,
-                        onReasoningToggle = { viewModel.setReasoningEnabled(it) }
-                    )
-                }
-                }
-                }
-
-                // ── Backup ───────────────────────────────────────────────
-                if (matchesSearch("backup", "export", "zip", "archive", "save", "restore")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "BACKUP & DATA",
-                        icon = "💾",
-                        collapsed = isCollapsed("backup"),
-                        onToggle = { toggleSection("backup") }
-                    )
-                }
-                if (!isCollapsed("backup")) {
-                item {
-                    BackupCard(
-                        loading = backupLoading,
-                        onBackup = {
-                            viewModel.performBackup { file ->
-                                val uri = androidx.core.content.FileProvider.getUriForFile(
-                                    context,
-                                    "${context.packageName}.fileprovider",
-                                    file
-                                )
-                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "application/zip"
-                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                context.startActivity(android.content.Intent.createChooser(intent, "Save Forge Backup"))
-                            }
-                        }
-                    )
-                }
-                }
-                }
-
-                // ── Ollama Note ──────────────────────────────────────────
-                item {
-                    Surface(
-                        color = ModernSurface,
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, forgePalette.borderSoft)
+            if (currentSection == null) {
+                SettingsHomeGrid(
+                    sections = sections,
+                    searchQuery = settingsSearchQuery,
+                    onOpenSection = { currentSection = it }
+                )
+            } else {
+                val section = sections.firstOrNull { it.key == currentSection }
+                if (section == null) {
+                    currentSection = null
+                } else {
+                    SettingsSectionDetail(
+                        section = section,
+                        onBack = { currentSection = null }
                     ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Icon(
-                                Icons.Outlined.Info,
-                                contentDescription = null,
-                                tint = ModernTextSecondary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                "For local Ollama, the \"key\" field is the host URL, e.g. http://192.168.1.x:11434/v1/",
-                                color = ModernTextSecondary,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
-                }
-
-                // ── Capability Padlocks ──────────────────────────────────
-                if (matchesSearch("padlock", "capability", "lock", "security", "restrict")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "CAPABILITY PADLOCKS",
-                        icon = "🔒",
-                        collapsed = isCollapsed("padlocks"),
-                        onToggle = { toggleSection("padlocks") },
-                        isAdvanced = true
-                    )
-                }
-                if (!isCollapsed("padlocks")) {
-                item { CapabilityPadlocksCard() }
-                }
-                }
-
-                // ── Memory Channels ──────────────────────────────────────
-                if (matchesSearch("memory", "channel", "context", "work", "personal")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "MEMORY CHANNELS",
-                        icon = "🧵",
-                        collapsed = isCollapsed("channels"),
-                        onToggle = { toggleSection("channels") }
-                    )
-                }
-                if (!isCollapsed("channels")) {
-                item {
-                    val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
-                    val channelsEnabled by channelVm.channelsEnabled.collectAsState()
-
-                    Box(modifier = Modifier.spotlightTarget("settings_channels")) {
-                        SettingsToggleRow(
-                            title = "Enable channels",
-                            subtitle = "Separate memory by context (Work, Personal, etc.)",
-                            checked = channelsEnabled,
-                            onCheckedChange = { channelVm.setChannelsEnabled(it) }
+                        SettingsSectionBody(
+                            sectionKey = section.key,
+                            viewModel = viewModel,
+                            onNavigateToMemories = onNavigateToMemories,
+                            onNavigateToModelRouting = onNavigateToModelRouting,
+                            onNavigateToOverrides = onNavigateToOverrides,
+                            onNavigateToPersonality = onNavigateToPersonality,
+                            onNavigateToBackup = onNavigateToBackup
                         )
                     }
                 }
-                item {
-                    val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
-                    val channelsEnabled by channelVm.channelsEnabled.collectAsState()
-
-                    if (channelsEnabled) {
-                        SettingsNavRow(
-                            icon = Icons.Outlined.ManageAccounts,
-                            title = "Manage channels",
-                            subtitle = "Create, edit, and organize your channels",
-                            onClick = onNavigateToMemories
-                        )
-                    }
-                }
-                }
-                }
-
-                // ── Help & Tutorials ─────────────────────────────────────
-                if (matchesSearch("help", "tutorial", "guide", "replay", "learn")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "HELP & TUTORIALS",
-                        icon = "📚",
-                        collapsed = isCollapsed("help"),
-                        onToggle = { toggleSection("help") }
-                    )
-                }
-                if (!isCollapsed("help")) {
-                item {
-                    val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
-                    SettingsNavRow(
-                        icon = Icons.Outlined.School,
-                        title = "Replay tutorials",
-                        subtitle = "Show interface guides again",
-                        onClick = {
-                            tutorialVm.tutorialManager.resetAllTutorials()
-                        }
-                    )
-                }
-                }
-                }
-
-                // ── Routing & Security ───────────────────────────────────
-                if (matchesSearch("routing", "security", "model routing", "override", "personality", "backup", "restore")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "ROUTING & SECURITY",
-                        icon = "🛡️",
-                        collapsed = isCollapsed("routing"),
-                        onToggle = { toggleSection("routing") }
-                    )
-                }
-                if (!isCollapsed("routing")) {
-                item {
-                    SettingsNavRow(
-                        icon = Icons.Outlined.AltRoute,
-                        title = "Model routing",
-                        subtitle = "Edit fallback chain & background-caller toggles",
-                        onClick = onNavigateToModelRouting
-                    )
-                }
-                item {
-                    SettingsNavRow(
-                        icon = Icons.Outlined.Lock,
-                        title = "Advanced overrides",
-                        subtitle = "Per-tool blocked hosts/extensions/configs",
-                        onClick = onNavigateToOverrides
-                    )
-                }
-                item {
-                    SettingsNavRow(
-                        icon = Icons.Outlined.Person,
-                        title = "Personality",
-                        subtitle = "Customize agent name, traits, communication style",
-                        onClick = onNavigateToPersonality
-                    )
-                }
-                item {
-                    SettingsNavRow(
-                        icon = Icons.Outlined.Backup,
-                        title = "Backup & Restore",
-                        subtitle = "Create system snapshot or restore from backup",
-                        onClick = onNavigateToBackup
-                    )
-                }
-                }
-                }
-
-                // ── Permissions ──────────────────────────────────────────
-                if (matchesSearch("permission", "access", "allow", "grant")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "PERMISSIONS",
-                        icon = "🔑",
-                        collapsed = isCollapsed("permissions"),
-                        onToggle = { toggleSection("permissions") }
-                    )
-                }
-                if (!isCollapsed("permissions")) {
-                item { PermissionsCard() }
-                }
-                }
-
-                // ── API Server ───────────────────────────────────────────
-                if (matchesSearch("api", "server", "http", "sdk", "port", "token")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "API SERVER",
-                        icon = "🖥️",
-                        collapsed = isCollapsed("apiserver"),
-                        onToggle = { toggleSection("apiserver") },
-                        isAdvanced = true
-                    )
-                }
-                if (!isCollapsed("apiserver")) {
-                item {
-                    ApiServerCard(
-                        running = apiServerRunning,
-                        port = apiServerPort,
-                        apiKey = apiServerKey,
-                        onStart = { viewModel.startApiServer() },
-                        onStop = { viewModel.stopApiServer() },
-                        onRegenerateToken = { viewModel.regenerateApiToken() }
-                    )
-                }
-                }
-                }
-
-                // ── About ────────────────────────────────────────────────
-                if (matchesSearch("about", "version", "forge", "build", "labs")) {
-                item {
-                    CollapsibleSectionHeader(
-                        title = "ABOUT",
-                        icon = "ℹ️",
-                        collapsed = isCollapsed("about"),
-                        onToggle = { toggleSection("about") }
-                    )
-                }
-                if (!isCollapsed("about")) {
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = forgePalette.surface,
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            ForgeLogo(size = 48.dp)
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "Forge OS",
-                                color = ModernTextPrimary,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                "v${com.forge.os.BuildConfig.VERSION_NAME}",
-                                color = ModernTextSecondary,
-                                fontSize = 13.sp
-                            )
-                            Spacer(Modifier.height(16.dp))
-                            Text(
-                                "Built by Forge Labs",
-                                color = ModernTextPrimary,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                "A division of TheKingsMediaStudio",
-                                color = ModernTextSecondary,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-                }
-                }
-                }
-
-                item { Spacer(Modifier.height(32.dp)) }
             }
         }
-        
+
         // Tutorial Overlay
         if (showTutorial) {
             val tutorialSteps = listOf(
@@ -737,26 +234,6 @@ fun SettingsScreen(
                 }
             )
         }
-    }
-
-    if (showAddDialog) {
-        AddCustomEndpointDialog(
-            onDismiss = { showAddDialog = false },
-            onConfirm = { name, url, schema, model, key ->
-                viewModel.addCustomEndpoint(name, url, schema, model, key)
-                showAddDialog = false
-            }
-        )
-    }
-
-    if (showAddSecretDialog) {
-        AddNamedSecretDialog(
-            onDismiss = { showAddSecretDialog = false },
-            onConfirm = { name, desc, style, header, query, value ->
-                viewModel.saveNamedSecret(name, desc, style, header, query, value)
-                showAddSecretDialog = false
-            },
-        )
     }
 }
 
@@ -2137,6 +1614,728 @@ private fun ApiServerCard(
                 }
             }
         }
+    }
+}
+
+// ── Settings grid home + section detail ─────────────────────────────────────
+
+private data class SettingsSection(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val emoji: String,
+    val group: String,
+    val keywords: List<String>,
+    val isAdvanced: Boolean = false,
+    val badge: (() -> String?)? = null
+)
+
+private fun settingsSections(
+    providerBadge: String,
+    endpointsBadge: String,
+    secretsBadge: String
+): List<SettingsSection> = listOf(
+    SettingsSection(
+        key = "model",
+        title = "Model",
+        subtitle = "Compact mode & token budget",
+        emoji = "🤖",
+        group = "AI & Model",
+        keywords = listOf("model", "compact", "token", "budget", "cost", "threshold")
+    ),
+    SettingsSection(
+        key = "providers",
+        title = "Providers",
+        subtitle = "OpenAI, Anthropic, Groq, Ollama…",
+        emoji = "🔑",
+        group = "AI & Model",
+        keywords = listOf("provider", "api", "key", "openai", "anthropic", "groq", "ollama", "gemini"),
+        badge = { providerBadge }
+    ),
+    SettingsSection(
+        key = "endpoints",
+        title = "Custom Endpoints",
+        subtitle = "Any OpenAI/Anthropic-compatible URL",
+        emoji = "🔗",
+        group = "AI & Model",
+        keywords = listOf("custom", "endpoint", "url", "add", "compatible"),
+        badge = { endpointsBadge }
+    ),
+    SettingsSection(
+        key = "secrets",
+        title = "Custom API Keys",
+        subtitle = "Named keys the agent can reference",
+        emoji = "🔐",
+        group = "AI & Model",
+        keywords = listOf("secret", "named", "api key", "token", "credential"),
+        badge = { secretsBadge }
+    ),
+    SettingsSection(
+        key = "intelligence",
+        title = "Intelligence",
+        subtitle = "Reflection, memory, vision, reasoning",
+        emoji = "🧠",
+        group = "AI & Model",
+        keywords = listOf("intelligence", "reflection", "memory", "rag", "vision", "reasoning", "skill")
+    ),
+    SettingsSection(
+        key = "advanced",
+        title = "Advanced Execution",
+        subtitle = "Hybrid GPU worker & cost threshold",
+        emoji = "⚡",
+        group = "AI & Model",
+        keywords = listOf("advanced", "execution", "remote", "gpu", "worker", "python", "cost threshold"),
+        isAdvanced = true
+    ),
+    SettingsSection(
+        key = "prefetch",
+        title = "Predictive Prefetch",
+        subtitle = "Preload models & cache",
+        emoji = "🚀",
+        group = "AI & Model",
+        keywords = listOf("prefetch", "predictive", "cache", "unsafe", "preload"),
+        isAdvanced = true
+    ),
+    SettingsSection(
+        key = "appearance",
+        title = "Appearance",
+        subtitle = "Theme, haptics, wake word",
+        emoji = "🎨",
+        group = "Personalization",
+        keywords = listOf("appearance", "theme", "dark", "light", "haptic", "display", "hotword", "wake")
+    ),
+    SettingsSection(
+        key = "channels",
+        title = "Memory Channels",
+        subtitle = "Separate memory by context",
+        emoji = "🧵",
+        group = "Personalization",
+        keywords = listOf("memory", "channel", "context", "work", "personal")
+    ),
+    SettingsSection(
+        key = "routing",
+        title = "Routing & Security",
+        subtitle = "Model routing, overrides, personality",
+        emoji = "🛡️",
+        group = "Personalization",
+        keywords = listOf("routing", "security", "model routing", "override", "personality", "backup", "restore")
+    ),
+    SettingsSection(
+        key = "padlocks",
+        title = "Capability Padlocks",
+        subtitle = "Restrict agent capabilities",
+        emoji = "🔒",
+        group = "Personalization",
+        keywords = listOf("padlock", "capability", "lock", "security", "restrict"),
+        isAdvanced = true
+    ),
+    SettingsSection(
+        key = "backup",
+        title = "Backup & Data",
+        subtitle = "Export & restore your data",
+        emoji = "💾",
+        group = "System",
+        keywords = listOf("backup", "export", "zip", "archive", "save", "restore")
+    ),
+    SettingsSection(
+        key = "permissions",
+        title = "Permissions",
+        subtitle = "Manage granted access",
+        emoji = "🔑",
+        group = "System",
+        keywords = listOf("permission", "access", "allow", "grant")
+    ),
+    SettingsSection(
+        key = "apiserver",
+        title = "API Server",
+        subtitle = "Local HTTP SDK endpoint",
+        emoji = "🖥️",
+        group = "System",
+        keywords = listOf("api", "server", "http", "sdk", "port", "token"),
+        isAdvanced = true
+    ),
+    SettingsSection(
+        key = "about",
+        title = "About",
+        subtitle = "Version & credits",
+        emoji = "ℹ️",
+        group = "System",
+        keywords = listOf("about", "version", "forge", "build", "labs")
+    ),
+    SettingsSection(
+        key = "help",
+        title = "Help & Tutorials",
+        subtitle = "Replay the interface guides",
+        emoji = "📚",
+        group = "Support",
+        keywords = listOf("help", "tutorial", "guide", "replay", "learn")
+    )
+)
+
+@Composable
+private fun SettingsSectionTile(
+    section: SettingsSection,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = forgePalette.surface,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, forgePalette.borderSoft)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(
+                            if (section.isAdvanced) forgePalette.danger.copy(alpha = 0.10f)
+                            else ModernAccent.copy(alpha = 0.10f),
+                            RoundedCornerShape(10.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(section.emoji, fontSize = 18.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                section.badge?.invoke()?.let { badgeText ->
+                    Surface(
+                        color = forgePalette.surface2,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            badgeText,
+                            color = forgePalette.textDim,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    section.title,
+                    color = ModernTextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                if (section.isAdvanced) {
+                    Spacer(Modifier.width(6.dp))
+                    StatusBadge(status = "DEV", color = forgePalette.danger)
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                section.subtitle,
+                color = ModernTextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsGroupHeader(title: String) {
+    Text(
+        title.uppercase(),
+        color = ModernTextSecondary,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+    )
+}
+
+@Composable
+private fun SettingsHomeGrid(
+    sections: List<SettingsSection>,
+    searchQuery: String,
+    onOpenSection: (String) -> Unit
+) {
+    val query = searchQuery.trim().lowercase()
+    val filtered = if (query.isBlank()) {
+        sections
+    } else {
+        sections.filter { section ->
+            section.title.lowercase().contains(query) ||
+                section.subtitle.lowercase().contains(query) ||
+                section.group.lowercase().contains(query) ||
+                section.keywords.any { it.lowercase().contains(query) }
+        }
+    }
+    val groupOrder = listOf("AI & Model", "Personalization", "System", "Support")
+    val grouped = filtered.groupBy { it.group }
+
+    if (filtered.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "No settings match",
+                color = ModernTextSecondary,
+                fontSize = 13.sp
+            )
+        }
+        return
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        groupOrder.forEach { groupName ->
+            val itemsInGroup = grouped[groupName] ?: return@forEach
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                SettingsGroupHeader(title = groupName)
+            }
+            gridItems(itemsInGroup, key = { it.key }) { section ->
+                SettingsSectionTile(section = section, onClick = { onOpenSection(section.key) })
+            }
+        }
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionDetail(
+    section: SettingsSection,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth(),
+            color = Color.Transparent
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.ArrowBack,
+                    contentDescription = "Back",
+                    tint = ModernAccent,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    section.title,
+                    color = ModernTextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item { content() }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionBody(
+    sectionKey: String,
+    viewModel: SettingsViewModel,
+    onNavigateToMemories: () -> Unit,
+    onNavigateToModelRouting: () -> Unit,
+    onNavigateToOverrides: () -> Unit,
+    onNavigateToPersonality: () -> Unit,
+    onNavigateToBackup: () -> Unit
+) {
+    val context = LocalContext.current
+    val keyStatuses by viewModel.keyStatuses.collectAsState()
+    val customStatuses by viewModel.customStatuses.collectAsState()
+    val namedSecretStatuses by viewModel.namedSecretStatuses.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
+    val compactModeEnabled by viewModel.compactModeEnabled.collectAsState()
+    val costThresholdUsd by viewModel.costThresholdUsd.collectAsState()
+    val remotePythonWorkerUrl by viewModel.remotePythonWorkerUrl.collectAsState()
+    val remotePythonWorkerAuthToken by viewModel.remotePythonWorkerAuthToken.collectAsState()
+    val hapticFeedbackEnabled by viewModel.hapticFeedbackEnabled.collectAsState()
+    val hotwordEnabled by viewModel.hotwordEnabled.collectAsState()
+    val prefetchEnabled by viewModel.prefetchEnabled.collectAsState()
+    val prefetchAllowUnsafe by viewModel.prefetchAllowUnsafe.collectAsState()
+    val reflectionEnabled by viewModel.reflectionEnabled.collectAsState()
+    val memoryRagEnabled by viewModel.memoryRagEnabled.collectAsState()
+    val visionEnabled by viewModel.visionEnabled.collectAsState()
+    val reasoningEnabled by viewModel.reasoningEnabled.collectAsState()
+    val backupLoading by viewModel.backupLoading.collectAsState()
+    val apiServerRunning by viewModel.apiServerRunning.collectAsState()
+    val apiServerPort by viewModel.apiServerPort.collectAsState()
+    val apiServerKey by viewModel.apiServerKey.collectAsState()
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var showAddSecretDialog by remember { mutableStateOf(false) }
+
+    when (sectionKey) {
+        "appearance" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.spotlightTarget("settings_appearance")) {
+                    AppearanceCard(
+                        selected = themeMode,
+                        onSelect = { viewModel.setThemeMode(it) },
+                        hapticEnabled = hapticFeedbackEnabled,
+                        onHapticToggle = { viewModel.setHapticFeedbackEnabled(it) },
+                        hotwordEnabled = hotwordEnabled,
+                        onHotwordToggle = { enabled ->
+                            viewModel.setHotwordEnabled(enabled)
+                            // When enabling, make sure we can show the bubble over other apps.
+                            if (enabled && !android.provider.Settings.canDrawOverlays(context)) {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        android.net.Uri.parse("package:${context.packageName}")
+                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        "model" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CompactModeCard(
+                    enabled = compactModeEnabled,
+                    onToggle = { viewModel.setCompactModeEnabled(it) }
+                )
+            }
+        }
+
+        "providers" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(modifier = Modifier.spotlightTarget("settings_api_keys")) {
+                    Column {
+                        keyStatuses.forEach { status ->
+                            ApiKeyCard(
+                                status = status,
+                                onSave = { key -> viewModel.saveKey(status.provider, key) },
+                                onDelete = { viewModel.deleteKey(status.provider) }
+                            )
+                        }
+                    }
+                }
+                // ── Ollama Note ──────────────────────────────────────────
+                Surface(
+                    color = ModernSurface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, forgePalette.borderSoft)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            Icons.Outlined.Info,
+                            contentDescription = null,
+                            tint = ModernTextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            "For local Ollama, the \"key\" field is the host URL, e.g. http://192.168.1.x:11434/v1/",
+                            color = ModernTextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        "endpoints" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { showAddDialog = true }) {
+                        Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add", color = ModernAccent, fontSize = 13.sp)
+                    }
+                }
+                if (customStatuses.isEmpty()) {
+                    Text(
+                        "None yet. Use Add to wire any OpenAI- or Anthropic-compatible URL.",
+                        color = forgePalette.textDim,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
+                customStatuses.forEach { cs ->
+                    CustomEndpointCard(
+                        status = cs,
+                        onSetKey = { k -> viewModel.setCustomKey(cs.endpoint.id, k) },
+                        onDelete = { viewModel.deleteCustomEndpoint(cs.endpoint.id) }
+                    )
+                }
+            }
+        }
+
+        "secrets" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = { showAddSecretDialog = true }) {
+                        Icon(Icons.Outlined.Add, null, tint = ModernAccent, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Add", color = ModernAccent, fontSize = 13.sp)
+                    }
+                }
+                Text(
+                    "Register an API key by name. The agent references it by name only — the raw value never enters the model.",
+                    color = forgePalette.textDim,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+                if (namedSecretStatuses.isEmpty()) {
+                    Text("None yet.", color = forgePalette.textDim, fontSize = 12.sp)
+                }
+                namedSecretStatuses.forEach { ns ->
+                    NamedSecretCard(
+                        status = ns,
+                        onDelete = { viewModel.deleteNamedSecret(ns.secret.name) },
+                    )
+                }
+            }
+        }
+
+        "advanced" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AdvancedExecutionCard(
+                    costThreshold = costThresholdUsd,
+                    onSetCostThreshold = { viewModel.setCostThresholdUsd(it) },
+                    remoteUrl = remotePythonWorkerUrl,
+                    remoteToken = remotePythonWorkerAuthToken,
+                    onSetHybrid = { url, token -> viewModel.setHybridExecution(url, token) }
+                )
+            }
+        }
+
+        "prefetch" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PredictivePrefetchCard(
+                    enabled = prefetchEnabled,
+                    onToggleEnabled = { viewModel.setPrefetchEnabled(it) },
+                    allowUnsafe = prefetchAllowUnsafe,
+                    onToggleAllowUnsafe = { viewModel.setPrefetchAllowUnsafe(it) }
+                )
+            }
+        }
+
+        "intelligence" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                IntelligenceUpgradesCard(
+                    reflection = reflectionEnabled,
+                    onReflectionToggle = { viewModel.setReflectionEnabled(it) },
+                    memoryRag = memoryRagEnabled,
+                    onMemoryRagToggle = { viewModel.setMemoryRagEnabled(it) },
+                    vision = visionEnabled,
+                    onVisionToggle = { viewModel.setVisionEnabled(it) },
+                    reasoning = reasoningEnabled,
+                    onReasoningToggle = { viewModel.setReasoningEnabled(it) }
+                )
+            }
+        }
+
+        "backup" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                BackupCard(
+                    loading = backupLoading,
+                    onBackup = {
+                        viewModel.performBackup { file ->
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context,
+                                "${context.packageName}.fileprovider",
+                                file
+                            )
+                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "application/zip"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(intent, "Save Forge Backup"))
+                        }
+                    }
+                )
+            }
+        }
+
+        "padlocks" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CapabilityPadlocksCard()
+            }
+        }
+
+        "channels" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val channelVm: com.forge.os.presentation.screens.channels.ChannelViewModel = hiltViewModel()
+                val channelsEnabled by channelVm.channelsEnabled.collectAsState()
+
+                Box(modifier = Modifier.spotlightTarget("settings_channels")) {
+                    SettingsToggleRow(
+                        title = "Enable channels",
+                        subtitle = "Separate memory by context (Work, Personal, etc.)",
+                        checked = channelsEnabled,
+                        onCheckedChange = { channelVm.setChannelsEnabled(it) }
+                    )
+                }
+                if (channelsEnabled) {
+                    SettingsNavRow(
+                        icon = Icons.Outlined.ManageAccounts,
+                        title = "Manage channels",
+                        subtitle = "Create, edit, and organize your channels",
+                        onClick = onNavigateToMemories
+                    )
+                }
+            }
+        }
+
+        "help" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val tutorialVm: com.forge.os.presentation.screens.chat.TutorialViewModel = hiltViewModel()
+                SettingsNavRow(
+                    icon = Icons.Outlined.School,
+                    title = "Replay tutorials",
+                    subtitle = "Show interface guides again",
+                    onClick = {
+                        tutorialVm.tutorialManager.resetAllTutorials()
+                    }
+                )
+            }
+        }
+
+        "routing" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SettingsNavRow(
+                    icon = Icons.Outlined.AltRoute,
+                    title = "Model routing",
+                    subtitle = "Edit fallback chain & background-caller toggles",
+                    onClick = onNavigateToModelRouting
+                )
+                SettingsNavRow(
+                    icon = Icons.Outlined.Lock,
+                    title = "Advanced overrides",
+                    subtitle = "Per-tool blocked hosts/extensions/configs",
+                    onClick = onNavigateToOverrides
+                )
+                SettingsNavRow(
+                    icon = Icons.Outlined.Person,
+                    title = "Personality",
+                    subtitle = "Customize agent name, traits, communication style",
+                    onClick = onNavigateToPersonality
+                )
+                SettingsNavRow(
+                    icon = Icons.Outlined.Backup,
+                    title = "Backup & Restore",
+                    subtitle = "Create system snapshot or restore from backup",
+                    onClick = onNavigateToBackup
+                )
+            }
+        }
+
+        "permissions" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PermissionsCard()
+            }
+        }
+
+        "apiserver" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ApiServerCard(
+                    running = apiServerRunning,
+                    port = apiServerPort,
+                    apiKey = apiServerKey,
+                    onStart = { viewModel.startApiServer() },
+                    onStop = { viewModel.stopApiServer() },
+                    onRegenerateToken = { viewModel.regenerateApiToken() }
+                )
+            }
+        }
+
+        "about" -> {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = forgePalette.surface,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        ForgeLogo(size = 48.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Forge OS",
+                            color = ModernTextPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "v${com.forge.os.BuildConfig.VERSION_NAME}",
+                            color = ModernTextSecondary,
+                            fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Built by Forge Labs",
+                            color = ModernTextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "A division of TheKingsMediaStudio",
+                            color = ModernTextSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddCustomEndpointDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name, url, schema, model, key ->
+                viewModel.addCustomEndpoint(name, url, schema, model, key)
+                showAddDialog = false
+            }
+        )
+    }
+
+    if (showAddSecretDialog) {
+        AddNamedSecretDialog(
+            onDismiss = { showAddSecretDialog = false },
+            onConfirm = { name, desc, style, header, query, value ->
+                viewModel.saveNamedSecret(name, desc, style, header, query, value)
+                showAddSecretDialog = false
+            },
+        )
     }
 }
 
