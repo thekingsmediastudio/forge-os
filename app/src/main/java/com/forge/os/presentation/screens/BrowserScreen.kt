@@ -107,6 +107,7 @@ fun BrowserScreen(
     val activeTabId by viewModel.activeTabId.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
     val history by viewModel.history.collectAsState()
+    val downloads by viewModel.downloads.collectAsState()
     val scope = rememberCoroutineScope()
 
     var addressBarText by remember { mutableStateOf(currentUrl) }
@@ -114,6 +115,9 @@ fun BrowserScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
+    var showDownloads by remember { mutableStateOf(false) }
+    // 0f–1f pull-to-refresh drag progress for the indicator overlay
+    var pullProgress by remember { mutableStateOf(0f) }
 
     // Find-in-page state.
     var findVisible by remember { mutableStateOf(false) }
@@ -323,6 +327,10 @@ fun BrowserScreen(
                         leadingIcon = { Icon(Icons.Filled.History, contentDescription = null, tint = forgePalette.orange, modifier = Modifier.size(18.dp)) },
                         onClick = { showMenu = false; showHistory = true })
                     DropdownMenuItem(
+                        text = { Text("Downloads", color = forgePalette.textPrimary, fontSize = 13.sp) },
+                        leadingIcon = { Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null, tint = forgePalette.orange, modifier = Modifier.size(18.dp)) },
+                        onClick = { showMenu = false; showDownloads = true })
+                    DropdownMenuItem(
                         text = { Text("Clear session…", color = forgePalette.danger, fontSize = 13.sp) },
                         leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null, tint = forgePalette.danger, modifier = Modifier.size(18.dp)) },
                         onClick = { showMenu = false; showClearDialog = true })
@@ -396,18 +404,40 @@ fun BrowserScreen(
         // tabs' WebViews alive in the pool so state is preserved.
         val activeTab = tabs.firstOrNull { it.id == activeTabId }
         if (activeTab != null) {
-            BrowserWebPanel(
-                tabId = activeTab.id,
-                initialUrl = activeTab.url,
-                webViewPool = webViewPool,
-                sessionManager = sessionManager,
-                onFileChooserRequested = { cb ->
-                    pendingFileChooser = cb
-                    showFileSourcePicker = true
-                },
-                onActiveWebView = { wv -> activeWebView = wv },
-                onNavEvent = { navVersion += 1 },
-                onPageFinished = { url, title -> viewModel.rememberActiveTabUrl(url, title) })
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                BrowserWebPanel(
+                    tabId = activeTab.id,
+                    initialUrl = activeTab.url,
+                    webViewPool = webViewPool,
+                    sessionManager = sessionManager,
+                    onFileChooserRequested = { cb ->
+                        pendingFileChooser = cb
+                        showFileSourcePicker = true
+                    },
+                    onActiveWebView = { wv -> activeWebView = wv },
+                    onNavEvent = { navVersion += 1 },
+                    onDownload = { url, contentDisposition, mimeType ->
+                        viewModel.downloadsStore.enqueue(url, contentDisposition, mimeType)
+                        showDownloads = true
+                    },
+                    onPullProgress = { pullProgress = it },
+                    onPullRefresh = { activeWebView?.reload() },
+                    onPageFinished = { url, title -> viewModel.rememberActiveTabUrl(url, title) })
+
+                // Pull-to-refresh indicator overlay
+                if (pullProgress > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = (8 + pullProgress * 40).dp)) {
+                        CircularProgressIndicator(
+                            progress = { pullProgress },
+                            modifier = Modifier.size(28.dp),
+                            color = Orange,
+                            strokeWidth = 2.5.dp)
+                    }
+                }
+            }
         }
     }
 
@@ -431,6 +461,14 @@ fun BrowserScreen(
                 activeWebView?.loadUrl(url)
             },
             onClear = { viewModel.clearHistory() })
+    }
+
+    if (showDownloads) {
+        DownloadsDialog(
+            entries = downloads,
+            onDismiss = { showDownloads = false },
+            onRemove = { id -> viewModel.downloadsStore.remove(id) },
+            onClear = { viewModel.downloadsStore.clear() })
     }
 
     if (showClearDialog) {
@@ -619,6 +657,69 @@ private fun HistoryDialog(
         containerColor = Surface)
 }
 
+@Composable
+private fun DownloadsDialog(
+    entries: List<com.forge.os.data.browser.BrowserDownloadEntry>,
+    onDismiss: () -> Unit,
+    onRemove: (Long) -> Unit,
+    onClear: () -> Unit) {
+    val fmt = remember { SimpleDateFormat("MMM d HH:mm", Locale.getDefault()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Downloads", color = TextPrimary)
+                Spacer(Modifier.weight(1f))
+                if (entries.isNotEmpty()) {
+                    TextButton(onClick = onClear) { Text("Clear all", color = TextMuted, fontSize = 12.sp) }
+                }
+            }
+        },
+        text = {
+            if (entries.isEmpty()) {
+                Text(
+                    "No downloads yet. Files you download in the browser are saved to the device Downloads folder.",
+                    color = TextMuted,
+                    fontSize = 12.sp)
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                ) {
+                    items(entries, key = { it.id }) { d ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    d.fileName,
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1)
+                                Text(
+                                    "${fmt.format(Date(d.timestamp))} · ${d.url}",
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    maxLines = 1)
+                            }
+                            IconButton(onClick = { onRemove(d.id) }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Remove", tint = TextMuted)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = Orange) }
+        },
+        containerColor = Surface)
+}
+
 /**
  * Phase U2 — Shown instead of the WebView when system construction
  * throws (WebView system package missing/disabled, multi-process data dir
@@ -675,6 +776,9 @@ private fun BrowserWebPanel(
     onFileChooserRequested: (ValueCallback<Array<Uri>>?) -> Unit,
     onActiveWebView: (WebView) -> Unit,
     onNavEvent: () -> Unit,
+    onDownload: (url: String, contentDisposition: String?, mimeType: String?) -> Unit,
+    onPullProgress: (Float) -> Unit,
+    onPullRefresh: () -> Unit,
     onPageFinished: (url: String, title: String) -> Unit) {
     val ctxForPreflight = LocalContext.current
     var webViewFatal by remember { mutableStateOf<String?>(null) }
@@ -718,7 +822,13 @@ private fun BrowserWebPanel(
                     return@AndroidView existing
                 }
 
-                val wv = WebView(ctx)
+                val wv = com.forge.os.presentation.screens.browser.PullRefreshWebView(
+                    ctx,
+                    onPullProgress = onPullProgress,
+                    onPullRefresh = onPullRefresh)
+                wv.setDownloadListener { url, _, contentDisposition, mimeType, _ ->
+                    onDownload(url, contentDisposition, mimeType)
+                }
                 wv.settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true

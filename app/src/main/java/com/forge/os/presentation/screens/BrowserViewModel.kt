@@ -6,6 +6,8 @@ import com.forge.os.data.browser.Bookmark
 import com.forge.os.data.browser.BrowserBookmarks
 import com.forge.os.data.browser.BrowserHistory
 import com.forge.os.data.browser.BrowserHistoryEntry
+import com.forge.os.data.browser.BrowserDownloads
+import com.forge.os.data.browser.BrowserDownloadEntry
 import com.forge.os.data.browser.BrowserSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,7 +27,10 @@ data class BrowserTab(
 class BrowserViewModel @Inject constructor(
     val sessionManager: BrowserSessionManager,
     val bookmarksStore: BrowserBookmarks,
-    val historyStore: BrowserHistory) : ViewModel() {
+    val historyStore: BrowserHistory,
+    val downloadsStore: BrowserDownloads) : ViewModel() {
+
+    val downloads: StateFlow<List<BrowserDownloadEntry>> = downloadsStore.entries
 
     val currentUrl: StateFlow<String> = sessionManager.currentUrl
     val pageTitle: StateFlow<String> = sessionManager.pageTitle
