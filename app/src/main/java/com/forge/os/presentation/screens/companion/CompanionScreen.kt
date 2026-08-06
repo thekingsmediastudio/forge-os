@@ -183,9 +183,15 @@ fun CompanionScreen(
             }
         }
 
-        // Phase P-3 — one-tap mood chips (off if user disables in settings).
+        // Phase P-3/P-6 — mood entry point (off if user disables in settings).
         val moodChipsEnabled = vm.moodChipsEnabled.collectAsState().value
-        if (moodChipsEnabled && messages.size <= 1) {
+        val checkInDoneToday by vm.checkInDoneToday.collectAsState()
+        if (moodChipsEnabled && messages.size <= 1 && !checkInDoneToday) {
+            MoodCheckInCard(
+                personaName = persona.name,
+                isBusy = isBusy,
+                onSubmit = { mood, note -> vm.submitMoodCheckIn(mood, note) })
+        } else if (moodChipsEnabled && messages.size <= 1) {
             Row(
                 Modifier.fillMaxWidth().background(ForgeOsPalette.Surface)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -432,5 +438,92 @@ private fun TypingIndicator(label: String) {
         Text(label, color = ForgeOsPalette.TextMuted,
             fontSize = 11.sp,
             textAlign = TextAlign.Start)
+    }
+}
+
+/**
+ * Phase P-6 — daily mood check-in card. Shown once per day before the first
+ * message; logging a mood shares it with the companion as a chat turn.
+ */
+@Composable
+private fun MoodCheckInCard(
+    personaName: String,
+    isBusy: Boolean,
+    onSubmit: (mood: Int, note: String) -> Unit,
+) {
+    var selectedMood by remember { mutableStateOf(0) }
+    var note by remember { mutableStateOf("") }
+    var noteOpen by remember { mutableStateOf(false) }
+    val moods = listOf(
+        1 to "😞", 2 to "😕", 3 to "🙂", 4 to "😊", 5 to "😄")
+
+    Column(
+        Modifier.fillMaxWidth().background(ForgeOsPalette.Surface)
+            .padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Text("quick check-in", color = ForgeOsPalette.TextMuted,
+            fontSize = 10.sp, letterSpacing = 1.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            moods.forEach { (value, emoji) ->
+                val selected = selectedMood == value
+                Box(
+                    Modifier
+                        .border(
+                            1.dp,
+                            if (selected) CompanionAccent else ForgeOsPalette.Border,
+                            RoundedCornerShape(12.dp))
+                        .background(
+                            if (selected) ForgeOsPalette.Surface2 else Color.Transparent,
+                            RoundedCornerShape(12.dp))
+                        .clickable(enabled = !isBusy) { selectedMood = value }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Text(emoji, fontSize = 20.sp)
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (noteOpen) "hide note" else "+ note",
+                color = ForgeOsPalette.TextMuted, fontSize = 11.sp,
+                modifier = Modifier
+                    .clickable { noteOpen = !noteOpen }
+                    .padding(4.dp))
+        }
+        if (noteOpen) {
+            Spacer(Modifier.height(8.dp))
+            Box(
+                Modifier.fillMaxWidth().height(40.dp)
+                    .background(ForgeOsPalette.Surface2, RoundedCornerShape(8.dp))
+                    .border(1.dp, ForgeOsPalette.Border, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.CenterStart) {
+                BasicTextField(
+                    value = note, onValueChange = { note = it },
+                    textStyle = TextStyle(color = ForgeOsPalette.TextPrimary, fontSize = 12.sp),
+                    cursorBrush = SolidColor(CompanionAccent),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth())
+                if (note.isEmpty()) {
+                    Text("anything on your mind? (optional)",
+                        color = ForgeOsPalette.TextDim, fontSize = 12.sp)
+                }
+            }
+        }
+        if (selectedMood > 0) {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Box(
+                    Modifier
+                        .background(
+                            if (isBusy) ForgeOsPalette.Surface2 else CompanionAccent,
+                            RoundedCornerShape(14.dp))
+                        .clickable(enabled = !isBusy) { onSubmit(selectedMood, note) }
+                        .padding(horizontal = 14.dp, vertical = 6.dp)) {
+                    Text("log & tell $personaName", color = Color.Black, fontSize = 12.sp)
+                }
+            }
+        }
     }
 }

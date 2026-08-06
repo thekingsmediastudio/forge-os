@@ -22,6 +22,7 @@ import com.forge.os.domain.companion.ListeningSteer
 import com.forge.os.domain.companion.MessageIntent
 import com.forge.os.domain.companion.MessageTags
 import com.forge.os.domain.companion.Mode
+import com.forge.os.domain.companion.MoodCheckInStore
 import com.forge.os.domain.companion.PersonaManager
 import com.forge.os.domain.companion.SafetyFilter
 import com.forge.os.domain.companion.SafetySystemSuffix
@@ -88,6 +89,7 @@ class CompanionViewModel @Inject constructor(
     private val dependencyMonitor: DependencyMonitor,
     private val conversationRepo: CompanionConversationRepository,
     private val conversationIndex: com.forge.os.domain.memory.ConversationIndex,
+    private val moodCheckInStore: MoodCheckInStore,
     @ApplicationContext private val context: Context) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<CompanionMessage>>(emptyList())
@@ -114,6 +116,30 @@ class CompanionViewModel @Inject constructor(
     val moodChipsEnabled: StateFlow<Boolean> = MutableStateFlow(
         configRepository.get().friendMode.moodChipsEnabled
     )
+
+    /** Phase P-6 — true once the user has logged a mood check-in today. */
+    private val _checkInDoneToday = MutableStateFlow(moodCheckInStore.latestToday() != null)
+    val checkInDoneToday: StateFlow<Boolean> = _checkInDoneToday
+
+    /**
+     * Phase P-6 — record a mood check-in, then share it with the companion as
+     * a normal chat turn so it can respond in character. The turn also feeds
+     * the session summary (EpisodicMemory.moodTrajectory). Mirrors the guards
+     * in [send] so a blocked send never silently swallows the check-in.
+     */
+    fun submitMoodCheckIn(mood: Int, note: String) {
+        if (_phase.value != CompanionPhase.IDLE || _budgetExhausted.value) return
+        moodCheckInStore.record(mood, note)
+        _checkInDoneToday.value = true
+        val label = com.forge.os.domain.companion.MoodCheckIn(
+            ts = System.currentTimeMillis(), mood = mood).label()
+        val shareText = buildString {
+            append("Mood check-in: I'm feeling ").append(label).append(" (")
+            append(mood.coerceIn(1, 5)).append("/5) today.")
+            if (note.isNotBlank()) { append(' '); append(note.trim()) }
+        }
+        send(shareText)
+    }
 
     private val apiHistory = mutableListOf<ApiMessage>()
 
