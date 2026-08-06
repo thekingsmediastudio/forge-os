@@ -50,7 +50,10 @@ data class ChatMessage(
     /** Absolute path to a file the agent produced (image, audio, download, etc.) */
     val attachmentPath: String? = null,
     /** MIME type of the attachment, e.g. "image/png", "audio/mpeg", "application/pdf" */
-    val attachmentMime: String? = null)
+    val attachmentMime: String? = null,
+    /** All attachments on this message (multi-image support). Legacy single fields
+     *  above are kept in sync from the first entry for backward compatibility. */
+    val attachments: List<com.forge.os.domain.agent.FileAttachment> = emptyList())
 
 /** A mid-run clarification request from the agent to the user. */
 data class InputRequest(val question: String, val requestId: String)
@@ -134,6 +137,7 @@ class ChatViewModel @Inject constructor(
 
     init {
         refreshAvailableSpecs()
+        updateVisionCapability(_selectedSpec.value)
         // Listen for mid-run input requests from the agent. We only react
         // to questions destined for the in-app chat ("ui" route) — Telegram
         // and other channels handle their own routes via ChannelManager.
@@ -266,19 +270,34 @@ class ChatViewModel @Inject constructor(
         val images = _pendingImages.value
         _pendingImages.value = emptyList()
 
-        // Attach first file info to the user message so it renders in the bubble
+        // Attach all files to the user message for multi-image rendering
         val firstAttachment = images.firstOrNull()
         addMsg(ChatMessage(
             role = "user",
             content = input,
             attachmentPath = firstAttachment?.filePath,
             attachmentMime = firstAttachment?.mimeType,
+            attachments = images,
         ))
         hapticManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.LIGHT_TICK)
         skillRecorder.noteUserRequest(input)
         if (handleLocalCommand(input)) { persistCurrent(); return }
 
-        val spec = if (_autoRoute.value) null else _selectedSpec.value
+        var spec = if (_autoRoute.value) null else _selectedSpec.value
+
+        // Auto-route to a vision-capable model when images are attached but
+        // the current model doesn't support vision.
+        if (images.isNotEmpty() && spec != null && !_supportsVision.value) {
+            val visionSpec = _availableSpecs.value.firstOrNull { s ->
+                runCatching { capabilityResolver.supportsVision(s) }.getOrDefault(false)
+            }
+            if (visionSpec != null) {
+                addMsg(ChatMessage(role = "system", content = "🔄 Routed to vision model: ${visionSpec.displayLabel}"))
+                spec = visionSpec
+            } else {
+                addMsg(ChatMessage(role = "system", content = "⚠️ Current model may not support image analysis. Sending anyway."))
+            }
+        }
 
         currentAgentJob = viewModelScope.launch {
             _isLoading.value = true

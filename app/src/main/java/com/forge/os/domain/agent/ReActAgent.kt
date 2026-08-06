@@ -57,6 +57,7 @@ class ReActAgent @Inject constructor(
     private val hapticFeedbackManager: com.forge.os.domain.haptic.HapticFeedbackManager,
     private val alertManager: com.forge.os.domain.heartbeat.AlertManager,
     private val verificationEngine: VerificationEngine,
+    private val capabilityResolver: com.forge.os.data.api.ModelCapabilityResolver,
 ) {
     private val baseSystemPrompt = """
 You are Forge, a precise, security-conscious AI agent running on Android.
@@ -603,8 +604,13 @@ Tools available ({tool_count} total): {tool_catalog}
         val userApiMessage = if (imageAttachments.isNotEmpty()) {
             val images = imageAttachments.filter { it.isImage() && it.base64Data != null }
             val nonImages = imageAttachments.filter { !it.isImage() || it.base64Data == null }
-            
-            if (images.isNotEmpty()) {
+
+            // Vision gate: check if the model can actually process images
+            val modelSupportsVision = spec?.let {
+                runCatching { capabilityResolver.supportsVision(it) }.getOrDefault(true)
+            } ?: true // auto-route: assume vision available
+
+            if (images.isNotEmpty() && modelSupportsVision) {
                 // Vision model path: use contentParts with image_url
                 val contentParts = mutableListOf<com.forge.os.data.api.ContentPart>()
                 

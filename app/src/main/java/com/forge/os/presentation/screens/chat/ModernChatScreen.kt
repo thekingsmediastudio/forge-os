@@ -801,8 +801,29 @@ private fun groupMessages(messages: List<ChatMessage>): List<MessageGroup> {
 
     for (msg in messages) {
         when (msg.role) {
-            "tool_call", "tool_result", "verification" -> {
+            "tool_call", "verification" -> {
                 pendingSteps.add(msg)
+            }
+            "tool_result" -> {
+                // Tool results that produced a file (image, audio, etc.) are
+                // rendered as standalone messages so they appear inline in the
+                // chat — not hidden inside the collapsible activity panel.
+                if (msg.attachmentPath != null) {
+                    if (pendingSteps.isNotEmpty()) {
+                        groups.add(
+                            MessageGroup.AiActivity(
+                                steps = pendingSteps.toList(),
+                                response = null,
+                                isStreaming = false,
+                                groupId = pendingSteps.first().id,
+                            )
+                        )
+                        pendingSteps.clear()
+                    }
+                    groups.add(MessageGroup.Single(msg))
+                } else {
+                    pendingSteps.add(msg)
+                }
             }
             "assistant" -> {
                 if (pendingSteps.isNotEmpty()) {
@@ -1080,7 +1101,7 @@ private fun ActivityStepRow(step: ChatMessage) {
 @Composable
 private fun ModernMessageBubble(message: ChatMessage, onRetry: () -> Unit, onSpeak: (String) -> Unit) {
     when (message.role) {
-        "user"          -> ModernUserBubble(message.content, message.attachmentPath, message.attachmentMime)
+        "user"          -> ModernUserBubble(message.content, message.attachmentPath, message.attachmentMime, message.attachments)
         "assistant"     -> if (message.isError) ModernErrorBubble(message, onRetry)
                            else ModernAssistantBubble(message.content, message.isStreaming, onSpeak)
         "tool_call"     -> ModernToolCallChip(message.toolName ?: "tool", message.content)
@@ -1135,6 +1156,7 @@ private fun ModernUserBubble(
     text: String,
     attachmentPath: String? = null,
     attachmentMime: String? = null,
+    attachments: List<com.forge.os.domain.agent.FileAttachment> = emptyList(),
 ) {
     var showSheet by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -1171,8 +1193,52 @@ private fun ModernUserBubble(
                 )
             ) {
                 Column {
-                    // Show attachment preview if present
-                    if (attachmentPath != null && attachmentMime != null) {
+                    // Multi-image attachments — horizontal row (WhatsApp-style)
+                    val imageAttachments = attachments.filter { it.isImage() }
+                    val nonImageAttachments = attachments.filter { !it.isImage() }
+
+                    if (imageAttachments.size > 1) {
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(imageAttachments.size) { idx ->
+                                val att = imageAttachments[idx]
+                                val file = java.io.File(att.filePath)
+                                if (file.exists()) {
+                                    coil.compose.AsyncImage(
+                                        model = att.filePath,
+                                        contentDescription = att.fileName,
+                                        modifier = Modifier
+                                            .width(200.dp)
+                                            .heightIn(max = 200.dp)
+                                            .clip(
+                                                if (idx == 0) RoundedCornerShape(
+                                                    topStart = 22.dp, topEnd = 8.dp,
+                                                    bottomStart = 22.dp, bottomEnd = 0.dp
+                                                ) else RoundedCornerShape(8.dp)
+                                            ),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                }
+                            }
+                        }
+                    } else if (imageAttachments.size == 1) {
+                        val att = imageAttachments.first()
+                        val file = java.io.File(att.filePath)
+                        if (file.exists()) {
+                            coil.compose.AsyncImage(
+                                model = att.filePath,
+                                contentDescription = att.fileName,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 200.dp)
+                                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 0.dp)),
+                                contentScale = ContentScale.Fit,
+                            )
+                        }
+                    } else if (attachmentPath != null && attachmentMime != null) {
+                        // Legacy single-attachment fallback
                         val file = remember(attachmentPath) { java.io.File(attachmentPath) }
                         if (file.exists()) {
                             if (attachmentMime.startsWith("image/")) {
@@ -1200,6 +1266,23 @@ private fun ModernUserBubble(
                                     )
                                 }
                             }
+                        }
+                    }
+
+                    // Non-image attachments: file chip row
+                    nonImageAttachments.forEach { att ->
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "\uD83D\uDCCE ${att.fileName}",
+                                color = ModernTextSecondary,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
                         }
                     }
                     SelectionContainer {
