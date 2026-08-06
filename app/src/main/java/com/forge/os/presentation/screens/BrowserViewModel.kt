@@ -14,8 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** A single browser tab. We keep state minimal — the active tab actually
- *  drives the WebView; switching tabs reloads the URL into the same WebView. */
+/** A single browser tab. Each tab gets its own WebView instance (managed by
+ *  the screen) so back-stack, scroll position, and DOM state are preserved. */
 data class BrowserTab(
     val id: String,
     val url: String,
@@ -47,7 +47,9 @@ class BrowserViewModel @Inject constructor(
         val id = "tab-${System.currentTimeMillis()}"
         _tabs.value = _tabs.value + BrowserTab(id = id, url = url)
         _activeTabId.value = id
-        if (url != "about:blank") navigateTo(url)
+        sessionManager.updateUrl(url)
+        // No navigateTo() here — the new tab's WebView loads `url` itself on
+        // first creation via BrowserWebPanel's initialUrl parameter.
     }
 
     fun closeTab(id: String) {
@@ -63,11 +65,8 @@ class BrowserViewModel @Inject constructor(
             if (id == _activeTabId.value) {
                 val next = list.last()
                 _activeTabId.value = next.id
-                if (next.url.isNotBlank() && next.url != "about:blank") {
-                    navigateTo(next.url)
-                } else {
-                    sessionManager.updateUrl("about:blank")
-                }
+                // The new active tab's WebView is still alive — just update URL state
+                sessionManager.updateUrl(if (next.url.isNotBlank()) next.url else "about:blank")
             }
         }
     }
@@ -75,8 +74,8 @@ class BrowserViewModel @Inject constructor(
     fun switchTab(id: String) {
         val tab = _tabs.value.firstOrNull { it.id == id } ?: return
         _activeTabId.value = id
-        if (tab.url.isNotBlank() && tab.url != "about:blank") navigateTo(tab.url)
-        else sessionManager.updateUrl("about:blank")
+        // No need to reload — the tab's own WebView is preserved
+        sessionManager.updateUrl(if (tab.url.isNotBlank()) tab.url else "about:blank")
     }
 
     /** Update the active tab's bookkeeping when the WebView lands on a new URL. */

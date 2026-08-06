@@ -88,9 +88,9 @@ private val TextMuted: Color
  * In-app browser with persistent session (cookies/localStorage survive across
  * screen visits). The agent can control this browser via [BrowserSessionManager].
  *
- * Adds tabs, bookmarks, history sidebar, and find-in-page on top of the
- * existing single-WebView model. The WebView itself is reused across tabs;
- * switching tabs just reloads the tab's URL.
+ * Adds tabs, bookmarks, history sidebar, and find-in-page. Each tab owns a
+ * dedicated WebView from a pool so switching tabs preserves back stack,
+ * scroll position, DOM state, and form data without reloading.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -126,8 +126,29 @@ fun BrowserScreen(
 
     val sessionManager = viewModel.sessionManager
 
-    // Reference to the live WebView so we can dispatch commands from the agent
-    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+    // Per-tab WebView pool — each tab keeps its own WebView alive so back
+    // stack, scroll position, DOM state, and form data are all preserved.
+    val webViewPool = remember { mutableMapOf<String, WebView>() }
+
+    // The active WebView (for address bar commands, find-in-page, agent
+    // dispatch). Reported by BrowserWebPanel via onActiveWebView so that
+    // canGoBack/canGoForward recompose when the WebView is created/swapped.
+    var activeWebView by remember { mutableStateOf<WebView?>(null) }
+    // Bumped on every page-load event so nav-button state re-reads.
+    var navVersion by remember { mutableStateOf(0) }
+
+    // Clean up WebViews for closed tabs
+    LaunchedEffect(tabs.map { it.id }) {
+        val currentIds = tabs.map { it.id }.toSet()
+        val iter = webViewPool.keys.iterator()
+        while (iter.hasNext()) {
+            val tabId = iter.next()
+            if (tabId !in currentIds) {
+                webViewPool[tabId]?.destroy()
+                iter.remove()
+            }
+        }
+    }
 
     // ─── Phase R: file-input upload bridge ──────────────────────────────────
     val ctxLocal = LocalContext.current
@@ -186,7 +207,7 @@ fun BrowserScreen(
     // Dispatch agent commands to the WebView
     LaunchedEffect(Unit) {
         sessionManager.commands.collectLatest { cmd ->
-            val wv = webViewRef ?: return@collectLatest
+            val wv = activeWebView ?: return@collectLatest
             when (cmd) {
                 is NavigationCommand.OpenUrl -> wv.post { wv.loadUrl(cmd.url) }
                 is NavigationCommand.Reload -> wv.post { wv.reload() }
@@ -258,16 +279,17 @@ fun BrowserScreen(
             onUrlChange = { addressBarText = it },
             onNavigate = { url ->
                 val target = if (url.startsWith("http")) url else "https://$url"
-                webViewRef?.loadUrl(target)
+                activeWebView?.loadUrl(target)
             },
             isSecure = currentUrl.startsWith("https"),
             isLoading = isLoading,
-            canGoBack = webViewRef?.canGoBack() == true,
-            canGoForward = webViewRef?.canGoForward() == true,
+            // navVersion invalidates these reads on every page-load event
+            canGoBack = navVersion.let { activeWebView?.canGoBack() == true },
+            canGoForward = navVersion.let { activeWebView?.canGoForward() == true },
             isBookmarked = viewModel.isBookmarked(currentUrl),
-            onBackClick = { webViewRef?.goBack() },
-            onForwardClick = { webViewRef?.goForward() },
-            onRefreshClick = { webViewRef?.reload() },
+            onBackClick = { activeWebView?.goBack() },
+            onForwardClick = { activeWebView?.goForward() },
+            onRefreshClick = { activeWebView?.reload() },
             onBookmarkClick = {
                 val title = pageTitle.ifBlank { currentUrl }
                 viewModel.toggleBookmark(currentUrl, title)
@@ -316,13 +338,13 @@ fun BrowserScreen(
                     onValueChange = {
                         findQuery = it
                         if (it.isBlank()) {
-                            webViewRef?.clearMatches()
+                            activeWebView?.clearMatches()
                             findCounter = ""
                         } else {
-                            webViewRef?.setFindListener { active, total, _ ->
+                            activeWebView?.setFindListener { active, total, _ ->
                                 findCounter = if (total == 0) "0 / 0" else "${active + 1} / $total"
                             }
-                            webViewRef?.findAllAsync(it)
+                            activeWebView?.findAllAsync(it)
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -337,17 +359,17 @@ fun BrowserScreen(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(findCounter, color = forgePalette.textMuted, fontSize = 11.sp)
-                IconButton(onClick = { webViewRef?.findNext(false) }) {
+                IconButton(onClick = { activeWebView?.findNext(false) }) {
                     Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Previous", tint = forgePalette.textPrimary)
                 }
-                IconButton(onClick = { webViewRef?.findNext(true) }) {
+                IconButton(onClick = { activeWebView?.findNext(true) }) {
                     Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Next", tint = forgePalette.textPrimary)
                 }
                 IconButton(onClick = {
                     findVisible = false
                     findQuery = ""
                     findCounter = ""
-                    webViewRef?.clearMatches()
+                    activeWebView?.clearMatches()
                 }) {
                     Icon(Icons.Filled.Close, contentDescription = "Close find", tint = forgePalette.textMuted)
                 }
@@ -365,16 +387,23 @@ fun BrowserScreen(
         // methods comfortably below the verifier's register-merge limits and
         // is the canonical Compose-on-Android workaround for this class of
         // crash.
-        BrowserWebPanel(
-            currentUrl = currentUrl,
-            sessionManager = sessionManager,
-            onWebViewReady = { webViewRef = it },
-            onWebViewReleased = { if (webViewRef === it) webViewRef = null },
-            onFileChooserRequested = { cb ->
-                pendingFileChooser = cb
-                showFileSourcePicker = true
-            },
-            onPageFinished = { url, title -> viewModel.rememberActiveTabUrl(url, title) })
+        // Per-tab WebView: only show the active tab's WebView, but keep all
+        // tabs' WebViews alive in the pool so state is preserved.
+        val activeTab = tabs.firstOrNull { it.id == activeTabId }
+        if (activeTab != null) {
+            BrowserWebPanel(
+                tabId = activeTab.id,
+                initialUrl = activeTab.url,
+                webViewPool = webViewPool,
+                sessionManager = sessionManager,
+                onFileChooserRequested = { cb ->
+                    pendingFileChooser = cb
+                    showFileSourcePicker = true
+                },
+                onActiveWebView = { wv -> activeWebView = wv },
+                onNavEvent = { navVersion += 1 },
+                onPageFinished = { url, title -> viewModel.rememberActiveTabUrl(url, title) })
+        }
     }
 
     if (showBookmarks) {
@@ -383,7 +412,7 @@ fun BrowserScreen(
             onDismiss = { showBookmarks = false },
             onOpen = { url ->
                 showBookmarks = false
-                webViewRef?.loadUrl(url)
+                activeWebView?.loadUrl(url)
             },
             onRemove = { url -> viewModel.bookmarksStore.remove(url) })
     }
@@ -394,7 +423,7 @@ fun BrowserScreen(
             onDismiss = { showHistory = false },
             onOpen = { url ->
                 showHistory = false
-                webViewRef?.loadUrl(url)
+                activeWebView?.loadUrl(url)
             },
             onClear = { viewModel.clearHistory() })
     }
@@ -406,7 +435,7 @@ fun BrowserScreen(
             text = { Text("This clears cookies, localStorage and history for this tab.", color = TextMuted) },
             confirmButton = {
                 TextButton(onClick = {
-                    webViewRef?.apply {
+                    activeWebView?.apply {
                         clearCache(true)
                         clearHistory()
                         clearFormData()
@@ -626,25 +655,21 @@ private fun WebViewUnavailablePanel(message: String, onRetry: () -> Unit) {
 }
 
 /**
- * Phase V — the WebView surface, extracted from `BrowserScreen` so that the
- * outer composable's bytecode stays small enough for ART's verifier on every
- * device. The contents are intentionally identical to the previous inline
- * block; the split is purely structural.
- *
- * The preflight checks `WebView.getCurrentWebViewPackage()` and bails out
- * with `WebViewUnavailablePanel` if the system WebView is missing / being
- * updated. When the preflight succeeds, a single AndroidView builds the
- * WebView, wires the JS bridge, and forwards file-chooser requests + page
- * lifecycle events back to the host screen via callbacks.
+ * Per-tab WebView panel. Each tab gets its own WebView from [webViewPool].
+ * Switching tabs detaches the old WebView and attaches the new one — no
+ * reload, no state loss. Back stack, scroll position, DOM, and form data
+ * are all preserved per tab.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun BrowserWebPanel(
-    currentUrl: String,
+    tabId: String,
+    initialUrl: String,
+    webViewPool: MutableMap<String, WebView>,
     sessionManager: BrowserSessionManager,
-    onWebViewReady: (WebView) -> Unit,
-    onWebViewReleased: (WebView) -> Unit,
     onFileChooserRequested: (ValueCallback<Array<Uri>>?) -> Unit,
+    onActiveWebView: (WebView) -> Unit,
+    onNavEvent: () -> Unit,
     onPageFinished: (url: String, title: String) -> Unit) {
     val ctxForPreflight = LocalContext.current
     var webViewFatal by remember { mutableStateOf<String?>(null) }
@@ -671,113 +696,136 @@ private fun BrowserWebPanel(
         return
     }
 
-    AndroidView(
-        factory = { ctx ->
-            val wv = WebView(ctx)
-            wv.settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                databaseEnabled = true
-                cacheMode = WebSettings.LOAD_DEFAULT
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                useWideViewPort = true
-                loadWithOverviewMode = true
-                builtInZoomControls = true
-                displayZoomControls = false
-                setSupportZoom(true)
-            }
-
-            wv.webChromeClient = object : WebChromeClient() {
-                override fun onShowFileChooser(
-                    webView: WebView?,
-                    filePathCallback: ValueCallback<Array<Uri>>?,
-                    fileChooserParams: FileChooserParams?
-                ): Boolean {
-                    onFileChooserRequested(filePathCallback)
-                    return true
+    // key(tabId) ensures each tab gets its own AndroidView/WebView instance
+    androidx.compose.runtime.key(tabId) {
+        AndroidView(
+            factory = { ctx ->
+                // Reuse existing WebView from pool, or create a new one
+                val existing = webViewPool[tabId]
+                if (existing != null) {
+                    // Detach from old parent if needed
+                    (existing.parent as? android.view.ViewGroup)?.removeView(existing)
+                    // Post state writes — factory runs during layout pass
+                    existing.post {
+                        onActiveWebView(existing)
+                        onNavEvent()
+                    }
+                    return@AndroidView existing
                 }
-            }
 
-            wv.webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    val url = request?.url?.toString() ?: return false
-                    return when {
-                        url.startsWith("http://") || url.startsWith("https://") -> false
-                        url.startsWith("intent://") -> {
-                            runCatching {
-                                val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
-                                ctx.startActivity(intent)
-                            }
-                            true
-                        }
-                        else -> {
-                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-                            true
-                        }
+                val wv = WebView(ctx)
+                wv.settings.apply {
+                    javaScriptEnabled = true
+                    domStorageEnabled = true
+                    databaseEnabled = true
+                    cacheMode = WebSettings.LOAD_DEFAULT
+                    mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    useWideViewPort = true
+                    loadWithOverviewMode = true
+                    builtInZoomControls = true
+                    displayZoomControls = false
+                    setSupportZoom(true)
+                }
+
+                wv.webChromeClient = object : WebChromeClient() {
+                    override fun onShowFileChooser(
+                        webView: WebView?,
+                        filePathCallback: ValueCallback<Array<Uri>>?,
+                        fileChooserParams: FileChooserParams?
+                    ): Boolean {
+                        onFileChooserRequested(filePathCallback)
+                        return true
+                    }
+
+                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                        sessionManager.updateLoading(newProgress < 100)
                     }
                 }
 
-                override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                    sessionManager.updateUrl(url ?: "")
-                    sessionManager.updateLoading(true)
+                wv.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        val url = request?.url?.toString() ?: return false
+                        return when {
+                            url.startsWith("http://") || url.startsWith("https://") -> false
+                            url.startsWith("intent://") -> {
+                                runCatching {
+                                    val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                                    ctx.startActivity(intent)
+                                }
+                                true
+                            }
+                            else -> {
+                                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                                true
+                            }
+                        }
+                    }
+
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                        sessionManager.updateUrl(url ?: "")
+                        sessionManager.updateLoading(true)
+                        onNavEvent()
+                    }
+
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        sessionManager.updateUrl(url ?: "")
+                        sessionManager.updateLoading(false)
+                        onNavEvent()
+                        onPageFinished(url ?: "", view?.title ?: "")
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        error: WebResourceError?) {
+                        val isMainFrame = request?.isForMainFrame == true
+                        if (!isMainFrame || view == null) return
+                        val failedUrl = request?.url?.toString() ?: ""
+                        val desc = error?.description?.toString() ?: "Unknown error"
+                        Timber.w("BrowserWebPanel: load error $desc for $failedUrl")
+                        val safeUrl = failedUrl.replace("'", "\\'")
+                        val safeDesc = desc.replace("<", "&lt;")
+                        val html = """
+                            <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+                            <style>
+                              body{background:#0a0a0a;color:#e5e5e5;font-family:-apple-system,system-ui,sans-serif;padding:32px;line-height:1.5}
+                              h1{color:#f97316;font-size:18px;margin:0 0 16px}
+                              code{background:#1a1a1a;padding:2px 6px;border-radius:4px;font-size:12px}
+                              button{background:#f97316;color:#000;border:0;border-radius:6px;padding:10px 16px;font-weight:600;margin-top:16px;cursor:pointer}
+                              .muted{color:#888;font-size:12px;margin-top:24px}
+                            </style></head><body>
+                            <h1>⚠ Couldn't load this page</h1>
+                            <p>$safeDesc</p>
+                            <code>$safeUrl</code><br>
+                            <button onclick="history.back()">← Go back</button>
+                            <p class="muted">Forge OS Browser</p>
+                            </body></html>
+                        """.trimIndent()
+                        view.loadDataWithBaseURL(failedUrl, html, "text/html", "UTF-8", failedUrl)
+                    }
                 }
 
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    sessionManager.updateUrl(url ?: "")
-                    sessionManager.updateLoading(false)
-                    onPageFinished(url ?: "", view?.title ?: "")
+                wv.addJavascriptInterface(object {
+                    @JavascriptInterface
+                    fun postMessage(json: String) {
+                        sessionManager.onHtmlSnapshot(json)
+                    }
+                }, "ForgeBridge")
+
+                // Only load URL for brand-new tabs
+                if (initialUrl.isNotBlank() && initialUrl != "about:blank") {
+                    wv.loadUrl(initialUrl)
                 }
 
-                override fun onReceivedError(
-                    view: WebView?,
-                    request: WebResourceRequest?,
-                    error: WebResourceError?) {
-                    val isMainFrame = request?.isForMainFrame == true
-                    if (!isMainFrame || view == null) return
-                    val failedUrl = request?.url?.toString() ?: ""
-                    val desc = error?.description?.toString() ?: "Unknown error"
-                    Timber.w("BrowserWebPanel: load error $desc for $failedUrl")
-                    val safeUrl = failedUrl.replace("'", "\\'")
-                    val safeDesc = desc.replace("<", "&lt;")
-                    val html = """
-                        <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-                        <style>
-                          body{background:#0a0a0a;color:#e5e5e5;font-family:-apple-system,system-ui,sans-serif;padding:32px;line-height:1.5}
-                          h1{color:#f97316;font-size:18px;margin:0 0 16px}
-                          code{background:#1a1a1a;padding:2px 6px;border-radius:4px;font-size:12px}
-                          button{background:#f97316;color:#000;border:0;border-radius:6px;padding:10px 16px;font-weight:600;margin-top:16px;cursor:pointer}
-                          .muted{color:#888;font-size:12px;margin-top:24px}
-                        </style></head><body>
-                        <h1>⚠ Couldn't load this page</h1>
-                        <p>$safeDesc</p>
-                        <code>$safeUrl</code><br>
-                        <button onclick="history.back()">← Go back</button>
-                        <p class="muted">Forge OS Browser</p>
-                        </body></html>
-                    """.trimIndent()
-                    view.loadDataWithBaseURL(failedUrl, html, "text/html", "UTF-8", failedUrl)
-                }
-            }
-
-            wv.addJavascriptInterface(object {
-                @JavascriptInterface
-                fun postMessage(json: String) {
-                    sessionManager.onHtmlSnapshot(json)
-                }
-            }, "ForgeBridge")
-
-            wv.loadUrl(currentUrl.takeIf { it.isNotBlank() } ?: "about:blank")
-            onWebViewReady(wv)
-            wv
-        },
-        update = { wv ->
-            if (currentUrl != wv.url && currentUrl.isNotBlank() && currentUrl != "about:blank") {
-                wv.loadUrl(currentUrl)
-            }
-        },
-        onRelease = { wv -> onWebViewReleased(wv) },
-        modifier = Modifier.fillMaxSize()
-    )
+                webViewPool[tabId] = wv
+                // Post state write — factory runs during layout pass
+                wv.post { onActiveWebView(wv) }
+                wv
+            },
+            update = { /* no-op — each tab manages its own WebView state */ },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
 }
