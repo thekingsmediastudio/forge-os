@@ -27,15 +27,44 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0 ndk;25.2.9519653'
 
-      - name: Create persistent debug keystore
-        # Ensures every CI build signs with the same debug key so APKs can be
-        # installed as updates over previous CI builds without uninstalling.
+      - name: Create or restore persistent debug keystore
+        id: keystore
+        # Every debug APK must be signed with the SAME key, otherwise Android
+        # refuses in-place updates (INSTALL_FAILED_UPDATE_INCOMPATIBLE) and
+        # forces an uninstall first. Strategy:
+        #   1. If repo secret DEBUG_KEYSTORE_B64 exists -> restore that keystore
+        #      (this is the normal path; set it once and every build updates cleanly).
+        #   2. Otherwise (first run / secret not set yet) -> generate a fresh
+        #      keystore and upload it as an artifact so the value can be copied
+        #      into the DEBUG_KEYSTORE_B64 secret from the GitHub web UI.
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
         run: |
           mkdir -p ~/.android
-          keytool -genkey -v -keystore ~/.android/debug.keystore \
-            -storepass android -alias androiddebugkey -keypass android \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=Android Debug,O=Android,C=US"
+          if [ -n "$DEBUG_KEYSTORE_B64" ]; then
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+            echo "Restoring debug keystore from DEBUG_KEYSTORE_B64 secret"
+            echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+          else
+            echo "generated=true" >> "$GITHUB_OUTPUT"
+            echo "No DEBUG_KEYSTORE_B64 secret - generating a fresh debug keystore"
+            keytool -genkey -v -keystore ~/.android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            base64 -w0 ~/.android/debug.keystore > debug-keystore.b64
+          fi
+
+      - name: Upload generated debug keystore (only when secret is missing)
+        # Grab debug-keystore.b64 from this artifact, paste its contents into a
+        # repo secret named DEBUG_KEYSTORE_B64, then future builds sign with the
+        # same key and APKs update in place. Delete the artifact afterwards.
+        if: steps.keystore.outputs.generated == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-keystore-b64
+          path: debug-keystore.b64
+          retention-days: 7
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -60,7 +89,7 @@ jobs:
         # pipefail ensures the gradle exit code (not tee's) determines step success.
         run: |
           set -o pipefail
-          ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false -Dkotlin.compiler.execution.strategy=in-process 2>&1 | tee build-log.txt
+          ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false -Dkotlin.compiler.execution.strategy=in-process -PciVersionCode=${{ github.run_number }} 2>&1 | tee build-log.txt
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

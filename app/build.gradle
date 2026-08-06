@@ -13,7 +13,9 @@ android {
         applicationId "com.forge.os"
         minSdk 26
         targetSdk 34
-        versionCode 1
+        // versionCode defaults to 1 locally; CI passes -PciVersionCode=<run_number>
+        // so every published APK is a higher versionCode than the previous one.
+        versionCode (project.findProperty("ciVersionCode") as String)?.toInteger() ?: 1
         versionName "1.0.0-alpha"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
