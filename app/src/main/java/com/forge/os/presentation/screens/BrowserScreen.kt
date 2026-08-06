@@ -142,6 +142,8 @@ fun BrowserScreen(
     var activeWebView by remember { mutableStateOf<WebView?>(null) }
     // Bumped on every page-load event so nav-button state re-reads.
     var navVersion by remember { mutableStateOf(0) }
+    // Per-tab favicons, keyed by tab id; fed by WebChromeClient.onReceivedIcon
+    val tabFavicons = remember { mutableStateMapOf<String, android.graphics.Bitmap>() }
 
     // Clean up WebViews for closed tabs
     LaunchedEffect(tabs.map { it.id }) {
@@ -152,6 +154,7 @@ fun BrowserScreen(
             if (tabId !in currentIds) {
                 webViewPool[tabId]?.destroy()
                 iter.remove()
+                tabFavicons.remove(tabId)
             }
         }
     }
@@ -267,12 +270,21 @@ fun BrowserScreen(
                     id = tab.id,
                     title = tab.title.ifBlank { tab.url.removePrefix("https://").removePrefix("http://").take(24) },
                     url = tab.url,
-                    isActive = tab.id == activeTabId
+                    isActive = tab.id == activeTabId,
+                    favicon = tabFavicons[tab.id]
                 )
             },
             onTabSelect = { tabId -> viewModel.switchTab(tabId) },
             onTabClose = { tabId -> viewModel.closeTab(tabId) },
             onNewTab = { viewModel.newTab() },
+            onTabReload = { tabId ->
+                if (tabId == activeTabId) activeWebView?.reload()
+                else webViewPool[tabId]?.reload()
+            },
+            onTabDuplicate = { tabId ->
+                tabs.firstOrNull { it.id == tabId }?.let { viewModel.newTab(it.url) }
+            },
+            onCloseOthers = { tabId -> viewModel.closeOtherTabs(tabId) },
             onBack = onNavigateBack,
             modifier = Modifier
                 .fillMaxWidth()
@@ -422,6 +434,7 @@ fun BrowserScreen(
                     },
                     onPullProgress = { pullProgress = it },
                     onPullRefresh = { activeWebView?.reload() },
+                    onFavicon = { icon -> tabFavicons[activeTab.id] = icon },
                     onPageFinished = { url, title -> viewModel.rememberActiveTabUrl(url, title) })
 
                 // Home page overlay for fresh (about:blank) tabs — no HTML page,
@@ -896,6 +909,7 @@ private fun BrowserWebPanel(
     onDownload: (url: String, contentDisposition: String?, mimeType: String?) -> Unit,
     onPullProgress: (Float) -> Unit,
     onPullRefresh: () -> Unit,
+    onFavicon: (android.graphics.Bitmap) -> Unit,
     onPageFinished: (url: String, title: String) -> Unit) {
     val ctxForPreflight = LocalContext.current
     var webViewFatal by remember { mutableStateOf<String?>(null) }
@@ -974,6 +988,10 @@ private fun BrowserWebPanel(
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                         sessionManager.updateProgress(newProgress)
                         sessionManager.updateLoading(newProgress < 100)
+                    }
+
+                    override fun onReceivedIcon(view: WebView?, icon: android.graphics.Bitmap?) {
+                        if (icon != null) onFavicon(icon)
                     }
                 }
 

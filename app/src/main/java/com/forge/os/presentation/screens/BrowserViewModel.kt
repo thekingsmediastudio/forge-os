@@ -84,6 +84,14 @@ class BrowserViewModel @Inject constructor(
         sessionManager.updateUrl(if (tab.url.isNotBlank()) tab.url else "about:blank")
     }
 
+    /** Close every tab except [id], keeping [id] active. */
+    fun closeOtherTabs(id: String) {
+        val keep = _tabs.value.firstOrNull { it.id == id } ?: return
+        _tabs.value = listOf(keep)
+        _activeTabId.value = keep.id
+        sessionManager.updateUrl(if (keep.url.isNotBlank()) keep.url else "about:blank")
+    }
+
     /** Update the active tab's bookkeeping when the WebView lands on a new URL. */
     fun rememberActiveTabUrl(url: String, title: String) {
         if (url.isBlank()) return
