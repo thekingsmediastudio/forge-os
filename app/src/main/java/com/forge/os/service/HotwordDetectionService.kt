@@ -98,7 +98,7 @@ class HotwordDetectionService : Service() {
         private const val CHANNEL_ID = "hotword_detection"
         private const val NOTIFICATION_ID = 42
         private const val KEYWORD = "hello forge"
-        private const val FUZZY_MATCH_THRESHOLD = 0.5f // 50% of words must match (allows "forge" alone)
+        private const val FUZZY_MATCH_THRESHOLD = 1.0f // all keyword words must be present
 
         /**
          * Set to true while voice mode owns the mic. When true the service
@@ -162,7 +162,9 @@ class HotwordDetectionService : Service() {
                     Timber.d("HotwordDetectionService: speech detected, starting STT")
                     // Stop VAD to release mic for SpeechRecognizer
                     voiceActivityDetector.stop()
-                    startListening()
+                    // Give the audio HAL time to release the mic before STT grabs it
+                    delay(150)
+                    if (!voiceModeActive) startListening()
                 }
             }
         }
@@ -179,7 +181,7 @@ class HotwordDetectionService : Service() {
                         releaseMic()
                     } else {
                         Timber.d("HotwordDetectionService: voice mode ended, resuming VAD")
-                        delay(400) // let voice mode fully release the mic first
+                        delay(600) // let voice mode fully release the mic first
                         if (!voiceModeActive) resumeListening()
                     }
                 }
@@ -288,8 +290,8 @@ class HotwordDetectionService : Service() {
      * Returns true if at least [FUZZY_MATCH_THRESHOLD] of keyword words are present.
      */
     private fun fuzzyMatch(transcript: String, keyword: String): Boolean {
-        val transcriptWords = transcript.lowercase().split(Regex("\\s+"))
-        val keywordWords = keyword.lowercase().split(Regex("\\s+"))
+        val transcriptWords = transcript.lowercase().split(Regex("""\s+"""))
+        val keywordWords = keyword.lowercase().split(Regex("""\s+"""))
         val matchCount = keywordWords.count { it in transcriptWords }
         return matchCount.toFloat() / keywordWords.size >= FUZZY_MATCH_THRESHOLD
     }

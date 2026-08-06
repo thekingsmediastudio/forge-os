@@ -92,6 +92,7 @@ fun ModernChatScreen(
     val inputRequest by viewModel.pendingInputRequest.collectAsState()
     val availableSpecs by viewModel.availableSpecs.collectAsState()
     val selectedSpec by viewModel.selectedSpec.collectAsState()
+    val toolConfirmation by viewModel.pendingConfirmation.collectAsState()
     val voiceVm: com.forge.os.presentation.screens.voice.VoiceInputViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     
     // Channel state
@@ -328,7 +329,55 @@ fun ModernChatScreen(
                 conversationId = viewModel.currentConversationId
             )
         }
-        
+
+        // Destructive-tool confirmation dialog
+        AnimatedVisibility(visible = toolConfirmation != null) {
+            toolConfirmation?.let { conf ->
+                AlertDialog(
+                    onDismissRequest = { viewModel.denyTool() },
+                    title = {
+                        Text("🛡️ CONFIRM ACTION", color = ModernAccent, fontFamily = FontFamily.Monospace,
+                             fontSize = 14.sp, letterSpacing = 2.sp)
+                    },
+                    text = {
+                        Column {
+                            Text("The agent wants to run a sensitive action.",
+                                 color = ModernTextPrimary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                            Spacer(Modifier.height(12.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("TOOL", color = ModernTextSecondary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                Text(conf.toolName, color = ModernAccent, fontSize = 12.sp,
+                                     fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                            }
+                            if (conf.argsSummary.isNotBlank() && conf.argsSummary != "{}") {
+                                Spacer(Modifier.height(8.dp))
+                                Text("ARGS", color = ModernTextSecondary, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                Spacer(Modifier.height(2.dp))
+                                Text(conf.argsSummary, color = ModernTextPrimary, fontSize = 11.sp,
+                                     fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { viewModel.confirmTool() },
+                            colors = ButtonDefaults.buttonColors(containerColor = ModernAccent, contentColor = Color.Black),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("ALLOW", fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.denyTool() }) {
+                            Text("DENY", color = ModernTextSecondary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    },
+                    containerColor = ModernSurface,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+
         // Tutorial Overlay
         if (showTutorial) {
             val tutorialSteps = listOf(

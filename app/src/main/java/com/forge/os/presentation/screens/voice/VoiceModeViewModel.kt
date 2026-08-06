@@ -210,7 +210,18 @@ class VoiceModeViewModel @Inject constructor(
             transcript = "",
             error = null,
             rmsLevel = 0f)
-        voiceInputManager.startListening()
+        // Wait for the hotword service to fully release the mic before we grab it.
+        viewModelScope.launch {
+            val deadline = System.currentTimeMillis() + 2000
+            while (System.currentTimeMillis() < deadline) {
+                if (com.forge.os.domain.voice.MicOwnership.owner.value ==
+                    com.forge.os.domain.voice.MicOwnership.Owner.NONE ||
+                    com.forge.os.domain.voice.MicOwnership.owner.value ==
+                    com.forge.os.domain.voice.MicOwnership.Owner.VOICE_MODE) break
+                delay(50)
+            }
+            voiceInputManager.startListening()
+        }
     }
 
     private fun onRecognitionError(error: VoiceRecognitionError) {
