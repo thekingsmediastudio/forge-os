@@ -66,7 +66,9 @@ data class CompanionMessage(
     val isError: Boolean = false,
     val tags: MessageTags? = null,    // K-4: set on user messages after classify
     val isCrisisResponse: Boolean = false,
-    val isSafetyBlocked: Boolean = false)
+    val isSafetyBlocked: Boolean = false,
+    /** Absolute path of an attached image saved under workspace/uploads/, if any. */
+    val imagePath: String? = null)
 
 enum class CompanionPhase { IDLE, LISTENING, RESPONDING }
 
@@ -100,6 +102,13 @@ class CompanionViewModel @Inject constructor(
     /** Phase O-8 — emitted when the daily token budget is exhausted. */
     private val _budgetExhausted = MutableStateFlow(false)
     val budgetExhausted: StateFlow<Boolean> = _budgetExhausted
+
+    /** Image staged for the next message (saved into workspace/uploads/). */
+    private val _pendingImage = MutableStateFlow<com.forge.os.domain.agent.FileAttachment?>(null)
+    val pendingImage: StateFlow<com.forge.os.domain.agent.FileAttachment?> = _pendingImage
+
+    fun stageImage(attachment: com.forge.os.domain.agent.FileAttachment) { _pendingImage.value = attachment }
+    fun clearStagedImage() { _pendingImage.value = null }
 
     /** Phase P-3 — single source of truth for the mood-chip toggle. */
     val moodChipsEnabled: StateFlow<Boolean> = MutableStateFlow(
@@ -178,14 +187,17 @@ class CompanionViewModel @Inject constructor(
     }
 
     fun send(userText: String) {
-        if (userText.isBlank() || _phase.value != CompanionPhase.IDLE) return
+        if (_phase.value != CompanionPhase.IDLE) return
+        val staged = _pendingImage.value
+        if (userText.isBlank() && staged == null) return
 
         // Phase O-8 — block sends when the daily token budget is exhausted.
         if (_budgetExhausted.value) return
 
-        val input = userText.trim()
+        val input = userText.trim().ifBlank { "(shared a photo)" }
+        _pendingImage.value = null
         val userMsgId = System.currentTimeMillis().toString()
-        addMsg(CompanionMessage(id = userMsgId, role = "user", content = input))
+        addMsg(CompanionMessage(id = userMsgId, role = "user", content = input, imagePath = staged?.filePath))
         sessionTurns.add(TranscriptTurn("user", input))
         cancelIdleTimer()
 
@@ -244,7 +256,8 @@ class CompanionViewModel @Inject constructor(
                 spec = null,
                 mode = Mode.COMPANION,
                 extraSystemSuffix = suffix,
-                currentChannel = "main"
+                currentChannel = "main",
+                imageAttachments = listOfNotNull(staged)
             ).collect { event ->
                 when (event) {
                     is AgentEvent.Thinking -> {

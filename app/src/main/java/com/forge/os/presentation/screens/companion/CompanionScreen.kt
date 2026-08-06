@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -62,9 +63,47 @@ fun CompanionScreen(
     val messages by vm.messages.collectAsState()
     val phase by vm.phase.collectAsState()
     val relationship by vm.relationshipState.snapshot.collectAsState()
+    val pendingImage by vm.pendingImage.collectAsState()
     val isBusy = phase != CompanionPhase.IDLE
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // Image picker — stages an image (base64 for vision + saved to workspace)
+    val imagePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val resolver = ctx.contentResolver
+                var fileName = "photo.jpg"
+                var fileSize = 0L
+                resolver.query(uri, null, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            .takeIf { it >= 0 }?.let { fileName = c.getString(it) }
+                        c.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                            .takeIf { it >= 0 }?.let { fileSize = c.getLong(it) }
+                    }
+                }
+                val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@launch
+                val mimeType = resolver.getType(uri) ?: "image/jpeg"
+                // Persist into workspace/uploads so the path survives restarts
+                val uploadsDir = java.io.File(ctx.filesDir, "workspace/uploads").apply { mkdirs() }
+                val dest = java.io.File(uploadsDir, "${System.currentTimeMillis()}-$fileName")
+                dest.writeBytes(bytes)
+                vm.stageImage(
+                    com.forge.os.domain.agent.FileAttachment(
+                        filePath = dest.absolutePath,
+                        fileName = fileName,
+                        mimeType = mimeType,
+                        fileSize = fileSize,
+                        base64Data = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)))
+            }
+        }
+    }
 
     LaunchedEffect(Unit) { vm.greet() }
     // Phase L — if a notification deep-linked us here with a seed prompt,
@@ -162,10 +201,37 @@ fun CompanionScreen(
             }
         }
 
+        // Staged image preview above the input
+        pendingImage?.let { att ->
+            Row(
+                Modifier.fillMaxWidth().background(ForgeOsPalette.Surface)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                coil.compose.AsyncImage(
+                    model = java.io.File(att.filePath),
+                    contentDescription = "Attached image",
+                    modifier = Modifier
+                        .height(56.dp)
+                        .width(56.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                Spacer(Modifier.width(8.dp))
+                Text(att.fileName, color = ForgeOsPalette.TextMuted, fontSize = 11.sp,
+                    modifier = Modifier.weight(1f), maxLines = 1)
+                Text("✕", color = ForgeOsPalette.TextMuted, fontSize = 14.sp,
+                    modifier = Modifier.clickable { vm.clearStagedImage() }.padding(8.dp))
+            }
+        }
+
         // Input
         Row(
             Modifier.fillMaxWidth().background(ForgeOsPalette.Surface).padding(10.dp),
             verticalAlignment = Alignment.CenterVertically) {
+            // Attach image
+            Text("📷", fontSize = 16.sp,
+                modifier = Modifier
+                    .clickable(enabled = !isBusy) { imagePicker.launch("image/*") }
+                    .padding(end = 8.dp))
             Box(
                 Modifier.weight(1f).height(44.dp)
                     .background(ForgeOsPalette.Surface2, RoundedCornerShape(22.dp))
@@ -193,7 +259,7 @@ fun CompanionScreen(
             Box(
                 Modifier
                     .background(CompanionAccent, RoundedCornerShape(22.dp))
-                    .clickable(enabled = input.isNotBlank() && !isBusy) {
+                    .clickable(enabled = (input.isNotBlank() || pendingImage != null) && !isBusy) {
                         vm.send(input); input = ""
                     }
                     .padding(horizontal = 18.dp, vertical = 12.dp)) {
@@ -238,6 +304,18 @@ private fun Bubble(m: CompanionMessage, onRegenerate: () -> Unit = {}) {
                     color = if (crisis) ForgeOsPalette.Danger else CompanionAccent,
                     fontSize = 9.sp, letterSpacing = 1.sp)
                 Spacer(Modifier.height(2.dp))
+            }
+            // Attached image thumbnail (user messages)
+            m.imagePath?.let { path ->
+                coil.compose.AsyncImage(
+                    model = java.io.File(path),
+                    contentDescription = "Attached image",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                Spacer(Modifier.height(6.dp))
             }
             if (isUser) {
                 Text(

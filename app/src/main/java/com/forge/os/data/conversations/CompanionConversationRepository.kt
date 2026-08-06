@@ -25,6 +25,7 @@ data class StoredCompanionMessage(
     val tagsUrgency: Int = 0,
     val isCrisisResponse: Boolean = false,
     val isSafetyBlocked: Boolean = false,
+    val imagePath: String? = null,
 )
 
 @Serializable
@@ -124,6 +125,7 @@ fun CompanionMessage.toStored() = StoredCompanionMessage(
     tagsUrgency = tags?.urgency ?: 0,
     isCrisisResponse = isCrisisResponse,
     isSafetyBlocked = isSafetyBlocked,
+    imagePath = imagePath,
 )
 
 fun StoredCompanionMessage.toUi(): CompanionMessage {
@@ -139,5 +141,6 @@ fun StoredCompanionMessage.toUi(): CompanionMessage {
         tags = tags,
         isCrisisResponse = isCrisisResponse,
         isSafetyBlocked = isSafetyBlocked,
+        imagePath = imagePath,
     )
 }
