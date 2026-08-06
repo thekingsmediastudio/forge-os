@@ -3,6 +3,7 @@ package com.forge.os.data.api
 import android.content.Context
 import com.forge.os.domain.security.ApiKeyProvider
 import com.forge.os.domain.security.ProviderSpec
+import com.forge.os.domain.security.SecureKeyStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +32,7 @@ import javax.inject.Singleton
 class ModelCapabilityResolver @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
+    private val secureKeyStore: SecureKeyStore,
 ) {
     companion object {
         private const val TAG = "ModelCapabilityResolver"
@@ -122,7 +124,16 @@ class ModelCapabilityResolver @Inject constructor(
                 } ?: fallbackResolution(spec, now)
             }
             
-            // 3. Fallback: static DB → heuristic
+            // 3. Custom endpoint — probe /v1/models metadata, then tiny image probe
+            spec is ProviderSpec.Custom -> {
+                fetchCustomVision(spec)?.let { vision ->
+                    ModelCapability(vision, "api", now)
+                } ?: probeCustomVision(spec)?.let { vision ->
+                    ModelCapability(vision, "probe", now)
+                } ?: fallbackResolution(spec, now)
+            }
+
+            // 4. Fallback: static DB → heuristic
             else -> fallbackResolution(spec, now)
         }
     }
@@ -221,6 +232,157 @@ class ModelCapabilityResolver @Inject constructor(
             }
         } catch (e: Exception) {
             Timber.e(e, "$TAG: Failed to fetch Ollama capabilities")
+            null
+        }
+    }
+
+    // ─── Custom Endpoint Probing ─────────────────────────────────────────────
+
+    /**
+     * Try to detect vision support by fetching the custom endpoint's /v1/models
+     * and checking for capability metadata (works with LiteLLM, vLLM, OpenRouter-like
+     * gateways, and any OpenAI-compatible API that returns model metadata).
+     */
+    private suspend fun fetchCustomVision(spec: ProviderSpec.Custom): Boolean? = withContext(Dispatchers.IO) {
+        val endpoint = spec.endpoint
+        val apiKey = secureKeyStore.getCustomKey(endpoint.id) ?: return@withContext null
+        val model = spec.effectiveModel
+
+        try {
+            val url = endpoint.baseUrl.trimEnd('/') + "/models"
+            val request = Request.Builder()
+                .url(url)
+                .header(endpoint.authHeader, "${endpoint.authPrefix}$apiKey")
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Timber.d("$TAG: Custom /models returned ${response.code} for ${endpoint.name}")
+                    return@withContext null
+                }
+
+                val body = response.body?.string() ?: return@withContext null
+                val jsonObj = json.parseToJsonElement(body).jsonObject
+                val data = jsonObj["data"]?.jsonArray ?: return@withContext null
+
+                for (element in data) {
+                    val obj = element.jsonObject
+                    val id = obj["id"]?.jsonPrimitive?.content ?: continue
+
+                    if (id == model) {
+                        // Check architecture.input_modalities (OpenRouter-style)
+                        val archModalities = obj["architecture"]?.jsonObject
+                            ?.get("input_modalities")?.jsonArray
+                        if (archModalities != null) {
+                            val hasVision = archModalities.any {
+                                it.jsonPrimitive.content == "image"
+                            }
+                            Timber.d("$TAG: Custom ${endpoint.name}/$model vision=$hasVision (architecture)")
+                            return@withContext hasVision
+                        }
+
+                        // Check capabilities array (LiteLLM/vLLM-style)
+                        val capabilities = obj["capabilities"]?.jsonArray
+                        if (capabilities != null) {
+                            val hasVision = capabilities.any {
+                                val c = it.jsonPrimitive.content.lowercase()
+                                c == "vision" || c == "image" || c == "multimodal"
+                            }
+                            Timber.d("$TAG: Custom ${endpoint.name}/$model vision=$hasVision (capabilities)")
+                            return@withContext hasVision
+                        }
+
+                        // Check modalities field directly
+                        val modalities = obj["modalities"]?.jsonArray
+                        if (modalities != null) {
+                            val hasVision = modalities.any {
+                                it.jsonPrimitive.content.lowercase().contains("image")
+                            }
+                            Timber.d("$TAG: Custom ${endpoint.name}/$model vision=$hasVision (modalities)")
+                            return@withContext hasVision
+                        }
+
+                        // Model found but no metadata — can't determine
+                        Timber.d("$TAG: Custom ${endpoint.name}/$model found but no vision metadata")
+                        return@withContext null
+                    }
+                }
+
+                Timber.d("$TAG: Model $model not found in ${endpoint.name} /models")
+                null
+            }
+        } catch (e: Exception) {
+            Timber.d(e, "$TAG: Custom /models probe failed for ${endpoint.name}")
+            null
+        }
+    }
+
+    /**
+     * Probe vision support by sending a minimal 1×1 pixel image to the model.
+     * If the API accepts it → vision supported. If it rejects with an image-related
+     * error → not supported. Returns null if inconclusive (network error, etc).
+     */
+    private suspend fun probeCustomVision(spec: ProviderSpec.Custom): Boolean? = withContext(Dispatchers.IO) {
+        val endpoint = spec.endpoint
+        val apiKey = secureKeyStore.getCustomKey(endpoint.id) ?: return@withContext null
+        val model = spec.effectiveModel
+
+        // 1×1 red pixel PNG (67 bytes)
+        val tinyPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
+        val requestJson = """
+        {
+            "model": "$model",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What color is this image? Reply with one word."},
+                    {"type": "image_url", "image_url": {"url": "$tinyPng"}}
+                ]
+            }],
+            "max_tokens": 5
+        }
+        """.trimIndent()
+
+        try {
+            val url = endpoint.baseUrl.trimEnd('/') + "/chat/completions"
+            val request = Request.Builder()
+                .url(url)
+                .header(endpoint.authHeader, "${endpoint.authPrefix}$apiKey")
+                .header("Content-Type", "application/json")
+                .post(requestJson.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                val body = response.body?.string() ?: ""
+
+                when {
+                    response.isSuccessful -> {
+                        Timber.d("$TAG: Custom probe ${endpoint.name}/$model → vision supported")
+                        true
+                    }
+                    response.code == 400 || response.code == 422 -> {
+                        val errLower = body.lowercase()
+                        val isImageError = errLower.contains("image") || errLower.contains("vision") ||
+                                errLower.contains("multimodal") || errLower.contains("modalities") ||
+                                errLower.contains("content part") || errLower.contains("image_url")
+                        if (isImageError) {
+                            Timber.d("$TAG: Custom probe ${endpoint.name}/$model → no vision (400: image error)")
+                            false
+                        } else {
+                            // 400 for another reason (rate limit, model not found, etc) — inconclusive
+                            Timber.d("$TAG: Custom probe ${endpoint.name}/$model → inconclusive 400: ${body.take(200)}")
+                            null
+                        }
+                    }
+                    else -> {
+                        Timber.d("$TAG: Custom probe ${endpoint.name}/$model → inconclusive ${response.code}")
+                        null
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Timber.d(e, "$TAG: Custom vision probe failed for ${endpoint.name}")
             null
         }
     }
