@@ -310,6 +310,28 @@ class CompanionViewModel @Inject constructor(
     }
 
     /**
+     * Regenerate the last assistant reply: drops the trailing assistant
+     * message and its API-history pair, then re-runs the last user turn.
+     * No-op if idle or there is nothing to regenerate.
+     */
+    fun regenerateLast() {
+        if (_phase.value != CompanionPhase.IDLE) return
+        val msgs = _messages.value
+        val lastAssistantIdx = msgs.indexOfLast { it.role == "assistant" && !it.isCrisisResponse }
+        if (lastAssistantIdx < 0) return
+        // The user turn that produced it is the closest user msg before it.
+        val userIdx = (lastAssistantIdx - 1 downTo 0).firstOrNull { msgs[it].role == "user" } ?: return
+        val userText = msgs[userIdx].content
+
+        // Trim UI messages from the user turn onward and roll back API history.
+        _messages.value = msgs.subList(0, userIdx)
+        if (sessionTurns.size >= 2) repeat(2) { if (sessionTurns.isNotEmpty()) sessionTurns.removeAt(sessionTurns.size - 1) }
+        if (apiHistory.size >= 2) repeat(2) { if (apiHistory.isNotEmpty()) apiHistory.removeAt(apiHistory.size - 1) }
+        persistCurrent()
+        send(userText)
+    }
+
+    /**
      * Phase J1-1 — explicit session end (e.g. user navigates away). Summarises
      * the session synchronously-ish on a background coroutine.
      */

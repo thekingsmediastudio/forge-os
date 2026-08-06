@@ -1,8 +1,10 @@
 package com.forge.os.presentation.screens.companion
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -124,7 +126,12 @@ fun CompanionScreen(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(messages, key = { it.id }) { m -> Bubble(m) }
+            items(messages, key = { it.id }) { m ->
+                val lastAssistantId = messages.lastOrNull { it.role == "assistant" }?.id
+                Bubble(
+                    m,
+                    onRegenerate = if (m.id == lastAssistantId) ({ vm.regenerateLast() }) else ({}))
+            }
             if (isBusy) item {
                 val label = when (phase) {
                     CompanionPhase.LISTENING  -> "${persona.name} is listening…"
@@ -196,10 +203,14 @@ fun CompanionScreen(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(m: CompanionMessage) {
+private fun Bubble(m: CompanionMessage, onRegenerate: () -> Unit = {}) {
     val isUser = m.role == "user"
     val crisis = m.isCrisisResponse
+    var showActions by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     val bg = when {
         crisis -> Color(0xFF1f0a0a)
         isUser -> UserBubbleBg
@@ -217,6 +228,9 @@ private fun Bubble(m: CompanionMessage) {
             Modifier
                 .background(bg, RoundedCornerShape(16.dp))
                 .border(1.dp, border, RoundedCornerShape(16.dp))
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = { if (!m.isStreaming) showActions = true })
                 .padding(horizontal = 14.dp, vertical = 10.dp)) {
             if (!isUser) {
                 Text(
@@ -246,6 +260,39 @@ private fun Bubble(m: CompanionMessage) {
                         (if (t.urgency > 0) " · u${t.urgency}" else ""),
                     color = ForgeOsPalette.TextDim,
                     fontSize = 9.sp)
+            }
+
+            // Long-press actions: copy / share / regenerate
+            androidx.compose.material3.DropdownMenu(
+                expanded = showActions,
+                onDismissRequest = { showActions = false }) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Copy") },
+                    onClick = {
+                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(m.content))
+                        showActions = false
+                    })
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Share") },
+                    onClick = {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_TEXT, m.content)
+                        }
+                        runCatching {
+                            ctx.startActivity(android.content.Intent.createChooser(intent, null)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }
+                        showActions = false
+                    })
+                if (!isUser && !crisis) {
+                    androidx.compose.material3.DropdownMenuItem(
+                        text = { Text("Regenerate") },
+                        onClick = {
+                            showActions = false
+                            onRegenerate()
+                        })
+                }
             }
         }
     }
