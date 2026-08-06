@@ -106,6 +106,9 @@ fun ModernChatScreen(
     var inputText by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
     var showVoiceMode by remember { mutableStateOf(false) }
+    var showWorkspacePicker by remember { mutableStateOf(false) }
+    var showBrowserPicker by remember { mutableStateOf(false) }
+    var showConversationPicker by remember { mutableStateOf(false) }
     
     // Multimodal support — image attachments
     val pendingImages by viewModel.pendingImages.collectAsState()
@@ -292,10 +295,9 @@ fun ModernChatScreen(
                 },
                 onStop = { viewModel.stopGeneration() },
                 onOpenVoiceMode = { showVoiceMode = true },
-                onNavigateToWorkspace = onNavigateToWorkspace,
-                onNavigateToBrowser = onNavigateToBrowser,
-                onNavigateToConversations = onNavigateToConversations,
-                onNavigateToHub = onNavigateToHub,
+                onPickWorkspaceFile = { showWorkspacePicker = true },
+                onPickBrowserTab = { showBrowserPicker = true },
+                onPickConversation = { showConversationPicker = true },
                 isLoading = isLoading,
                 enabled = !isLoading,
                 pendingImages = pendingImages,
@@ -327,6 +329,41 @@ fun ModernChatScreen(
                     viewModel.reloadCurrent()
                 },
                 conversationId = viewModel.currentConversationId
+            )
+        }
+
+        // ── Context Attachment Pickers ──────────────────────────────────────
+
+        // Workspace file picker
+        if (showWorkspacePicker) {
+            WorkspaceFilePickerSheet(
+                onDismiss = { showWorkspacePicker = false },
+                onFilePicked = { attachment ->
+                    viewModel.addImageAttachment(attachment)
+                    showWorkspacePicker = false
+                },
+            )
+        }
+
+        // Browser tab picker
+        if (showBrowserPicker) {
+            BrowserTabPickerSheet(
+                onDismiss = { showBrowserPicker = false },
+                onTabPicked = { attachment ->
+                    viewModel.addImageAttachment(attachment)
+                    showBrowserPicker = false
+                },
+            )
+        }
+
+        // Conversation picker
+        if (showConversationPicker) {
+            ConversationPickerSheet(
+                onDismiss = { showConversationPicker = false },
+                onConversationPicked = { attachment ->
+                    viewModel.addImageAttachment(attachment)
+                    showConversationPicker = false
+                },
             )
         }
 
@@ -1332,7 +1369,14 @@ private fun ModernUserBubble(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                "\uD83D\uDCCE ${att.fileName}",
+                                run {
+                                    val chipIcon = when {
+                                        att.isContext() && att.filePath.startsWith("conversation://") -> "\uD83D\uDCAC"
+                                        att.isContext() -> "\uD83C\uDF10"
+                                        else -> "\uD83D\uDCCE"
+                                    }
+                                    "$chipIcon ${att.fileName}"
+                                },
                                 color = ModernTextSecondary,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -1983,10 +2027,9 @@ private fun ModernInputBar(
     onSend: () -> Unit,
     onStop: () -> Unit,
     onOpenVoiceMode: () -> Unit,
-    onNavigateToWorkspace: () -> Unit,
-    onNavigateToBrowser: () -> Unit,
-    onNavigateToConversations: () -> Unit,
-    onNavigateToHub: () -> Unit,
+    onPickWorkspaceFile: () -> Unit,
+    onPickBrowserTab: () -> Unit,
+    onPickConversation: () -> Unit,
     isLoading: Boolean,
     enabled: Boolean,
     pendingImages: List<com.forge.os.domain.agent.ImageAttachment> = emptyList(),
@@ -2028,6 +2071,8 @@ private fun ModernInputBar(
                             ) {
                                 Icon(
                                     when {
+                                        attachment.isContext() && attachment.filePath.startsWith("conversation://") -> Icons.Outlined.ChatBubbleOutline
+                                        attachment.isContext() -> Icons.Outlined.Language
                                         attachment.isVideo() -> Icons.Outlined.VideoFile
                                         attachment.isAudio() -> Icons.Outlined.AudioFile
                                         attachment.mimeType.contains("pdf") -> Icons.Outlined.PictureAsPdf
@@ -2119,7 +2164,7 @@ private fun ModernInputBar(
                 ) {
                     DropdownMenuItem(
                         text = { Text("Attach File", color = ModernTextPrimary, fontSize = 14.sp) },
-                        onClick = { 
+                        onClick = {
                             showPlusMenu = false
                             filePickerLauncher?.launch("*/*")
                         },
@@ -2127,23 +2172,18 @@ private fun ModernInputBar(
                     )
                     DropdownMenuItem(
                         text = { Text("Workspace", color = ModernTextPrimary, fontSize = 14.sp) },
-                        onClick = { showPlusMenu = false; onNavigateToWorkspace() },
+                        onClick = { showPlusMenu = false; onPickWorkspaceFile() },
                         leadingIcon = { Icon(Icons.Outlined.Folder, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
                     )
                     DropdownMenuItem(
                         text = { Text("Browser", color = ModernTextPrimary, fontSize = 14.sp) },
-                        onClick = { showPlusMenu = false; onNavigateToBrowser() },
+                        onClick = { showPlusMenu = false; onPickBrowserTab() },
                         leadingIcon = { Icon(Icons.Outlined.Public, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
                     )
                     DropdownMenuItem(
                         text = { Text("Conversations", color = ModernTextPrimary, fontSize = 14.sp) },
-                        onClick = { showPlusMenu = false; onNavigateToConversations() },
+                        onClick = { showPlusMenu = false; onPickConversation() },
                         leadingIcon = { Icon(Icons.Outlined.ChatBubbleOutline, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Hub", color = ModernTextPrimary, fontSize = 14.sp) },
-                        onClick = { showPlusMenu = false; onNavigateToHub() },
-                        leadingIcon = { Icon(Icons.Outlined.Apps, null, tint = ModernTextSecondary, modifier = Modifier.size(20.dp)) }
                     )
                 }
             }
@@ -2462,4 +2502,360 @@ private fun ModernSideMenu(
             }
         }
     }
+}
+
+// ─── Context Attachment Picker Sheets ────────────────────────────────────────
+
+/**
+ * Workspace file picker — shows the workspace directory tree, lets the user
+ * tap a file to attach it as a FileAttachment.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WorkspaceFilePickerSheet(
+    onDismiss: () -> Unit,
+    onFilePicked: (com.forge.os.domain.agent.FileAttachment) -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Access SandboxManager via the ChatViewModel's hilt graph
+    val sandboxManager: com.forge.os.data.sandbox.SandboxManager = remember {
+        dagger.hilt.android.EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            WorkspacePickerEntryPoint::class.java
+        ).sandboxManager()
+    }
+
+    var currentPath by remember { mutableStateOf(".") }
+    var entries by remember { mutableStateOf<List<com.forge.os.data.sandbox.FileInfo>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    // Load directory contents
+    LaunchedEffect(currentPath) {
+        isLoading = true
+        sandboxManager.listFiles(currentPath).onSuccess { entries = it }
+        isLoading = false
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = forgePalette.surface,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            // Header
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (currentPath != ".") {
+                    IconButton(onClick = {
+                        currentPath = currentPath.substringBeforeLast('/', ".")
+                    }) {
+                        Icon(Icons.Filled.ArrowBack, "Back", tint = forgePalette.textPrimary)
+                    }
+                }
+                Icon(Icons.Outlined.Folder, null, tint = forgePalette.orange, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (currentPath == ".") "Workspace" else currentPath,
+                    color = forgePalette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            HorizontalDivider(color = forgePalette.divider, thickness = 0.5.dp)
+
+            if (isLoading) {
+                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = forgePalette.orange, modifier = Modifier.size(24.dp))
+                }
+            } else if (entries.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    Text("Empty folder", color = forgePalette.textMuted, fontSize = 13.sp)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                    items(entries.size) { idx ->
+                        val entry = entries[idx]
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (entry.isDirectory) {
+                                        currentPath = entry.path
+                                    } else {
+                                        // Read file and create attachment
+                                        scope.launch {
+                                            try {
+                                                val wsDir = java.io.File(context.filesDir, "workspace").canonicalFile
+                                                val file = java.io.File(wsDir, entry.path)
+                                                if (!file.exists()) return@launch
+
+                                                val bytes = file.readBytes()
+                                                val mime = when (file.extension.lowercase()) {
+                                                    "png" -> "image/png"
+                                                    "jpg", "jpeg" -> "image/jpeg"
+                                                    "gif" -> "image/gif"
+                                                    "webp" -> "image/webp"
+                                                    "mp4" -> "video/mp4"
+                                                    "mp3" -> "audio/mpeg"
+                                                    "pdf" -> "application/pdf"
+                                                    "txt" -> "text/plain"
+                                                    "md" -> "text/markdown"
+                                                    "json" -> "application/json"
+                                                    else -> "application/octet-stream"
+                                                }
+                                                val base64 = if (mime.startsWith("image/")) {
+                                                    android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                                                } else null
+
+                                                onFilePicked(com.forge.os.domain.agent.FileAttachment(
+                                                    filePath = file.absolutePath,
+                                                    fileName = entry.name,
+                                                    mimeType = mime,
+                                                    fileSize = entry.size,
+                                                    base64Data = base64,
+                                                ))
+                                            } catch (e: Exception) {
+                                                timber.log.Timber.e(e, "Failed to read workspace file")
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                if (entry.isDirectory) Icons.Outlined.Folder else Icons.Outlined.InsertDriveFile,
+                                null,
+                                tint = if (entry.isDirectory) forgePalette.orange else forgePalette.textSecondary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(entry.name, color = forgePalette.textPrimary, fontSize = 14.sp, maxLines = 1)
+                                if (!entry.isDirectory) {
+                                    Text(
+                                        formatFileSize(entry.size),
+                                        color = forgePalette.textMuted, fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                            if (entry.isDirectory) {
+                                Icon(Icons.Filled.ChevronRight, null, tint = forgePalette.textMuted, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * Browser tab picker — shows open browser tabs, lets user pick one to attach
+ * the page URL + title as a text context attachment.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BrowserTabPickerSheet(
+    onDismiss: () -> Unit,
+    onTabPicked: (com.forge.os.domain.agent.FileAttachment) -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Access BrowserViewModel for tabs
+    val browserVm: com.forge.os.presentation.screens.BrowserViewModel = hiltViewModel()
+    val tabs by browserVm.tabs.collectAsState()
+    val activeTabId by browserVm.activeTabId.collectAsState()
+
+    // Filter out blank tabs
+    val usableTabs = tabs.filter { it.url.isNotBlank() && it.url != "about:blank" }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = forgePalette.surface,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.Public, null, tint = forgePalette.orange, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Browser Tabs", color = forgePalette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            HorizontalDivider(color = forgePalette.divider, thickness = 0.5.dp)
+
+            if (usableTabs.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                    Text("No open tabs", color = forgePalette.textMuted, fontSize = 13.sp)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 350.dp)) {
+                    items(usableTabs.size) { idx ->
+                        val tab = usableTabs[idx]
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onTabPicked(com.forge.os.domain.agent.FileAttachment(
+                                        filePath = tab.url,
+                                        fileName = tab.title.ifBlank { tab.url },
+                                        mimeType = "text/uri-list",
+                                        fileSize = 0,
+                                        contextText = "Browser Tab: ${tab.title.ifBlank { "Untitled" }}\nURL: ${tab.url}",
+                                    ))
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Outlined.Language, null,
+                                tint = if (tab.id == activeTabId) forgePalette.orange else forgePalette.textSecondary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    tab.title.ifBlank { "Untitled" },
+                                    color = forgePalette.textPrimary, fontSize = 14.sp, maxLines = 1,
+                                )
+                                Text(
+                                    tab.url,
+                                    color = forgePalette.textMuted, fontSize = 11.sp, maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
+                            if (tab.id == activeTabId) {
+                                Text("Active", color = forgePalette.orange, fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+/**
+ * Conversation picker — shows recent conversations, lets user pick one to
+ * attach as context (summary of the conversation).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConversationPickerSheet(
+    onDismiss: () -> Unit,
+    onConversationPicked: (com.forge.os.domain.agent.FileAttachment) -> Unit,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val conversationRepo: com.forge.os.data.conversations.ConversationRepository = remember {
+        dagger.hilt.android.EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            ConversationPickerEntryPoint::class.java
+        ).conversationRepository()
+    }
+
+    val conversations = remember { conversationRepo.list().take(20) }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = forgePalette.surface,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.ChatBubbleOutline, null, tint = forgePalette.orange, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Attach Conversation", color = forgePalette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            HorizontalDivider(color = forgePalette.divider, thickness = 0.5.dp)
+
+            if (conversations.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                    Text("No conversations yet", color = forgePalette.textMuted, fontSize = 13.sp)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 350.dp)) {
+                    items(conversations.size) { idx ->
+                        val conv = conversations[idx]
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    // Build a text summary of the conversation
+                                    val summary = buildString {
+                                        appendLine("Conversation: \"${conv.title}\"")
+                                        appendLine("Date: ${java.text.SimpleDateFormat("MMM d, yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(conv.updatedAt))}")
+                                        appendLine("Messages: ${conv.messages.size}")
+                                        appendLine()
+                                        // Include last 10 messages as context
+                                        val recentMsgs = conv.messages.takeLast(10)
+                                        recentMsgs.forEach { msg ->
+                                            val role = if (msg.role == "user") "User" else "Assistant"
+                                            val preview = msg.content.take(200)
+                                            appendLine("[$role]: $preview")
+                                        }
+                                        if (conv.messages.size > 10) {
+                                            appendLine("... (${conv.messages.size - 10} earlier messages omitted)")
+                                        }
+                                    }
+
+                                    onConversationPicked(com.forge.os.domain.agent.FileAttachment(
+                                        filePath = "conversation://${conv.id}",
+                                        fileName = conv.title,
+                                        mimeType = "text/plain",
+                                        fileSize = summary.length.toLong(),
+                                        contextText = summary,
+                                    ))
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.ChatBubbleOutline, null, tint = forgePalette.textSecondary, modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(conv.title, color = forgePalette.textPrimary, fontSize = 14.sp, maxLines = 1)
+                                Text(
+                                    "${conv.messages.size} messages · ${java.text.SimpleDateFormat("MMM d", java.util.Locale.getDefault()).format(java.util.Date(conv.updatedAt))}",
+                                    color = forgePalette.textMuted, fontSize = 11.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    else -> "${bytes / (1024 * 1024)} MB"
+}
+
+// ─── Hilt EntryPoints for picker sheets ──────────────────────────────────────
+
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+interface WorkspacePickerEntryPoint {
+    fun sandboxManager(): com.forge.os.data.sandbox.SandboxManager
+}
+
+@dagger.hilt.EntryPoint
+@dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+interface ConversationPickerEntryPoint {
+    fun conversationRepository(): com.forge.os.data.conversations.ConversationRepository
 }

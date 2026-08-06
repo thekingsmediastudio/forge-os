@@ -10,11 +10,15 @@ data class FileAttachment(
     val mimeType: String,
     val fileSize: Long,
     val base64Data: String? = null, // Only for images (for vision models)
+    /** Text-based context (browser tab URL/content, conversation excerpt).
+     *  When non-null, this is a virtual context attachment, not a physical file. */
+    val contextText: String? = null,
 ) {
     fun isImage() = mimeType.startsWith("image/")
     fun isVideo() = mimeType.startsWith("video/")
     fun isAudio() = mimeType.startsWith("audio/")
-    fun isDocument() = !isImage() && !isVideo() && !isAudio()
+    fun isDocument() = !isImage() && !isVideo() && !isAudio() && contextText == null
+    fun isContext() = contextText != null
     
     /**
      * Convert to a data URL for API transmission (images only).

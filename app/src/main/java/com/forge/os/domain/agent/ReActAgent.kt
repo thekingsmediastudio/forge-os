@@ -604,6 +604,12 @@ Tools available ({tool_count} total): {tool_catalog}
         val userApiMessage = if (imageAttachments.isNotEmpty()) {
             val images = imageAttachments.filter { it.isImage() && it.base64Data != null }
             val nonImages = imageAttachments.filter { !it.isImage() || it.base64Data == null }
+            val contextAtts = imageAttachments.filter { it.isContext() }
+
+            // Build context text block from virtual attachments (browser tabs, conversations)
+            val contextBlock = if (contextAtts.isNotEmpty()) {
+                "\n\n---\n[Attached context]\n" + contextAtts.joinToString("\n\n") { it.contextText ?: "" }
+            } else ""
 
             // Vision gate: check if the model can actually process images
             val modelSupportsVision = spec?.let {
@@ -613,17 +619,18 @@ Tools available ({tool_count} total): {tool_catalog}
             if (images.isNotEmpty() && modelSupportsVision) {
                 // Vision model path: use contentParts with image_url
                 val contentParts = mutableListOf<com.forge.os.data.api.ContentPart>()
-                
-                // Build text with file descriptions
+
+                // Build text with file descriptions + context
                 var text = userMessage
                 if (nonImages.isNotEmpty()) {
-                    text += "\n\n[Attached files: " + nonImages.joinToString(", ") { 
-                        "${it.fileName} (${it.formattedSize()})" 
+                    text += "\n\n[Attached files: " + nonImages.joinToString(", ") {
+                        "${it.fileName} (${it.formattedSize()})"
                     } + "]"
                 }
-                
+                text += contextBlock
+
                 contentParts.add(com.forge.os.data.api.ContentPart(type = "text", text = text))
-                
+
                 // Add image parts
                 images.forEach { attachment ->
                     attachment.toDataUrl()?.let { dataUrl ->
@@ -633,14 +640,18 @@ Tools available ({tool_count} total): {tool_catalog}
                         ))
                     }
                 }
-                
+
                 ApiMessage(role = "user", content = null, contentParts = contentParts)
             } else {
-                // Text-only path: describe files in the message
+                // Text-only path: describe files + include context inline
                 var text = userMessage
-                text += "\n\n[Attached files: " + imageAttachments.joinToString(", ") { 
-                    "${it.fileName} (${it.mimeType}, ${it.formattedSize()})" 
-                } + "]"
+                val fileAtts = imageAttachments.filter { !it.isContext() }
+                if (fileAtts.isNotEmpty()) {
+                    text += "\n\n[Attached files: " + fileAtts.joinToString(", ") {
+                        "${it.fileName} (${it.mimeType}, ${it.formattedSize()})"
+                    } + "]"
+                }
+                text += contextBlock
                 ApiMessage(role = "user", content = text)
             }
         } else {
