@@ -133,8 +133,8 @@ class VisionTool @Inject constructor(
             spec = spec,
             mode = Mode.VISION,
         )
-        val text = resp.content?.takeIf { it.isNotBlank() } ?: return null
-        "[via ${specLabel(spec)}]\n$text"
+        val text = resp.content?.takeIf { it.isNotBlank() }
+        if (text == null) null else "[via ${specLabel(spec)}]\n$text"
     } catch (e: Exception) {
         Timber.w(e, "VisionTool: ${specLabel(spec)} failed")
         null

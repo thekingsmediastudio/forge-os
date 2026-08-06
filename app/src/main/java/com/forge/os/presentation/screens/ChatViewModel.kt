@@ -289,7 +289,7 @@ class ChatViewModel @Inject constructor(
         // the current model doesn't support vision.
         if (images.isNotEmpty() && spec != null && !_supportsVision.value) {
             val visionSpec = _availableSpecs.value.firstOrNull { s ->
-                runCatching { capabilityResolver.supportsVision(s) }.getOrDefault(false)
+                runCatching { kotlinx.coroutines.runBlocking { capabilityResolver.supportsVision(s) } }.getOrDefault(false)
             }
             if (visionSpec != null) {
                 addMsg(ChatMessage(role = "system", content = "🔄 Routed to vision model: ${visionSpec.displayLabel}"))

@@ -2528,7 +2528,7 @@ private fun WorkspaceFilePickerSheet(
     }
 
     var currentPath by remember { mutableStateOf(".") }
-    var entries by remember { mutableStateOf<List<com.forge.os.data.sandbox.FileInfo>>(emptyList()) }
+    var entries by remember { mutableStateOf<List<com.forge.os.data.sandbox.SandboxManager.FileInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
     // Load directory contents
@@ -2628,7 +2628,7 @@ private fun WorkspaceFilePickerSheet(
                             Icon(
                                 if (entry.isDirectory) Icons.Outlined.Folder else Icons.Outlined.InsertDriveFile,
                                 null,
-                                tint = if (entry.isDirectory) forgePalette.orange else forgePalette.textSecondary,
+                                tint = if (entry.isDirectory) forgePalette.orange else forgePalette.textMuted,
                                 modifier = Modifier.size(22.dp),
                             )
                             Spacer(Modifier.width(12.dp))
@@ -2715,7 +2715,7 @@ private fun BrowserTabPickerSheet(
                         ) {
                             Icon(
                                 Icons.Outlined.Language, null,
-                                tint = if (tab.id == activeTabId) forgePalette.orange else forgePalette.textSecondary,
+                                tint = if (tab.id == activeTabId) forgePalette.orange else forgePalette.textMuted,
                                 modifier = Modifier.size(22.dp),
                             )
                             Spacer(Modifier.width(12.dp))
@@ -2821,7 +2821,7 @@ private fun ConversationPickerSheet(
                                 .padding(vertical = 10.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(Icons.Outlined.ChatBubbleOutline, null, tint = forgePalette.textSecondary, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Outlined.ChatBubbleOutline, null, tint = forgePalette.textMuted, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(conv.title, color = forgePalette.textPrimary, fontSize = 14.sp, maxLines = 1)
@@ -2838,12 +2838,6 @@ private fun ConversationPickerSheet(
             Spacer(Modifier.height(32.dp))
         }
     }
-}
-
-private fun formatFileSize(bytes: Long): String = when {
-    bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-    else -> "${bytes / (1024 * 1024)} MB"
 }
 
 // ─── Hilt EntryPoints for picker sheets ──────────────────────────────────────

@@ -119,7 +119,7 @@ if '$packagesDir' not in sys.path:
         }
     }
 
-    private fun installOne(
+    private suspend fun installOne(
         pkg: String,
         installed: Set<String>,
         depth: Int = 0,

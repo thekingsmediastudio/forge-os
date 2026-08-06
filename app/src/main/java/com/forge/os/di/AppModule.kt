@@ -263,9 +263,10 @@ object AppModule {
         hapticFeedbackManager: com.forge.os.domain.haptic.HapticFeedbackManager,
         alertManager: com.forge.os.domain.heartbeat.AlertManager,
         verificationEngine: com.forge.os.domain.agent.VerificationEngine,
+        capabilityResolver: com.forge.os.data.api.ModelCapabilityResolver,
     ) = ReActAgent(api, tr, cr, mm, pm, conversationIndex, executionPlanner, traceManager, reflector, userInputBroker,
         reflectionManager, executionHistoryManager, agentPersonality, userPreferencesManager,
-        doctorService, permissionManager, hapticFeedbackManager, alertManager, verificationEngine)
+        doctorService, permissionManager, hapticFeedbackManager, alertManager, verificationEngine, capabilityResolver)
 
     // Phase H/I — Companion (Friend Mode)
     @Provides @Singleton fun providePersonaManager(@ApplicationContext ctx: Context) =
