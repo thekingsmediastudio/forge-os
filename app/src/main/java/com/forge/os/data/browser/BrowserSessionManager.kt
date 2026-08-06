@@ -49,6 +49,10 @@ class BrowserSessionManager @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    /** Page load progress 0–100, driven by WebChromeClient.onProgressChanged. */
+    private val _progress = MutableStateFlow(100)
+    val progress: StateFlow<Int> = _progress
+
     /** Commands emitted to the active WebView composable. */
     private val _commands = MutableSharedFlow<NavigationCommand>(extraBufferCapacity = 16)
     val commands: SharedFlow<NavigationCommand> = _commands
@@ -63,6 +67,7 @@ class BrowserSessionManager @Inject constructor(
     fun updateUrl(url: String) { _currentUrl.value = url }
     fun updateTitle(title: String) { _pageTitle.value = title }
     fun updateLoading(loading: Boolean) { _isLoading.value = loading }
+    fun updateProgress(value: Int) { _progress.value = value.coerceIn(0, 100) }
 
     /** Called by the WebView JS bridge when getHtml() is invoked. */
     fun onHtmlSnapshot(html: String) { _htmlSnapshots.tryEmit(html) }

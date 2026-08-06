@@ -30,6 +30,7 @@ class BrowserViewModel @Inject constructor(
     val currentUrl: StateFlow<String> = sessionManager.currentUrl
     val pageTitle: StateFlow<String> = sessionManager.pageTitle
     val isLoading: StateFlow<Boolean> = sessionManager.isLoading
+    val progress: StateFlow<Int> = sessionManager.progress
 
     val bookmarks: StateFlow<List<Bookmark>> = bookmarksStore.items
     val history: StateFlow<List<BrowserHistoryEntry>> = historyStore.entries

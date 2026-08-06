@@ -64,6 +64,7 @@ import com.forge.os.data.browser.BrowserSessionManager
 import com.forge.os.data.browser.NavigationCommand
 import com.forge.os.presentation.theme.forgePalette
 import com.forge.os.presentation.screens.browser.BrowserAddressBar
+import com.forge.os.presentation.screens.browser.OmniboxSuggestion
 import com.forge.os.presentation.screens.browser.BrowserTabStrip
 import com.forge.os.presentation.screens.browser.BrowserTabUi
 import kotlinx.coroutines.flow.collectLatest
@@ -101,6 +102,7 @@ fun BrowserScreen(
     val currentUrl by viewModel.currentUrl.collectAsState()
     val pageTitle by viewModel.pageTitle.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val loadProgress by viewModel.progress.collectAsState()
     val tabs by viewModel.tabs.collectAsState()
     val activeTabId by viewModel.activeTabId.collectAsState()
     val bookmarks by viewModel.bookmarks.collectAsState()
@@ -277,19 +279,22 @@ fun BrowserScreen(
         BrowserAddressBar(
             url = addressBarText,
             onUrlChange = { addressBarText = it },
-            onNavigate = { url ->
-                val target = if (url.startsWith("http")) url else "https://$url"
-                activeWebView?.loadUrl(target)
-            },
+            onNavigate = { url -> activeWebView?.loadUrl(url) },
             isSecure = currentUrl.startsWith("https"),
             isLoading = isLoading,
+            progress = loadProgress,
             // navVersion invalidates these reads on every page-load event
             canGoBack = navVersion.let { activeWebView?.canGoBack() == true },
             canGoForward = navVersion.let { activeWebView?.canGoForward() == true },
             isBookmarked = viewModel.isBookmarked(currentUrl),
+            suggestions = remember(history, bookmarks) {
+                history.map { OmniboxSuggestion(it.url, it.title.ifBlank { it.url }, isHistory = true) } +
+                    bookmarks.map { OmniboxSuggestion(it.url, it.title.ifBlank { it.url }) }
+            },
             onBackClick = { activeWebView?.goBack() },
             onForwardClick = { activeWebView?.goForward() },
             onRefreshClick = { activeWebView?.reload() },
+            onStopClick = { activeWebView?.stopLoading() },
             onBookmarkClick = {
                 val title = pageTitle.ifBlank { currentUrl }
                 viewModel.toggleBookmark(currentUrl, title)
@@ -740,6 +745,7 @@ private fun BrowserWebPanel(
                     }
 
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                        sessionManager.updateProgress(newProgress)
                         sessionManager.updateLoading(newProgress < 100)
                     }
                 }
