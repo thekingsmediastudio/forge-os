@@ -33,3 +33,5 @@ __pycache__/
 crash_log*.txt
 builderror.txt
 videos/
+build-logs*/
+screen-prompts/
