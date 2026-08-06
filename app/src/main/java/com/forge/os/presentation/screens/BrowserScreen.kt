@@ -424,6 +424,15 @@ fun BrowserScreen(
                     onPullRefresh = { activeWebView?.reload() },
                     onPageFinished = { url, title -> viewModel.rememberActiveTabUrl(url, title) })
 
+                // Home page overlay for fresh (about:blank) tabs — no HTML page,
+                // so it never pollutes the WebView back stack
+                if (currentUrl.isBlank() || currentUrl == "about:blank") {
+                    BrowserHomePanel(
+                        bookmarks = bookmarks,
+                        recentHistory = history.asReversed().take(6),
+                        onOpen = { url -> activeWebView?.loadUrl(url) })
+                }
+
                 // Pull-to-refresh indicator overlay
                 if (pullProgress > 0f) {
                     Box(
@@ -655,6 +664,114 @@ private fun HistoryDialog(
             TextButton(onClick = onDismiss) { Text("Close", color = Orange) }
         },
         containerColor = Surface)
+}
+
+/**
+ * Home panel shown for fresh tabs (about:blank). Pure Compose — sits on top
+ * of the pooled WebView, so it never enters the WebView's navigation history.
+ */
+@Composable
+private fun BrowserHomePanel(
+    bookmarks: List<BookmarkEntry>,
+    recentHistory: List<BrowserHistoryEntry>,
+    onOpen: (String) -> Unit) {
+    val quickLinks = remember {
+        listOf(
+            "Google" to "https://www.google.com",
+            "YouTube" to "https://m.youtube.com",
+            "Wikipedia" to "https://en.wikipedia.org",
+            "GitHub" to "https://github.com",
+            "Reddit" to "https://www.reddit.com",
+            "News" to "https://news.google.com")
+    }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Bg)
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        item {
+            Spacer(Modifier.height(36.dp))
+            Text(
+                "FORGE",
+                color = Orange,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 6.sp,
+                fontFamily = FontFamily.Monospace)
+            Text(
+                "Search the web or tap a shortcut",
+                color = TextMuted,
+                fontSize = 12.sp)
+            Spacer(Modifier.height(20.dp))
+        }
+
+        // Quick-link grid (2 per row)
+        items(quickLinks.chunked(2).size) { rowIdx ->
+            val pair = quickLinks.chunked(2)[rowIdx]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                pair.forEach { (label, url) ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Surface)
+                            .clickable { onOpen(url) }
+                            .padding(vertical = 14.dp),
+                        contentAlignment = Alignment.Center) {
+                        Text(label, color = TextPrimary, fontSize = 13.sp)
+                    }
+                }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+
+        if (bookmarks.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(18.dp))
+                Text("BOOKMARKS", color = TextMuted, fontSize = 11.sp, letterSpacing = 2.sp)
+                Spacer(Modifier.height(6.dp))
+            }
+            items(bookmarks.take(5), key = { "bm-${it.url}" }) { b ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onOpen(b.url) }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Bookmark, contentDescription = null, tint = Orange, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(b.title.ifBlank { b.url }, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
+                }
+            }
+        }
+
+        if (recentHistory.isNotEmpty()) {
+            item {
+                Spacer(Modifier.height(18.dp))
+                Text("RECENT", color = TextMuted, fontSize = 11.sp, letterSpacing = 2.sp)
+                Spacer(Modifier.height(6.dp))
+            }
+            items(recentHistory, key = { "h-${it.ts}-${it.url}" }) { e ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onOpen(e.url) }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.History, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(e.title.ifBlank { e.url }, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(32.dp)) }
+    }
 }
 
 @Composable
