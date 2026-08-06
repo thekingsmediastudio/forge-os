@@ -66,6 +66,7 @@ fun CompanionScreen(
     val pendingImage by vm.pendingImage.collectAsState()
     val isBusy = phase != CompanionPhase.IDLE
     var input by remember { mutableStateOf("") }
+    var showPersonaSwitch by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -130,7 +131,8 @@ fun CompanionScreen(
             Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
                 Text(persona.name, color = CompanionAccent, fontSize = 16.sp,
-                    fontFamily = FontFamily.SansSerif)
+                    fontFamily = FontFamily.SansSerif,
+                    modifier = Modifier.clickable { showPersonaSwitch = true })
                 // Phase N-3 — quiet relationship counter (no streaks/levels).
                 val sub = if (relationship.totalConversations > 0)
                     "Day ${relationship.daysKnown()} · we've talked ${relationship.totalConversations} time${if (relationship.totalConversations == 1) "" else "s"}"
@@ -266,6 +268,54 @@ fun CompanionScreen(
                 Text("send", color = Color.Black, fontSize = 13.sp)
             }
         }
+    }
+
+    // Persona quick-switch: voice presets without leaving the chat
+    if (showPersonaSwitch) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showPersonaSwitch = false },
+            title = { Text("Quick persona switch", color = ForgeOsPalette.TextPrimary) },
+            text = {
+                Column {
+                    Text(
+                        "Change how ${persona.name} speaks. Fine-tune everything else on the persona screen.",
+                        color = ForgeOsPalette.TextMuted, fontSize = 12.sp)
+                    Spacer(Modifier.height(12.dp))
+                    com.forge.os.domain.companion.PersonaVoice.entries.forEach { voice ->
+                        val selected = persona.voice == voice
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) ForgeOsPalette.Surface2 else Color.Transparent)
+                                .clickable {
+                                    vm.personaManager.update { it.copy(voice = voice) }
+                                    showPersonaSwitch = false
+                                }
+                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                when (voice) {
+                                    com.forge.os.domain.companion.PersonaVoice.CASUAL -> "😊 Casual"
+                                    com.forge.os.domain.companion.PersonaVoice.FORMAL -> "🎩 Formal"
+                                    com.forge.os.domain.companion.PersonaVoice.PLAYFUL -> "🎉 Playful"
+                                },
+                                color = if (selected) CompanionAccent else ForgeOsPalette.TextPrimary,
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f))
+                            if (selected) Text("✓", color = CompanionAccent, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Text("edit full persona", color = ForgeOsPalette.TextMuted, fontSize = 12.sp,
+                    modifier = Modifier.clickable {
+                        showPersonaSwitch = false
+                        onOpenPersona()
+                    }.padding(8.dp))
+            },
+            containerColor = ForgeOsPalette.Surface)
     }
 }
 
