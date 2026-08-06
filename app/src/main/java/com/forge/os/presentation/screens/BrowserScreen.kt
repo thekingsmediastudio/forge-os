@@ -1161,6 +1161,3 @@ private fun BrowserWebPanel(
         )
     }
 }
-    )
-    }
-}
