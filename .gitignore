@@ -35,3 +35,11 @@ builderror.txt
 videos/
 build-logs*/
 screen-prompts/
+ci_logs/
+
+# Blackbox tooling
+.blackbox/
+
+# Desktop companion app build artifacts
+forge-desktop/node_modules/
+forge-desktop/dist/

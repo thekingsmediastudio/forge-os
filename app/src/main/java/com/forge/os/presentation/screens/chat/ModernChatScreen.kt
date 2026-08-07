@@ -1293,11 +1293,11 @@ private fun ModernUserBubble(
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                                         images.drop(2).take(2).forEachIndexed { idx, att ->
-                                            Box {
+                                            Box(Modifier.weight(1f).height(99.dp)) {
                                                 coil.compose.AsyncImage(
                                                     model = att.filePath,
                                                     contentDescription = att.fileName,
-                                                    modifier = Modifier.weight(1f).height(99.dp),
+                                                    modifier = Modifier.fillMaxSize(),
                                                     contentScale = ContentScale.Crop,
                                                 )
                                                 // Show "+N more" overlay on last cell
