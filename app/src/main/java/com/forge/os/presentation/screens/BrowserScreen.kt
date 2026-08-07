@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -86,6 +87,21 @@ private val TextPrimary: Color
     @Composable @ReadOnlyComposable get() = forgePalette.textPrimary
 private val TextMuted: Color
     @Composable @ReadOnlyComposable get() = forgePalette.textMuted
+
+/**
+ * Build a realistic Android mobile Chrome UA using the device's actual
+ * WebView major version. A desktop-Linux UA on an Android WebView trips
+ * Google's "this browser or app may not be secure" sign-in block, because
+ * the UA contradicts the WebView's real capabilities. Falls back to a
+ * recent Chrome version if the package info is unavailable.
+ */
+private fun buildMobileChromeUa(): String {
+    val version = runCatching { WebView.getCurrentWebViewPackage()?.versionName }
+        .getOrNull()
+    val major = version?.substringBefore('.')?.toIntOrNull() ?: 124
+    return "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/$major.0.0.0 Mobile Safari/537.36"
+}
 
 /**
  * In-app browser with persistent session (cookies/localStorage survive across
@@ -749,15 +765,22 @@ private fun BrowserHomePanel(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 pair.forEach { (label, url) ->
-                    Box(
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(Surface)
+                            .background(forgePalette.surface2)
+                            .border(1.dp, forgePalette.border, RoundedCornerShape(10.dp))
                             .clickable { onOpen(url) }
-                            .padding(vertical = 14.dp),
-                        contentAlignment = Alignment.Center) {
+                            .padding(vertical = 12.dp, horizontal = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(label, color = TextPrimary, fontSize = 13.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            url.removePrefix("https://").removePrefix("http://"),
+                            color = TextMuted,
+                            fontSize = 10.sp,
+                            maxLines = 1)
                     }
                 }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
@@ -1020,6 +1043,9 @@ private fun BrowserWebPanel(
 
     // key(tabId) ensures each tab gets its own AndroidView/WebView instance
     androidx.compose.runtime.key(tabId) {
+        // Capture theme bg for the WebView underlay — the WebView's default
+        // white background is blinding in dark theme during page loads.
+        val webViewBgColor = forgePalette.bg
         AndroidView(
             factory = { ctx ->
                 // Reuse existing WebView from pool, or create a new one
@@ -1048,14 +1074,15 @@ private fun BrowserWebPanel(
                     databaseEnabled = true
                     cacheMode = WebSettings.LOAD_DEFAULT
                     mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                    userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
-                        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    userAgentString = buildMobileChromeUa()
                     useWideViewPort = true
                     loadWithOverviewMode = true
                     builtInZoomControls = true
                     displayZoomControls = false
                     setSupportZoom(true)
                 }
+                // Match app theme instead of default white so page loads don't flash
+                wv.setBackgroundColor(webViewBgColor.toArgb())
 
                 wv.webChromeClient = object : WebChromeClient() {
                     override fun onShowFileChooser(

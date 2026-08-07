@@ -1,6 +1,7 @@
 package com.forge.os.presentation.screens.browser
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -159,7 +160,8 @@ fun BrowserAddressBar(
                         .weight(1f)
                         .height(36.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(forgePalette.surface)
+                        .background(forgePalette.surface2)
+                        .border(1.dp, forgePalette.border, RoundedCornerShape(18.dp))
                         .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
