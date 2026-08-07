@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -110,7 +111,15 @@ if '$packagesDir' not in sys.path:
         if (pkg.isEmpty() || !pkg.matches(Regex("^[a-z0-9][a-z0-9._-]*$")))
             return@withContext "❌ Invalid package name: '$name'"
 
-        when (val outcome = installOne(pkg, emptySet())) {
+        // Catch-all: unexpected JSON shapes / IO surprises must surface as a
+        // readable tool error, not a raw exception dump.
+        val outcome = try {
+            installOne(pkg, emptySet())
+        } catch (e: Exception) {
+            Timber.e(e, "python_install failed for $pkg")
+            InstallOutcome.Err("❌ $pkg: install failed — ${e::class.simpleName}: ${e.message}")
+        }
+        when (outcome) {
             is InstallOutcome.Ok -> {
                 recordInstalled(listOf(pkg))
                 outcome.message
@@ -140,8 +149,9 @@ if '$packagesDir' not in sys.path:
         }
 
         val info = meta["info"]?.jsonObject
+        // requires_dist entries can be JsonNull on PyPI — filter them out
         val requiresDist = info?.get("requires_dist")?.jsonArray
-            ?.mapNotNull { it.jsonPrimitive.content } ?: emptyList()
+            ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
 
         // 2. Collect release files across all versions (newest first), keep wheels
         val urls = meta["urls"]?.jsonArray
@@ -152,10 +162,13 @@ if '$packagesDir' not in sys.path:
         fun collectWheels(arr: kotlinx.serialization.json.JsonArray?) {
             arr?.forEach { el ->
                 val o = el.jsonObject
-                val filename = o["filename"]?.jsonPrimitive?.content ?: return@forEach
+                // PyPI returns JsonNull for some fields on yanked/old releases —
+                // jsonPrimitive on JsonNull throws "Element class ...JsonNull is
+                // not a JsonPrimitive", so use safe casts here.
+                val filename = (o["filename"] as? JsonPrimitive)?.content ?: return@forEach
                 if (filename.endsWith(".tar.gz") || filename.endsWith(".zip")) sawSdist = true
                 if (!filename.endsWith(".whl")) return@forEach
-                val url = o["url"]?.jsonPrimitive?.content ?: return@forEach
+                val url = (o["url"] as? JsonPrimitive)?.content ?: return@forEach
                 wheels += filename to url
             }
         }
