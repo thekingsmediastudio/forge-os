@@ -7,10 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
@@ -142,33 +141,39 @@ if '$packagesDir' not in sys.path:
             http.newCall(Request.Builder().url(metaUrl).build()).execute().use { r ->
                 if (!r.isSuccessful)
                     return InstallOutcome.Err("❌ $pkg: not found on PyPI (HTTP ${r.code})")
-                json.parseToJsonElement(r.body?.string() ?: return InstallOutcome.Err("❌ $pkg: empty PyPI response")).jsonObject
+                json.parseToJsonElement(
+                    r.body?.string() ?: return InstallOutcome.Err("❌ $pkg: empty PyPI response")
+                ) as? JsonObject
+                    ?: return InstallOutcome.Err("❌ $pkg: unexpected PyPI response shape")
             }
         } catch (e: Exception) {
             return InstallOutcome.Err("❌ $pkg: PyPI lookup failed — ${e.message}")
         }
 
-        val info = meta["info"]?.jsonObject
-        // requires_dist entries can be JsonNull on PyPI — filter them out
-        val requiresDist = info?.get("requires_dist")?.jsonArray
-            ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList()
+        // PyPI liberally uses JSON null (e.g. "requires_dist": null on most
+        // packages) and occasionally omits keys — .jsonObject/.jsonArray throw
+        // "Element class kotlinx.serialization.json.JsonNull is not a
+        // JsonObject/JsonArray" on those, so EVERYTHING here uses safe casts.
+        val info = meta["info"] as? JsonObject
+        val requiresDist = (info?.get("requires_dist") as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            ?: emptyList()
 
         // 2. Collect release files across all versions (newest first), keep wheels
-        val urls = meta["urls"]?.jsonArray
-        val releases = meta["releases"]?.jsonObject
+        val urls = meta["urls"] as? JsonArray
+        val releases = meta["releases"] as? JsonObject
         val wheels = mutableListOf<Pair<String, String>>() // filename → url
         var sawSdist = false
 
-        fun collectWheels(arr: kotlinx.serialization.json.JsonArray?) {
+        fun collectWheels(arr: JsonArray?) {
             arr?.forEach { el ->
-                val o = el.jsonObject
-                // PyPI returns JsonNull for some fields on yanked/old releases —
-                // jsonPrimitive on JsonNull throws "Element class ...JsonNull is
-                // not a JsonPrimitive", so use safe casts here.
-                val filename = (o["filename"] as? JsonPrimitive)?.content ?: return@forEach
+                val o = el as? JsonObject ?: return@forEach
+                val filename = (o["filename"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    ?: return@forEach
                 if (filename.endsWith(".tar.gz") || filename.endsWith(".zip")) sawSdist = true
                 if (!filename.endsWith(".whl")) return@forEach
-                val url = (o["url"] as? JsonPrimitive)?.content ?: return@forEach
+                val url = (o["url"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                    ?: return@forEach
                 wheels += filename to url
             }
         }
@@ -176,7 +181,7 @@ if '$packagesDir' not in sys.path:
         // Fallback: older releases if current has no pure wheel
         if (wheels.none { isPurePythonWheel(it.first) }) {
             releases?.keys?.sortedDescending()?.take(8)?.forEach { v ->
-                collectWheels(releases[v]?.jsonArray)
+                collectWheels(releases[v] as? JsonArray)
             }
         }
 

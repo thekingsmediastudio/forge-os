@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ToolDefinition } from "../types";
-import { Button, Field, inputCls } from "./ui";
+import { Button, Field, inputCls, Spinner } from "./ui";
 
 // Schema-driven argument form for a ToolDefinition. Supports string, number,
 // integer, boolean and enum parameters with type coercion and required-field
@@ -137,10 +137,18 @@ export default function ToolForm(props: {
         </div>
       )}
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {error && (
+        <p className="animate-fade-up rounded-lg border border-forge-danger/25 bg-forge-danger/[0.08] px-3 py-2 text-xs text-forge-danger">
+          {error}
+        </p>
+      )}
 
       <Button variant="primary" onClick={submit} disabled={props.running} className="w-full">
-        {props.running ? "Running…" : `Run ${tool.function.name}`}
+        {props.running ? (
+          <><Spinner size={13} className="border-white/30 border-t-white" /> Running…</>
+        ) : (
+          `Run ${tool.function.name}`
+        )}
       </Button>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getTools } from "../service";
 import { connectionStore } from "../store/connection";
 import { useStore } from "../store/store";
@@ -45,40 +45,59 @@ export default function ToolEditor() {
     setError(null);
   };
 
+  const lineCount = useMemo(() => text.split("\n").length, [text]);
+  const dirty = useMemo(() => {
+    try {
+      return text !== JSON.stringify(tools, null, 2);
+    } catch {
+      return true;
+    }
+  }, [text, tools]);
+
   return (
     <Panel
       title="Tool definitions"
       right={
         <div className="flex items-center gap-2">
-          {savedAt && <Badge tone="ok">applied</Badge>}
+          {dirty && <Badge tone="accent">modified</Badge>}
+          {savedAt && !dirty && <Badge tone="ok">applied</Badge>}
           <Badge tone={conn.mode === "mock" ? "accent" : "muted"}>
             {conn.mode === "mock" ? "mock source" : "editing local copy"}
           </Badge>
         </div>
       }
+      bodyClassName="flex flex-col p-0"
     >
-      <p className="mb-3 text-xs text-forge-muted">
-        Edit the OpenAI-style tool definitions below and Apply. The Tools view and the mock agent use this exact JSON,
-        so you can iterate on names, descriptions and parameter schemas in ~1 second.
+      <p className="border-b border-white/[0.06] px-4 py-3 text-xs leading-relaxed text-forge-muted">
+        Edit the OpenAI-style tool definitions below and Apply. The Tools view and the mock agent use this exact
+        JSON, so you can iterate on names, descriptions and parameter schemas in ~1 second.
       </p>
+
       <textarea
-        className="h-[52vh] w-full rounded-md border border-forge-border bg-forge-bg p-3 font-mono text-xs text-forge-text focus:border-forge-accent focus:outline-none"
+        className="h-[52vh] w-full resize-none bg-forge-bg/50 p-4 font-mono text-xs leading-relaxed text-forge-body focus:bg-forge-bg/70 focus:outline-none"
         value={text}
         onChange={(e) => setText(e.target.value)}
         spellCheck={false}
       />
+
       {error && (
-        <p className="mt-2 rounded-md border border-red-900/60 bg-red-950/30 px-3 py-2 text-xs text-red-400">{error}</p>
+        <p className="animate-fade-up border-t border-forge-danger/25 bg-forge-danger/[0.08] px-4 py-2.5 text-xs leading-relaxed text-forge-danger">
+          {error}
+        </p>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button variant="primary" onClick={apply}>
+
+      {/* Toolbar / footer */}
+      <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] bg-forge-panel2/40 px-4 py-3">
+        <Button variant="primary" onClick={apply} disabled={!dirty}>
           Apply
         </Button>
         {conn.mode === "live" && <Button onClick={loadFromServer}>Load from server</Button>}
         <Button variant="danger" onClick={onReset}>
           Reset to sample
         </Button>
-        <span className="ml-auto text-xs text-forge-muted">{tools.length} tool{tools.length === 1 ? "" : "s"}</span>
+        <span className="ml-auto font-mono text-[11px] text-forge-faint">
+          {tools.length} tool{tools.length === 1 ? "" : "s"} · {lineCount} lines
+        </span>
       </div>
     </Panel>
   );

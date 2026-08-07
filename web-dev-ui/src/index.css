@@ -8,37 +8,79 @@ html {
 
 body {
   @apply bg-forge-bg bg-forge-ambient bg-fixed font-sans text-forge-text antialiased;
+  text-rendering: optimizeLegibility;
 }
 
+/* Subtle vignette + film grain over the ambient gradient for depth */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 0%, transparent 60%, rgba(0, 0, 0, 0.28) 100%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Keep real content above the overlays */
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   @apply rounded-full bg-forge-border;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #3f3f46;
+  background-clip: padding-box;
+  border: 2px solid transparent;
 }
 
 ::selection {
-  background: rgba(255, 107, 61, 0.3);
+  background: rgba(255, 107, 61, 0.32);
+  color: #fff;
 }
 
-@keyframes forge-fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ── Focus ──────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid rgba(255, 107, 61, 0.55);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+/* Inputs handle their own focus border — skip the global ring on them */
+input:focus-visible,
+textarea:focus-visible {
+  outline: none;
 }
 
-.animate-fade-up {
-  animation: forge-fade-up 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
