@@ -78,7 +78,7 @@ export default function App() {
 
 function Shell(props: { children: React.ReactNode; conn?: React.ReactNode; tabs?: React.ReactNode }) {
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-10 border-b border-white/5 bg-forge-bg/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-3">
           <div className="flex items-center gap-3">
@@ -92,7 +92,7 @@ function Shell(props: { children: React.ReactNode; conn?: React.ReactNode; tabs?
           <div className="flex items-center">{props.conn}</div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-8">{props.children}</main>
+      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-6 py-6">{props.children}</main>
     </div>
   );
 }

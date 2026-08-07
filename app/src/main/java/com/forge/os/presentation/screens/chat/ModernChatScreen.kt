@@ -855,25 +855,11 @@ private fun groupMessages(messages: List<ChatMessage>): List<MessageGroup> {
                 pendingSteps.add(msg)
             }
             "tool_result" -> {
-                // Tool results that produced a file (image, audio, etc.) are
-                // rendered as standalone messages so they appear inline in the
-                // chat — not hidden inside the collapsible activity panel.
-                if (msg.attachmentPath != null) {
-                    if (pendingSteps.isNotEmpty()) {
-                        groups.add(
-                            MessageGroup.AiActivity(
-                                steps = pendingSteps.toList(),
-                                response = null,
-                                isStreaming = false,
-                                groupId = pendingSteps.first().id,
-                            )
-                        )
-                        pendingSteps.clear()
-                    }
-                    groups.add(MessageGroup.Single(msg))
-                } else {
-                    pendingSteps.add(msg)
-                }
+                // Tool results that produced a file (image, audio, etc.) stay
+                // in the activity group so the run renders as ONE collapsible
+                // bubble; the file itself is rendered inline by
+                // AiActivityMessage below the collapsible panel.
+                pendingSteps.add(msg)
             }
             "assistant" -> {
                 if (pendingSteps.isNotEmpty()) {
@@ -1038,12 +1024,27 @@ private fun AiActivityMessage(
                     ) {
                         HorizontalDivider(color = forgePalette.divider)
                         Spacer(Modifier.height(4.dp))
-                        steps.forEach { step ->
+                        // File-producing results are surfaced inline below
+                        // (not hidden in this panel) — skip the raw JSON row.
+                        steps.filter { it.attachmentPath == null }.forEach { step ->
                             ActivityStepRow(step)
                         }
                         Spacer(Modifier.height(4.dp))
                     }
                 }
+
+                // ── Inline file outputs (chat_send_file, screenshots, etc.) ──
+                steps.filter { it.attachmentPath != null && it.attachmentMime != null }
+                    .forEach { step ->
+                        HorizontalDivider(color = forgePalette.divider)
+                        Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                            FileAttachmentBubble(
+                                path = step.attachmentPath!!,
+                                mime = step.attachmentMime!!,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
 
                 // ── AI response text ──
                 if (response != null) {

@@ -433,6 +433,32 @@ class ChatViewModel @Inject constructor(
         hapticManager.trigger(com.forge.os.domain.haptic.HapticFeedbackManager.Pattern.LIGHT_TICK)
     }
 
+    /**
+     * Effective provider/model shown by /config — mirrors AiApiManager.autoRoute()
+     * so the display reflects what will ACTUALLY be used (which provider has a
+     * key), not just the static config defaults.
+     */
+    private fun effectiveRoutingLabel(c: com.forge.os.domain.config.ForgeConfig): String {
+        val pinned = runCatching {
+            com.forge.os.domain.security.ApiKeyProvider.valueOf(c.modelRouting.defaultProvider)
+        }.getOrNull()
+        return when {
+            pinned != null && secureKeyStore.hasKey(pinned) ->
+                "${pinned.name} / ${c.modelRouting.defaultModel}"
+            else -> {
+                val active = secureKeyStore.getActiveProvider()
+                if (active != null) {
+                    val model = c.modelRouting.routingRules
+                        .firstOrNull { it.provider == active.name }?.model
+                        ?: active.defaultModel
+                    "${active.name} / $model (auto — no key for ${c.modelRouting.defaultProvider})"
+                } else {
+                    "none — add an API key in Settings"
+                }
+            }
+        }
+    }
+
     private fun handleSlashCommand(input: String) {
         val cmd = input.lowercase().split(" ").first()
         val args = input.removePrefix(cmd).trim()
@@ -445,7 +471,7 @@ class ChatViewModel @Inject constructor(
                 addMsg(ChatMessage(role = "assistant", content = """
 ⚙️ Config v${c.version}
 • Agent: ${c.agentIdentity.name}
-• Provider: ${c.modelRouting.defaultProvider} / ${c.modelRouting.defaultModel}
+• Provider: ${effectiveRoutingLabel(c)}
 • Auto-confirm: ${c.behaviorRules.autoConfirmToolCalls}
 • Max iterations: ${c.behaviorRules.maxIterations}
 • Enabled tools: ${c.toolRegistry.enabledTools.size}
@@ -566,7 +592,7 @@ Tip: Use snapshot_create before processing large uploads.
                 addMsg(ChatMessage(role = "assistant", content = """
 ⚙️ Config v${c.version}
 • Agent: ${c.agentIdentity.name}
-• Provider: ${c.modelRouting.defaultProvider} / ${c.modelRouting.defaultModel}
+• Provider: ${effectiveRoutingLabel(c)}
 • Fallback: ${c.modelRouting.fallbackProvider} / ${c.modelRouting.fallbackModel}
 • Auto-confirm: ${c.behaviorRules.autoConfirmToolCalls}
 • Max iterations: ${c.behaviorRules.maxIterations}

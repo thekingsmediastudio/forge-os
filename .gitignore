@@ -43,4 +43,4 @@ ci_logs/
 # Desktop companion app build artifacts
 forge-desktop/node_modules/
 forge-desktop/dist/
-"web-dev-ui/vite-dev.log"  
+web-dev-ui/vite-dev.log

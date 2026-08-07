@@ -22,9 +22,9 @@ export default function ConnectScreen() {
   };
 
   return (
-    <div className="mx-auto flex min-h-[76vh] max-w-md flex-col items-center justify-center animate-fade-up">
+    <div className="mx-auto my-auto flex w-full max-w-md flex-col items-center justify-center animate-fade-up">
       {/* Hero branding */}
-      <div className="mb-8 flex flex-col items-center text-center">
+      <div className="mb-7 flex flex-col items-center text-center">
         <img src="/logo.png" alt="Forge OS" className="h-16 w-16 rounded-2xl shadow-glow" />
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">
           Forge <span className="text-forge-accent">Dev UI</span>
@@ -105,7 +105,7 @@ export default function ConnectScreen() {
         </div>
       </Panel>
 
-      <p className="mt-8 text-[11px] font-medium text-forge-faint/70">Forge OS · on-device AI automation</p>
+      <p className="mt-6 text-[11px] font-medium text-forge-faint/70">Forge OS · on-device AI automation</p>
     </div>
   );
 }

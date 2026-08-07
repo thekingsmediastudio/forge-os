@@ -147,11 +147,13 @@ if '$packagesDir' not in sys.path:
         val urls = meta["urls"]?.jsonArray
         val releases = meta["releases"]?.jsonObject
         val wheels = mutableListOf<Pair<String, String>>() // filename → url
+        var sawSdist = false
 
         fun collectWheels(arr: kotlinx.serialization.json.JsonArray?) {
             arr?.forEach { el ->
                 val o = el.jsonObject
                 val filename = o["filename"]?.jsonPrimitive?.content ?: return@forEach
+                if (filename.endsWith(".tar.gz") || filename.endsWith(".zip")) sawSdist = true
                 if (!filename.endsWith(".whl")) return@forEach
                 val url = o["url"]?.jsonPrimitive?.content ?: return@forEach
                 wheels += filename to url
@@ -170,12 +172,21 @@ if '$packagesDir' not in sys.path:
         if (pure.isEmpty()) {
             val anyWheel = wheels.firstOrNull()?.first
             return InstallOutcome.Err(buildString {
-                append("❌ $pkg has no pure-Python wheel")
-                if (anyWheel != null)
-                    append(" (found native wheel '$anyWheel' — contains platform code that can't run on Android). ")
-                else
-                    append(". ")
-                append("Native packages must be declared in app/build.gradle under the chaquopy pip block.")
+                when {
+                    anyWheel != null -> {
+                        append("❌ $pkg has no pure-Python wheel")
+                        append(" (found native wheel '$anyWheel' — contains platform code that can't run on Android). ")
+                        append("Native packages must be declared in app/build.gradle under the chaquopy pip block.")
+                    }
+                    sawSdist -> {
+                        append("❌ $pkg is published source-only (sdist, no wheel). ")
+                        append("It's likely pure Python but can't be auto-installed; ")
+                        append("ask the maintainer to publish a wheel, or vendor the source manually.")
+                    }
+                    else -> {
+                        append("❌ $pkg has no installable files on PyPI (no wheel or sdist found).")
+                    }
+                }
             })
         }
         val (wheelFile, wheelUrl) = pure.first()
@@ -240,8 +251,15 @@ if '$packagesDir' not in sys.path:
     }
 
     private fun isPurePythonWheel(filename: String): Boolean {
-        val tag = filename.removeSuffix(".whl").substringAfterLast('-')
-        return tag == "py3-none-any" || tag == "py2.py3-none-any" || tag == "py2-none-any"
+        // Wheel filename: {dist}-{version}(-{build})?-{python}-{abi}-{platform}.whl
+        // Pure-Python wheels have abi == "none" and platform == "any", e.g.
+        //   py3-none-any, py2.py3-none-any, py310-none-any, cp39-none-any
+        val stem = filename.removeSuffix(".whl")
+        val parts = stem.split('-')
+        if (parts.size < 3) return false
+        val abi = parts[parts.size - 2]
+        val platform = parts[parts.size - 1]
+        return abi == "none" && platform == "any"
     }
 
     /** Extract a bare dependency name from a requires_dist line, skipping extras/markers. */

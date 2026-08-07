@@ -1820,7 +1820,10 @@ private fun SettingsSectionTile(
                     section.title,
                     color = ModernTextPrimary,
                     fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 if (section.isAdvanced) {
                     Spacer(Modifier.width(6.dp))
@@ -1832,7 +1835,9 @@ private fun SettingsSectionTile(
                 section.subtitle,
                 color = ModernTextSecondary,
                 fontSize = 11.sp,
-                lineHeight = 15.sp
+                lineHeight = 15.sp,
+                maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
     }
@@ -1887,7 +1892,7 @@ private fun SettingsHomeGrid(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        columns = GridCells.Adaptive(minSize = 160.dp),
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
