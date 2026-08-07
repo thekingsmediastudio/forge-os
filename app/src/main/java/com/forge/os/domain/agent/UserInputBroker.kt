@@ -92,6 +92,10 @@ class UserInputBroker @Inject constructor() {
      *  on the route key they own. */
     val confirmations: SharedFlow<PendingConfirmation> = _confirmations.asSharedFlow()
 
+    /** One rendezvous channel per confirmation REQUEST, keyed by confirmId.
+     *  Keying by request (not by route) is what lets parallel tool calls each
+     *  receive their own ALLOW/DENY decision instead of racing on one shared
+     *  per-route channel. */
     private val confirmChannels = ConcurrentHashMap<String, Channel<Boolean>>()
     private val pendingConfirm = ConcurrentHashMap.newKeySet<String>()
 
@@ -104,8 +108,9 @@ class UserInputBroker @Inject constructor() {
      *  timeout. Returns `true` if the user allowed the action, `false` otherwise. */
     suspend fun awaitConfirmation(toolName: String, argsSummary: String): Boolean {
         val route = currentCoroutineContext()[InputRoute]?.routeKey ?: InputRoute.UI
-        val ch = confirmChannels.computeIfAbsent(route) { Channel(Channel.RENDEZVOUS) }
-        val id = "conf_${System.currentTimeMillis()}"
+        val id = "conf_${System.nanoTime()}"
+        val ch = Channel<Boolean>(Channel.RENDEZVOUS)
+        confirmChannels[id] = ch
         pendingConfirm.add(route)
         return try {
             _confirmations.emit(PendingConfirmation(route, id, toolName, argsSummary))
@@ -114,16 +119,18 @@ class UserInputBroker @Inject constructor() {
             false
         } finally {
             pendingConfirm.remove(route)
+            confirmChannels.remove(id)
         }
     }
 
     /** True when an agent run on [routeKey] is suspended awaiting a confirmation. */
     fun isAwaitingConfirmation(routeKey: String): Boolean = routeKey in pendingConfirm
 
-    /** Called by the surface that owns the route to deliver the user's decision.
-     *  Safe to call when nothing is waiting — the value is dropped. */
-    suspend fun submitConfirmation(routeKey: String, allow: Boolean) {
-        val ch = confirmChannels[routeKey] ?: return
+    /** Called by the surface that owns the route to deliver the user's decision
+     *  for a specific request ([confirmId]). Safe to call when the request is
+     *  no longer waiting — the value is dropped. */
+    suspend fun submitConfirmation(routeKey: String, confirmId: String, allow: Boolean) {
+        val ch = confirmChannels[confirmId] ?: return
         ch.send(allow)
     }
 }

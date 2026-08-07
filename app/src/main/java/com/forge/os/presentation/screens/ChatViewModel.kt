@@ -33,8 +33,11 @@ import com.forge.os.domain.security.SecureKeyStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import javax.inject.Inject
@@ -110,9 +113,18 @@ class ChatViewModel @Inject constructor(
     private val _pendingCostApproval = MutableStateFlow<ExecutionPlanner.CostEstimate?>(null)
     val pendingCostApproval: StateFlow<ExecutionPlanner.CostEstimate?> = _pendingCostApproval
 
-    /** Non-null when a destructive tool is paused awaiting user confirmation. */
-    private val _pendingConfirmation = MutableStateFlow<com.forge.os.domain.agent.PendingConfirmation?>(null)
-    val pendingConfirmation: StateFlow<com.forge.os.domain.agent.PendingConfirmation?> = _pendingConfirmation
+    /** Queue of destructive-tool confirmation requests awaiting user decisions.
+     *  Parallel tool calls each emit their own request — a single-slot state
+     *  would silently drop all but the last one, and one ALLOW could only
+     *  resume one tool. The dialog shows the head of the queue (FIFO). */
+    private val _pendingConfirmations = MutableStateFlow<List<com.forge.os.domain.agent.PendingConfirmation>>(emptyList())
+    val pendingConfirmations: StateFlow<List<com.forge.os.domain.agent.PendingConfirmation>> = _pendingConfirmations
+
+    /** The confirmation currently shown in the dialog — head of the queue. */
+    val pendingConfirmation: StateFlow<com.forge.os.domain.agent.PendingConfirmation?> =
+        _pendingConfirmations
+            .map { it.firstOrNull() }
+            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, null)
 
     /** Multimodal support — pending image attachments for the next message. */
     private val _pendingImages = MutableStateFlow<List<ImageAttachment>>(emptyList())
@@ -150,10 +162,11 @@ class ChatViewModel @Inject constructor(
         }
 
         // Listen for destructive-tool confirmation requests destined for the UI.
+        // Requests queue up so parallel tool calls each get their own dialog.
         viewModelScope.launch {
             userInputBroker.confirmations.collect { c ->
                 if (c.routeKey != InputRoute.UI) return@collect
-                _pendingConfirmation.value = c
+                _pendingConfirmations.value = _pendingConfirmations.value + c
             }
         }
 
@@ -399,7 +412,7 @@ class ChatViewModel @Inject constructor(
             _isLoading.value = false
             _pendingInputRequest.value = null
             _pendingCostApproval.value = null
-            _pendingConfirmation.value = null
+            _pendingConfirmations.value = emptyList()
             persistCurrent()
             // Drain anything the user typed while we were busy (FIFO).
             val next = pendingSends.removeFirstOrNull()
@@ -526,20 +539,20 @@ Tip: Use snapshot_create before processing large uploads.
         }
     }
 
-    /** User allowed the pending destructive tool. */
+    /** User allowed the pending destructive tool (head of the queue). */
     fun confirmTool() {
-        val c = _pendingConfirmation.value ?: return
-        _pendingConfirmation.value = null
+        val c = _pendingConfirmations.value.firstOrNull() ?: return
+        _pendingConfirmations.value = _pendingConfirmations.value - c
         addMsg(ChatMessage(role = "system", content = "🛡️ Allowed: ${c.toolName}"))
-        viewModelScope.launch { userInputBroker.submitConfirmation(InputRoute.UI, true) }
+        viewModelScope.launch { userInputBroker.submitConfirmation(InputRoute.UI, c.confirmId, true) }
     }
 
-    /** User declined the pending destructive tool. */
+    /** User declined the pending destructive tool (head of the queue). */
     fun denyTool() {
-        val c = _pendingConfirmation.value ?: return
-        _pendingConfirmation.value = null
+        val c = _pendingConfirmations.value.firstOrNull() ?: return
+        _pendingConfirmations.value = _pendingConfirmations.value - c
         addMsg(ChatMessage(role = "system", content = "🚫 Declined: ${c.toolName}"))
-        viewModelScope.launch { userInputBroker.submitConfirmation(InputRoute.UI, false) }
+        viewModelScope.launch { userInputBroker.submitConfirmation(InputRoute.UI, c.confirmId, false) }
     }
 
     private fun handleLocalCommand(input: String): Boolean {

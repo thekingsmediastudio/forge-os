@@ -1,0 +1,11 @@
+
+> forge-web-dev-ui@0.1.0 dev
+> vite --port 5174 --strictPort
+
+[31merror when starting dev server:
+Error: Port 5174 is already in use
+    at httpServerStart (file:///C:/Users/user/Downloads/forge-os-main/web-dev-ui/node_modules/vite/dist/node/chunks/node.js:11656:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async startServer (file:///C:/Users/user/Downloads/forge-os-main/web-dev-ui/node_modules/vite/dist/node/chunks/node.js:26625:30)
+    at async Object.listen (file:///C:/Users/user/Downloads/forge-os-main/web-dev-ui/node_modules/vite/dist/node/chunks/node.js:26442:4)
+    at async CAC.<anonymous> (file:///C:/Users/user/Downloads/forge-os-main/web-dev-ui/node_modules/vite/dist/node/cli.js:721:3)[39m

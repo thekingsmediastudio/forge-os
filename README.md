@@ -53,6 +53,36 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ---
 
+## 🧪 Web Dev UI (developer tool)
+
+A standalone browser-based dev UI for rapidly iterating on the Forge OS HTTP tool/chat surface without rebuilding the Android app. It talks to the same API the on-device `ForgeHttpServer` exposes (and that `forge-desktop/mock_server.py` fakes locally).
+
+**Why:** the Android build cycle is slow (~45s+). In **mock mode** you edit tool definitions in the built-in Editor and the Tools view updates in ~1 second — no server, no rebuild. In **live mode** you point it at a real device or the local mock server.
+
+```bash
+cd web-dev-ui
+npm install
+npm run dev        # → http://localhost:5174
+```
+
+For a local backend, run the fake device server (token `test-token`):
+
+```bash
+python forge-desktop/mock_server.py 8789
+```
+
+Features:
+
+* **Mock mode** — fully in-browser fake server; no device needed. Edit the OpenAI-style tool-definition JSON in the **Editor** tab and iterate instantly.
+* **Live mode** — connects over HTTP to `ForgeHttpServer` (default `127.0.0.1:8789`) using `Authorization: Bearer <api_key>`; CORS is enabled on the server.
+* **Tools** — browse/search tools, inspect parameter schemas, and execute via a schema-driven form (type coercion, enums, required-field validation) or raw JSON.
+* **Chat** — message the device agent (`POST /api/chat`); tool calls render as `⚙ tool` chips and the `session_id` is preserved across turns.
+* **History** — every tool/chat execution with status, duration, and expandable input/output JSON.
+
+API used (matches `ForgeHttpServer`): `GET /api/status`, `GET /api/tools`, `POST /api/tool`, `POST /api/chat`. See `forge-desktop/mock_server.py` for a reference implementation.
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions!

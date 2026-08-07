@@ -206,12 +206,15 @@ class VoiceInputManager @Inject constructor(
         Timber.i("SpeechRecognizer initialized successfully on main thread")
     }
     
+    /** True once the TTS engine has finished initialising with a usable language. */
+    fun isTtsReady(): Boolean = ttsInitialized
+
     /**
      * Destroy the current recognizer so the next [startListening] recreates it fresh.
      * Used to recover from ERROR_CLIENT / ERROR_RECOGNIZER_BUSY where the recognizer
      * is left in a stuck state. Must run on the main thread.
      */
-    private fun resetSpeechRecognizer() {
+    fun resetSpeechRecognizer() {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             mainHandler.post { resetSpeechRecognizer() }
             return

@@ -64,6 +64,8 @@ class VoiceModeViewModel @Inject constructor(
 
     private var agentJob: Job? = null
     private var consecutiveRetryCount = 0
+    private var thinkingWatchdog: Job? = null
+    private var speakingWatchdog: Job? = null
 
     init {
         // Mirror RMS level into state while listening, throttled to ~10fps
@@ -98,6 +100,7 @@ class VoiceModeViewModel @Inject constructor(
         viewModelScope.launch {
             voiceInputManager.ttsState.collect { ttsState ->
                 if (ttsState == TTSState.IDLE && _state.value.phase == VoicePhase.SPEAKING) {
+                    speakingWatchdog?.cancel()
                     delay(600) // brief pause so mic doesn't catch speaker echo
                     if (_state.value.phase == VoicePhase.SPEAKING) {
                         startListening()
@@ -164,6 +167,9 @@ class VoiceModeViewModel @Inject constructor(
         _state.value = VoiceModeState(
             phase = VoicePhase.IDLE,
             conversationId = conv.id)
+        // Start from a clean recognizer — the hotword service may have left the
+        // shared SpeechRecognizer in a stuck state when it released the mic.
+        voiceInputManager.resetSpeechRecognizer()
         // Give the hotword service a beat to release its recognizer before we start
         // ours — starting immediately is what triggers the ERROR_CLIENT mic race.
         viewModelScope.launch {
@@ -175,6 +181,8 @@ class VoiceModeViewModel @Inject constructor(
     /** Exit voice mode — stops everything, saves the conversation. */
     fun exitVoiceMode() {
         agentJob?.cancel()
+        thinkingWatchdog?.cancel()
+        speakingWatchdog?.cancel()
         voiceInputManager.stopListening()
         voiceInputManager.stopSpeaking()
         persistConversation()
@@ -285,6 +293,20 @@ class VoiceModeViewModel @Inject constructor(
             transcript = text,
             agentResponse = "")
 
+        // Watchdog: if the agent never responds (API hang, silent failure),
+        // recover to IDLE with an actionable error instead of hanging forever.
+        thinkingWatchdog?.cancel()
+        thinkingWatchdog = viewModelScope.launch {
+            delay(90_000)
+            if (_state.value.phase == VoicePhase.THINKING) {
+                Timber.w("VoiceMode: agent watchdog fired — no response in 90s")
+                agentJob?.cancel()
+                _state.value = _state.value.copy(
+                    phase = VoicePhase.IDLE,
+                    error = "No response from the agent — tap the orb to try again.")
+            }
+        }
+
         // Persist the user turn immediately
         voiceMessages.add(StoredChatMessage(
             id = UUID.randomUUID().toString(),
@@ -307,6 +329,7 @@ class VoiceModeViewModel @Inject constructor(
                             _state.value = _state.value.copy(agentResponse = fullResponse)
                         }
                         is AgentEvent.Response -> {
+                            thinkingWatchdog?.cancel()
                             fullResponse = event.text
                             _state.value = _state.value.copy(agentResponse = fullResponse)
 
@@ -339,6 +362,7 @@ class VoiceModeViewModel @Inject constructor(
                                 isError = event.isError))
                         }
                         is AgentEvent.Error -> {
+                            thinkingWatchdog?.cancel()
                             _state.value = _state.value.copy(
                                 phase = VoicePhase.IDLE,
                                 error = event.message)
@@ -348,12 +372,14 @@ class VoiceModeViewModel @Inject constructor(
                     }
                 }
 
+                thinkingWatchdog?.cancel()
                 if (fullResponse.isNotBlank()) {
                     speakResponse(fullResponse)
                 } else {
                     startListening()
                 }
             } catch (e: Exception) {
+                thinkingWatchdog?.cancel()
                 Timber.e(e, "VoiceMode: agent error")
                 _state.value = _state.value.copy(
                     phase = VoicePhase.IDLE,
@@ -374,6 +400,28 @@ class VoiceModeViewModel @Inject constructor(
             .take(500)
 
         _state.value = _state.value.copy(phase = VoicePhase.SPEAKING)
+
+        if (!voiceInputManager.isTtsReady() || clean.isBlank()) {
+            // TTS engine failed to initialise — don't get stuck in SPEAKING
+            // waiting for an onDone that will never arrive.
+            Timber.w("VoiceMode: TTS not ready, skipping speech")
+            startListening()
+            return
+        }
+
+        // Watchdog: if onDone never fires (engine hiccup), recover to listening.
+        // Duration scales with text length, capped at 60s.
+        val maxSpeakMs = (clean.length * 120L).coerceIn(5_000, 60_000)
+        speakingWatchdog?.cancel()
+        speakingWatchdog = viewModelScope.launch {
+            delay(maxSpeakMs)
+            if (_state.value.phase == VoicePhase.SPEAKING) {
+                Timber.w("VoiceMode: TTS watchdog fired after ${maxSpeakMs}ms")
+                voiceInputManager.stopSpeaking()
+                startListening()
+            }
+        }
+
         voiceInputManager.speak(clean)
     }
 

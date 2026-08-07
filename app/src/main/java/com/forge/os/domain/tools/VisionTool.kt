@@ -44,8 +44,21 @@ class VisionTool @Inject constructor(
      */
     suspend fun analyze(path: String, prompt: String, model: String? = null): String {
         val workspace = File(context.filesDir, "workspace")
-        val file = File(workspace, path)
-        if (!file.exists()) return "Error: File not found at workspace/$path"
+        // Resolve the path robustly — agents pass workspace-relative paths,
+        // but also commonly absolute file paths or bare filenames that live
+        // under uploads/. Try each interpretation in order.
+        val candidates = buildList {
+            add(File(workspace, path))                                   // workspace-relative
+            if (!path.startsWith("uploads/")) add(File(workspace, "uploads/$path"))
+            add(File(path))                                              // absolute
+        }
+        val tried = candidates.map { it.absolutePath }.distinct()
+        val file = candidates.firstOrNull { it.exists() && it.isFile }
+        if (file == null) {
+            Timber.w("VisionTool: image not found for path='$path'; tried: $tried")
+            return "Error: Image not found for path '$path'. Tried: ${tried.joinToString()}"
+        }
+        Timber.i("VisionTool: analyzing ${file.absolutePath} (${file.length()} bytes)")
 
         // Keep raw bytes when the format is already provider-supported so the
         // MIME label always matches the payload. Only re-encode (to JPEG) when
@@ -95,6 +108,20 @@ class VisionTool @Inject constructor(
             }
         }
 
+        // Guard: if the routed spec isn't vision-capable (e.g. a text-only model
+        // pinned in Model Routing → Vision), the provider silently drops the
+        // image part and answers from the text prompt alone — which looks like
+        // "the image was never sent". Prefer a recognised vision spec instead.
+        val effectiveSpec = if (isVisionCapable(spec)) {
+            spec
+        } else {
+            Timber.w("VisionTool: routed spec ${specLabel(spec)} is not vision-capable; looking for alternative")
+            available.firstOrNull { it != spec && isVisionCapable(it) }
+                ?: return "Error: '${spec.effectiveModel}' is not a vision model and no vision-capable alternative was found. " +
+                        "Set a vision model in Settings → Model Routing → Vision (e.g. GPT-4o, Claude 3+, Gemini)."
+        }
+
+        Timber.i("VisionTool: sending image (${base64.length / 1024} KB base64) to ${specLabel(effectiveSpec)}")
         val messages = listOf(
             ApiMessage(
                 role = "user",
@@ -110,13 +137,13 @@ class VisionTool @Inject constructor(
         val systemPrompt = "You are a precise image-analysis engine. " +
             "Follow the user's instruction about the image exactly; do not default to a generic description."
 
-        val first = callVision(spec, messages, systemPrompt)
+        val first = callVision(effectiveSpec, messages, systemPrompt)
         if (first != null) return first
 
         // 4. Retry once with the next vision-capable spec before giving up
-        val fallback = available.firstOrNull { it != spec && isVisionCapable(it) }
+        val fallback = available.firstOrNull { it != effectiveSpec && isVisionCapable(it) }
         if (fallback != null) {
-            Timber.i("VisionTool: ${specLabel(spec)} gave no usable answer; retrying with ${specLabel(fallback)}")
+            Timber.i("VisionTool: ${specLabel(effectiveSpec)} gave no usable answer; retrying with ${specLabel(fallback)}")
             callVision(fallback, messages, systemPrompt)?.let { return it }
         }
         return "Error: Vision model(s) returned no text. Try passing an explicit model (e.g. model=gpt-4o)."

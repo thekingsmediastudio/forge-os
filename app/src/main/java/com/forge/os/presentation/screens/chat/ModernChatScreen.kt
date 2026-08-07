@@ -93,6 +93,7 @@ fun ModernChatScreen(
     val availableSpecs by viewModel.availableSpecs.collectAsState()
     val selectedSpec by viewModel.selectedSpec.collectAsState()
     val toolConfirmation by viewModel.pendingConfirmation.collectAsState()
+    val toolConfirmationQueue by viewModel.pendingConfirmations.collectAsState()
     val voiceVm: com.forge.os.presentation.screens.voice.VoiceInputViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     
     // Channel state
@@ -239,6 +240,10 @@ fun ModernChatScreen(
                     })
                 } else {
                     val renderGroups = remember(messages) { groupMessages(messages) }
+                    // Expand/collapse state hoisted out of the LazyColumn items so it
+                    // survives re-grouping when new messages (e.g. approval
+                    // confirmations, streamed steps) arrive mid-run.
+                    val expandedGroups = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -256,6 +261,8 @@ fun ModernChatScreen(
                                     steps = group.steps,
                                     response = group.response,
                                     isStreaming = group.isStreaming,
+                                    expanded = expandedGroups[group.key] ?: false,
+                                    onExpandedChange = { expandedGroups[group.key] = it },
                                     onSpeak = { text -> voiceVm.speak(text) },
                                 )
                             }
@@ -392,6 +399,12 @@ fun ModernChatScreen(
                                 Spacer(Modifier.height(2.dp))
                                 Text(conf.argsSummary, color = ModernTextPrimary, fontSize = 11.sp,
                                      fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
+                            }
+                            val extraPending = toolConfirmationQueue.size - 1
+                            if (extraPending > 0) {
+                                Spacer(Modifier.height(10.dp))
+                                Text("+$extraPending more action${if (extraPending == 1) "" else "s"} pending approval",
+                                     color = ModernTextSecondary, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                             }
                         }
                     },
@@ -916,9 +929,10 @@ private fun AiActivityMessage(
     steps: List<ChatMessage>,
     response: ChatMessage?,
     isStreaming: Boolean,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     onSpeak: (String) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     var showSheet by remember { mutableStateOf(false) }
 
@@ -952,7 +966,7 @@ private fun AiActivityMessage(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { expanded = !expanded }
+                        .clickable { onExpandedChange(!expanded) }
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1203,10 +1217,28 @@ private fun ModernUserBubble(
     )
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
-    ) {
+    val imageAttachments = attachments.filter { it.isImage() }
+    val nonImageAttachments = attachments.filter { !it.isImage() }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ── Non-image file attachments: square cards ABOVE the bubble ──
+        if (nonImageAttachments.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+            ) {
+                nonImageAttachments.forEach { att ->
+                    AttachmentSquareCard(att)
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
         Surface(
             modifier = Modifier
                 .widthIn(max = 560.dp)
@@ -1231,17 +1263,19 @@ private fun ModernUserBubble(
             ) {
                 Column {
                     // Multi-image attachments — horizontal row (WhatsApp-style)
-                    val imageAttachments = attachments.filter { it.isImage() }
-                    val nonImageAttachments = attachments.filter { !it.isImage() }
-
+                    // WhatsApp-style images: small uniform inset so the image sits
+                    // flush inside the bubble; the caption text renders below it in
+                    // the same bubble. Non-image attachments render as square cards
+                    // above the bubble (see AttachmentSquareCard usage above).
                     if (imageAttachments.size > 1) {
                         // WhatsApp-style grid layout for multiple images
                         val images = imageAttachments.take(4) // max 4 in grid
                         val extraCount = imageAttachments.size - 4
                         val gridModifier = Modifier
                             .fillMaxWidth()
+                            .padding(4.dp)
                             .heightIn(max = 200.dp)
-                            .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 0.dp))
+                            .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 6.dp))
 
                         when (images.size) {
                             2 -> {
@@ -1324,59 +1358,38 @@ private fun ModernUserBubble(
                                 contentDescription = att.fileName,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = 200.dp)
-                                    .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 0.dp)),
-                                contentScale = ContentScale.Fit,
+                                    .padding(4.dp)
+                                    .heightIn(max = 280.dp)
+                                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 6.dp)),
+                                contentScale = ContentScale.Crop,
                             )
                         }
-                    } else if (attachmentPath != null && attachmentMime != null) {
-                        // Legacy single-attachment fallback
+                    } else if (attachmentPath != null && attachmentMime != null &&
+                               attachmentMime.startsWith("image/")) {
+                        // Legacy single-image attachment fallback
                         val file = remember(attachmentPath) { java.io.File(attachmentPath) }
                         if (file.exists()) {
-                            if (attachmentMime.startsWith("image/")) {
-                                coil.compose.AsyncImage(
-                                    model = attachmentPath,
-                                    contentDescription = file.name,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 200.dp)
-                                        .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp, bottomStart = 22.dp, bottomEnd = 0.dp)),
-                                    contentScale = ContentScale.Fit,
-                                )
-                            } else {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(
-                                        "\uD83D\uDCCE ${file.name}",
-                                        color = ModernTextSecondary,
-                                        fontSize = 12.sp,
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    )
-                                }
-                            }
+                            coil.compose.AsyncImage(
+                                model = attachmentPath,
+                                contentDescription = file.name,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(4.dp)
+                                    .heightIn(max = 280.dp)
+                                    .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 6.dp)),
+                                contentScale = ContentScale.Crop,
+                            )
                         }
-                    }
-
-                    // Non-image attachments: file chip row
-                    nonImageAttachments.forEach { att ->
+                    } else if (attachments.isEmpty() && attachmentPath != null && attachmentMime != null) {
+                        // Legacy non-image attachment: compact file row inside bubble
+                        val file = remember(attachmentPath) { java.io.File(attachmentPath) }
                         Row(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                run {
-                                    val chipIcon = when {
-                                        att.isContext() && att.filePath.startsWith("conversation://") -> "\uD83D\uDCAC"
-                                        att.isContext() -> "\uD83C\uDF10"
-                                        else -> "\uD83D\uDCCE"
-                                    }
-                                    "$chipIcon ${att.fileName}"
-                                },
+                                "\uD83D\uDCCE ${file.name}",
                                 color = ModernTextSecondary,
                                 fontSize = 12.sp,
                                 maxLines = 1,
@@ -1384,17 +1397,21 @@ private fun ModernUserBubble(
                             )
                         }
                     }
-                    SelectionContainer {
-                        Text(
-                            text,
-                            color = ModernTextPrimary,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                        )
+
+                    if (text.isNotBlank()) {
+                        SelectionContainer {
+                            Text(
+                                text,
+                                color = ModernTextPrimary,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                            )
+                        }
                     }
                 }
             }
+        }
         }
     }
 
@@ -1406,6 +1423,68 @@ private fun ModernUserBubble(
                     clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(text))
                 }
             )
+        )
+    }
+}
+
+/**
+ * Square attachment card rendered above a user bubble — one per non-image file.
+ * Shows a file-type icon centered in a rounded square with the extension as a
+ * badge, and the file name attached below the square.
+ */
+@Composable
+private fun AttachmentSquareCard(att: com.forge.os.domain.agent.FileAttachment) {
+    val ext = att.fileName.substringAfterLast('.', "").uppercase().take(4)
+    val icon = when {
+        att.isContext() && att.filePath.startsWith("conversation://") -> "\uD83D\uDCAC" // 💬
+        att.isContext() -> "\uD83C\uDF10"                                                 // 🌐
+        att.isVideo() -> "\uD83C\uDFAC"                                                   // 🎬
+        att.isAudio() -> "\uD83C\uDFB5"                                                   // 🎵
+        att.mimeType.contains("pdf") -> "\uD83D\uDCD5"                                    // 📕
+        att.mimeType.contains("sheet") || ext in listOf("XLS", "XLSX", "CSV") -> "\uD83D\uDCD7" // 📗
+        att.mimeType.contains("word") || ext in listOf("DOC", "DOCX") -> "\uD83D\uDCD8"   // 📘
+        att.mimeType.contains("zip") || att.mimeType.contains("archive") -> "\uD83D\uDCE6" // 📦
+        else -> "\uD83D\uDCCE"                                                            // 📎
+    }
+
+    Column(
+        modifier = Modifier.width(72.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(ModernSurface, RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(icon, fontSize = 24.sp)
+            if (ext.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .background(forgePalette.orange, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 3.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        ext,
+                        color = Color.Black,
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(3.dp))
+        Text(
+            att.fileName,
+            color = ModernTextSecondary,
+            fontSize = 10.sp,
+            maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 12.sp,
         )
     }
 }
