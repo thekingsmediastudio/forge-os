@@ -137,23 +137,48 @@ class VisionTool @Inject constructor(
         val systemPrompt = "You are a precise image-analysis engine. " +
             "Follow the user's instruction about the image exactly; do not default to a generic description."
 
-        val first = callVision(effectiveSpec, messages, systemPrompt)
-        if (first != null) return first
+        // Collect the real per-model failure reason so the final error says
+        // WHAT failed (HTTP code / provider message) instead of a bare "no text".
+        val failures = mutableListOf<String>()
+
+        when (val first = callVision(effectiveSpec, messages, systemPrompt)) {
+            is VisionResult.Success -> return first.text
+            is VisionResult.Failure -> failures += "${specLabel(effectiveSpec)}: ${first.reason}"
+        }
 
         // 4. Retry once with the next vision-capable spec before giving up
         val fallback = available.firstOrNull { it != effectiveSpec && isVisionCapable(it) }
         if (fallback != null) {
-            Timber.i("VisionTool: ${specLabel(effectiveSpec)} gave no usable answer; retrying with ${specLabel(fallback)}")
-            callVision(fallback, messages, systemPrompt)?.let { return it }
+            Timber.i("VisionTool: ${specLabel(effectiveSpec)} failed; retrying with ${specLabel(fallback)}")
+            when (val second = callVision(fallback, messages, systemPrompt)) {
+                is VisionResult.Success -> return second.text
+                is VisionResult.Failure -> failures += "${specLabel(fallback)}: ${second.reason}"
+            }
         }
-        return "Error: Vision model(s) returned no text. Try passing an explicit model (e.g. model=gpt-4o)."
+        return buildString {
+            append("Error: vision analysis failed.")
+            if (failures.isNotEmpty()) {
+                append('\n')
+                append(failures.joinToString("\n") { "• $it" })
+            } else {
+                append(" No vision model produced a response.")
+            }
+            append('\n')
+            append("Tip: pass an explicit model (e.g. model=gpt-4o) or set one in Settings → Model Routing → Vision.")
+        }
+    }
+
+    /** Outcome of a single vision call — carries the real failure reason up. */
+    private sealed class VisionResult {
+        data class Success(val text: String) : VisionResult()
+        data class Failure(val reason: String) : VisionResult()
     }
 
     private suspend fun callVision(
         spec: ProviderSpec,
         messages: List<ApiMessage>,
         systemPrompt: String,
-    ): String? = try {
+    ): VisionResult = try {
         val resp = apiManager.chatWithFallback(
             messages = messages,
             systemPrompt = systemPrompt,
@@ -161,10 +186,20 @@ class VisionTool @Inject constructor(
             mode = Mode.VISION,
         )
         val text = resp.content?.takeIf { it.isNotBlank() }
-        if (text == null) null else "[via ${specLabel(spec)}]\n$text"
+        when {
+            text != null -> VisionResult.Success("[via ${specLabel(spec)}]\n$text")
+            // Empty content with a finish reason explains why (length cap,
+            // content filter, tool-only reply, etc.)
+            !resp.finishReason.isNullOrBlank() ->
+                VisionResult.Failure("empty response (finish_reason=${resp.finishReason})")
+            else -> VisionResult.Failure("empty response from model")
+        }
+    } catch (e: com.forge.os.data.api.ApiCallException) {
+        Timber.w(e, "VisionTool: ${specLabel(spec)} API error")
+        VisionResult.Failure(e.error.userFacing().replace('\n', ' ').take(300))
     } catch (e: Exception) {
         Timber.w(e, "VisionTool: ${specLabel(spec)} failed")
-        null
+        VisionResult.Failure("${e::class.simpleName}: ${e.message?.take(200)}")
     }
 
     private fun specLabel(spec: ProviderSpec): String = when (spec) {
