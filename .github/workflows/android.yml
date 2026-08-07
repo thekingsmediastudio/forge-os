@@ -45,9 +45,16 @@ jobs:
             echo "generated=false" >> "$GITHUB_OUTPUT"
             echo "Restoring debug keystore from DEBUG_KEYSTORE_B64 secret"
             echo "$DEBUG_KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            # Sanity: the decoded file must be a valid keystore, otherwise every
+            # build would silently fall back to a different key later.
+            if ! keytool -list -keystore ~/.android/debug.keystore -storepass android >/dev/null 2>&1; then
+              echo "::error::DEBUG_KEYSTORE_B64 decoded but is not a valid keystore (bad base64 or wrong storepass)."
+              exit 1
+            fi
           else
             echo "generated=true" >> "$GITHUB_OUTPUT"
             echo "No DEBUG_KEYSTORE_B64 secret - generating a fresh debug keystore"
+            echo "::warning::Building with a THROWAWAY keystore. This APK will NOT update any previous install. Set the DEBUG_KEYSTORE_B64 secret to stop this."
             keytool -genkey -v -keystore ~/.android/debug.keystore \
               -storepass android -alias androiddebugkey -keypass android \
               -keyalg RSA -keysize 2048 -validity 10000 \
@@ -90,6 +97,13 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false -Dkotlin.compiler.execution.strategy=in-process -PciVersionCode=${{ github.run_number }} 2>&1 | tee build-log.txt
+
+      - name: Print APK signing cert fingerprint
+        # Every build logs its SHA-256 cert — compare across runs to confirm the
+        # keystore secret stayed stable (a changed value = updates will fail).
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs "$APK" | grep "SHA-256"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
