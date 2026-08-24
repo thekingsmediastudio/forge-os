@@ -6,7 +6,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.io.File
-import java.io.NoSuchFileException
+import java.nio.file.NoSuchFileException
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,7 +48,8 @@ class SyncService @Inject constructor(
         chunk: Int,
         totalChunks: Int,
         checksum: String,
-        data: ByteArray
+        data: ByteArray,
+        compressed: Boolean = false
     ): UploadResult {
         // Validate inputs
         require(chunk >= 0) { "Chunk index must be non-negative" }
@@ -63,6 +64,7 @@ class SyncService @Inject constructor(
                     path = path,
                     totalChunks = totalChunks,
                     checksum = checksum,
+                    compressed = compressed,
                     chunks = mutableMapOf()
                 )
             }
@@ -73,6 +75,11 @@ class SyncService @Inject constructor(
             }
             if (state.checksum != checksum) {
                 throw IllegalStateException("Checksum mismatch: expected ${state.checksum}, got $checksum")
+            }
+            if (state.compressed != compressed) {
+                throw IllegalStateException(
+                    "Compression flag mismatch: expected ${state.compressed}, got $compressed"
+                )
             }
             
             // Store chunk to temp file

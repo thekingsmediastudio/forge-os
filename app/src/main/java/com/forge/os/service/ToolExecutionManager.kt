@@ -5,7 +5,7 @@ import com.forge.os.data.api.ToolProgressInfo
 import com.forge.os.data.api.ToolStatusResponse
 import com.forge.os.data.api.ResourceUsage
 import timber.log.Timber
-import java.lang.management.ManagementFactory
+import android.os.Debug
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Job
 import javax.inject.Inject
@@ -116,12 +116,13 @@ class ToolExecutionManager @Inject constructor(
     }
 
     /**
-     * Requirement 4.7 - current thread CPU time in ms (ThreadMXBean).
+     * Requirement 4.7 - current thread CPU time in ms. android.os.Debug is
+     * the Android equivalent of ThreadMXBean (which is JVM-only).
      */
     private fun currentCpuMs(): Long {
         return try {
-            val bean = ManagementFactory.getThreadMXBean()
-            if (bean.isCurrentThreadCpuTimeSupported) bean.currentThreadCpuTime / 1_000_000 else 0L
+            val ns = Debug.threadCpuTimeNanos()
+            if (ns < 0) 0L else ns / 1_000_000
         } catch (e: Exception) {
             0L
         }

@@ -123,7 +123,7 @@ class CalendarToolProvider @Inject constructor(
         val end  = now + days * 86_400_000L
         // Events.CALENDAR_DISPLAY_NAME only exists from API 30 — on older
         // devices the provider rejects the column, so retry without it.
-        val proj = mutableListOfOf(
+        val proj = mutableListOf(
             CalendarContract.Events._ID,
             CalendarContract.Events.TITLE,
             CalendarContract.Events.DTSTART,

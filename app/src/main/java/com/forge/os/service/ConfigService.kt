@@ -6,6 +6,7 @@ import com.forge.os.data.api.ConfigResponse
 import com.forge.os.data.api.ConfigUpdateRequest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -154,12 +155,7 @@ class ConfigService @Inject constructor(
                 
                 // Update notification filters if provided
                 request.notificationFilters?.let { filters ->
-                    val filtersJson = json.encodeToString(
-                        kotlinx.serialization.builtins.ListSerializer(
-                            kotlinx.serialization.builtins.serializer<String>()
-                        ),
-                        filters
-                    )
+                    val filtersJson = json.encodeToString(filters)
                     editor.putString(KEY_NOTIFICATION_FILTERS, filtersJson)
                     changed = true
                     Timber.d("ConfigService: Updated notification_filters (${filters.size} filters)")
