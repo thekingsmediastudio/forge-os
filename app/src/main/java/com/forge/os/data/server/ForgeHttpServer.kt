@@ -33,6 +33,7 @@ import android.os.Build
 import dagger.Lazy
 import kotlinx.coroutines.*
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -484,14 +485,7 @@ class ForgeHttpServer @Inject constructor(
                             
                             buildJsonObject {
                                 put("uploaded", result.uploaded)
-                                put("receivedChunks", kotlinx.serialization.json.Json.parseToJsonElement(
-                                    json.encodeToString(
-                                        kotlinx.serialization.builtins.ListSerializer(
-                                            kotlinx.serialization.builtins.serializer<Int>()
-                                        ),
-                                        result.receivedChunks
-                                    )
-                                ))
+                                put("receivedChunks", Json.parseToJsonElement(json.encodeToString(result.receivedChunks)))
                                 put("complete", result.complete)
                             }.toString()
                         } catch (e: Exception) {

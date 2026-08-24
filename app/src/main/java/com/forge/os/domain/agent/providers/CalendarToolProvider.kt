@@ -249,30 +249,36 @@ class CalendarToolProvider @Inject constructor(
      * id 1 (the old fallback) often targets a read-only sync calendar like
      * "Holidays", and the provider rejects the insert.
      */
-    private fun writableCalendarId(): Long? = runCatching {
-        val proj = arrayOf(
-            CalendarContract.Calendars._ID,
-            CalendarContract.Calendars.IS_PRIMARY,
-            CalendarContract.Calendars.SYNC_EVENTS,
-            CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
-        )
-        data class Cal(val id: Long, val primary: Boolean, val synced: Boolean, val access: Int)
+    private fun writableCalendarId(): Long? {
+        return try {
+            val proj = arrayOf(
+                CalendarContract.Calendars._ID,
+                CalendarContract.Calendars.IS_PRIMARY,
+                CalendarContract.Calendars.SYNC_EVENTS,
+                CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL,
+            )
+            data class Cal(val id: Long, val primary: Boolean, val synced: Boolean, val access: Int)
 
-        val cals = context.contentResolver.query(
-            CalendarContract.Calendars.CONTENT_URI, proj, null, null, null
-        )?.use { c ->
-            buildList {
-                while (c.moveToNext()) {
-                    add(Cal(c.getLong(0), c.getInt(1) == 1, c.getInt(2) == 1, c.getInt(3)))
+            val cursor = context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI, proj, null, null, null
+            ) ?: return null
+
+            val writable: List<Cal> = cursor.use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        add(Cal(c.getLong(0), c.getInt(1) == 1, c.getInt(2) == 1, c.getInt(3)))
+                    }
                 }
             }
-        } ?: return null
 
-        val writable = cals.filter { it.access >= CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR }
-        writable.firstOrNull { it.primary && it.synced }?.id
-            ?: writable.firstOrNull { it.synced }?.id
-            ?: writable.firstOrNull()?.id
-    }.getOrNull()
+            val eligible = writable.filter { it.access >= CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR }
+            eligible.firstOrNull { it.primary && it.synced }?.id
+                ?: eligible.firstOrNull { it.synced }?.id
+                ?: eligible.firstOrNull()?.id
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     private fun tool(name: String, description: String, params: Map<String, Pair<String, String>>, required: List<String>) =
         ToolDefinition(function = FunctionDefinition(name = name, description = description,
