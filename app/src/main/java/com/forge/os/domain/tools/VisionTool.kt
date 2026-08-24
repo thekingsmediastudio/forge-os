@@ -179,7 +179,12 @@ class VisionTool @Inject constructor(
         messages: List<ApiMessage>,
         systemPrompt: String,
     ): VisionResult = try {
-        val resp = apiManager.chatWithFallback(
+        // chat(), NOT chatWithFallback(): the model-routing fallback chain may
+        // contain text-only models that silently drop the image part and answer
+        // from the prompt alone — the caller would see a plausible answer from
+        // a model that never looked at the picture. This class implements its
+        // own vision-capable retry in [analyze].
+        val resp = apiManager.chat(
             messages = messages,
             systemPrompt = systemPrompt,
             spec = spec,

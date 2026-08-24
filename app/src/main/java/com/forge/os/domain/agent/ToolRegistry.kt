@@ -119,6 +119,7 @@ class ToolRegistry @Inject constructor(
     private val autoPhoneToolProvider: com.forge.os.domain.agent.providers.AutoPhoneToolProvider,
     private val contactsToolProvider: com.forge.os.domain.agent.providers.ContactsToolProvider,
     private val smsToolProvider: com.forge.os.domain.agent.providers.SmsToolProvider,
+    private val emailToolProvider: com.forge.os.domain.agent.providers.EmailToolProvider,
     private val calendarToolProvider: com.forge.os.domain.agent.providers.CalendarToolProvider,
     private val clipboardToolProvider: com.forge.os.domain.agent.providers.ClipboardToolProvider,
     private val phoneCallToolProvider: com.forge.os.domain.agent.providers.PhoneCallToolProvider,
@@ -164,6 +165,7 @@ class ToolRegistry @Inject constructor(
         autoPhoneToolProvider.getTools() +
         contactsToolProvider.getTools() +
         smsToolProvider.getTools() +
+        emailToolProvider.getTools() +
         calendarToolProvider.getTools() +
         clipboardToolProvider.getTools() +
         phoneCallToolProvider.getTools() +
@@ -320,6 +322,7 @@ class ToolRegistry @Inject constructor(
                     ?: autoPhoneToolProvider.dispatch(toolName, args)
                     ?: contactsToolProvider.dispatch(toolName, args)
                     ?: smsToolProvider.dispatch(toolName, args)
+                    ?: emailToolProvider.dispatch(toolName, args)
                     ?: calendarToolProvider.dispatch(toolName, args)
                     ?: clipboardToolProvider.dispatch(toolName, args)
                     ?: phoneCallToolProvider.dispatch(toolName, args)

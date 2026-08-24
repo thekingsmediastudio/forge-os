@@ -91,7 +91,12 @@ class ToolsViewModel @Inject constructor(
                 description = TOOL_DESCRIPTIONS[name] ?: "(built-in tool)",
                 isPlugin = false,
                 enabled = enabledByConfig && !disabledGlobally && (perm?.allowed != false),
-                requiresConfirmation = perm?.requiresConfirmation == true,
+                // Confirmation state lives in TWO places checkTool consults —
+                // the per-user ToolPermission map AND the persisted
+                // behaviorRules.confirmDestructive list. Display both so the
+                // switch never lies about what the agent will actually ask.
+                requiresConfirmation = (perm?.requiresConfirmation == true) ||
+                    (name in config.behaviorRules.confirmDestructive),
                 parametersJson = schemaByName[name] ?: "{}")
         }
 
@@ -129,12 +134,17 @@ class ToolsViewModel @Inject constructor(
     }
 
     fun setRequiresConfirmation(name: String, requires: Boolean) {
+        // checkTool consults BOTH the per-user ToolPermission map and the
+        // persisted behaviorRules.confirmDestructive list — update the two
+        // together, otherwise the switch writes to one store while checkTool
+        // still sees the other (the switch then snaps back / lies).
         viewModelScope.launch {
             configRepository.update { c ->
                 val list = c.behaviorRules.confirmDestructive.toMutableList()
                 if (requires) { if (name !in list) list += name } else list.remove(name)
                 c.copy(behaviorRules = c.behaviorRules.copy(confirmDestructive = list))
             }
+            permissionManager.setRequiresConfirmation(toolName = name, requires = requires)
             refresh()
         }
     }

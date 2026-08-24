@@ -96,7 +96,7 @@ jobs:
         # pipefail ensures the gradle exit code (not tee's) determines step success.
         run: |
           set -o pipefail
-          ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false -Dkotlin.compiler.execution.strategy=in-process -PciVersionCode=${{ github.run_number }} 2>&1 | tee build-log.txt
+          ./gradlew :app:clean :app:assembleDebug --no-daemon -Pkotlin.incremental=false -Dkotlin.compiler.execution.strategy=in-process  2>&1 | tee build-log.txt
 
       - name: Print APK signing cert fingerprint
         # Every build logs its SHA-256 cert — compare across runs to confirm the

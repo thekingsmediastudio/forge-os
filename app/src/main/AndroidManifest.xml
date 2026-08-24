@@ -274,6 +274,17 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Notification bridging: forwards device notifications to the desktop (Task 11). -->
+        <service
+            android:name=".service.ForgeNotificationListenerService"
+            android:exported="true"
+            android:label="Forge OS Notification Bridge"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <!-- Hotword detection: foreground service listening for "Hello Forge" -->
         <service
             android:name=".service.HotwordDetectionService"
@@ -284,6 +295,29 @@
         <service
             android:name=".service.HotwordOverlayService"
             android:exported="false" />
+
+        <!-- Share-sheet entry point: receive text/files from other apps (WhatsApp, Files, Photos) -->
+        <activity
+            android:name=".presentation.ShareReceiverActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <!-- FileProvider used by the workspace browser to share / "Open with" files -->
         <provider

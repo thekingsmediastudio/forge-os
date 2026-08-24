@@ -3,6 +3,11 @@ package com.forge.os.data.api
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 // ─── Shared ─────────────────────────────────────────────────────────────────
 
@@ -74,10 +79,50 @@ data class FunctionCall(
 
 // ─── OpenAI / Groq (same schema) ─────────────────────────────────────────────
 
+/**
+ * Outgoing message in the OpenAI wire format. `content` must be either a
+ * plain string OR an array of typed parts (`[{"type":"text",...},
+ * {"type":"image_url",...}]`) when images are present — a union
+ * kotlinx.serialization can't express on a single typed field, hence
+ * [JsonElement]. [ApiMessage] stays the app-internal shape (and the decode
+ * target for responses); [toOpenAiWire] converts at request time.
+ */
+@Serializable
+data class OpenAiOutgoingMessage(
+    val role: String,
+    val content: JsonElement,
+    @SerialName("tool_calls") val toolCalls: List<ToolCallResponse>? = null,
+    @SerialName("tool_call_id") val toolCallId: String? = null,
+    val name: String? = null
+)
+
+/** Converts an internal [ApiMessage] to the OpenAI wire format. */
+fun ApiMessage.toOpenAiWire(): OpenAiOutgoingMessage = OpenAiOutgoingMessage(
+    role = role,
+    content = when {
+        contentParts != null -> buildJsonArray {
+            contentParts.forEach { p ->
+                add(buildJsonObject {
+                    put("type", p.type)
+                    if (p.text != null) put("text", p.text)
+                    if (p.imageUrl != null) put("image_url", buildJsonObject {
+                        put("url", p.imageUrl.url)
+                        put("detail", p.imageUrl.detail)
+                    })
+                })
+            }
+        }
+        else -> JsonPrimitive(content ?: "")
+    },
+    toolCalls = toolCalls,
+    toolCallId = toolCallId,
+    name = name
+)
+
 @Serializable
 data class OpenAiRequest(
     val model: String,
-    val messages: List<ApiMessage>,
+    val messages: List<OpenAiOutgoingMessage>,
     val tools: List<ToolDefinition>? = null,
     @SerialName("tool_choice") val toolChoice: String? = null,
     val temperature: Double = 0.7,

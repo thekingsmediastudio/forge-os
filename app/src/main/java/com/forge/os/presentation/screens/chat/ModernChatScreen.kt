@@ -201,6 +201,11 @@ fun ModernChatScreen(
         PendingRecipeSeed.consume()?.let { viewModel.send(it) }
     }
 
+    // Share sheet - files/text shared into Forge OS from other apps.
+    LaunchedEffect(Unit) {
+        PendingShareSeed.consume()?.let { viewModel.send(it) }
+    }
+
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {

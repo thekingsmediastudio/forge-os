@@ -15,6 +15,7 @@ local.properties
 # Keystore files
 *.jks
 *.keystore
+keystore.properties
 
 # External native build folder
 .externalNativeBuild/
@@ -44,3 +45,6 @@ ci_logs/
 forge-desktop/node_modules/
 forge-desktop/dist/
 web-dev-ui/vite-dev.log
+download apk zips/
+downloaded apk zips/
+forge-desktop/vite_dev.log

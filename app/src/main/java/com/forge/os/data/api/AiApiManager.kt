@@ -505,13 +505,13 @@ class AiApiManager @Inject constructor(
         } else messages
 
         // ── Vision Support ──────────────────────────────────────────────────
-        // Some models require the 'content' field to be an array of objects
-        // when images are present.
-        val finalMessages = allMessages.map { msg ->
-            if (msg.contentParts != null) msg
-            else if (msg.content != null) msg
-            else msg
-        }
+        // The wire format requires `content` to be an ARRAY of typed parts when
+        // images are present. ApiMessage carries them under the app-internal
+        // `content_parts` key, which every OpenAI-schema provider ignores —
+        // so a vision request would go out with NO content at all (no image,
+        // no prompt). Convert every message to the outgoing wire shape here:
+        // plain text becomes a JSON string, contentParts become a parts array.
+        val finalMessages = allMessages.map { it.toOpenAiWire() }
 
         // ── Gemini compatibility ─────────────────────────────────────────────
         // Gemini's OpenAI-compat endpoint chokes on:

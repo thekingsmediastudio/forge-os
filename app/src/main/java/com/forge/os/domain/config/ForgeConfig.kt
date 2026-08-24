@@ -31,6 +31,7 @@ data class ForgeConfig(
     val prefetchSettings: PrefetchSettings = PrefetchSettings(),
     val intelligenceUpgrades: IntelligenceUpgrades = IntelligenceUpgrades(),
     val forgeBridge: ForgeBridgeSettings = ForgeBridgeSettings(),
+    val email: EmailSettings = EmailSettings(),
 )
 
 /**
@@ -50,6 +51,18 @@ data class ForgeBridgeSettings(
     val autoDiscover: Boolean = true,
     /** When true, FORGE_BRIDGE is preferred over direct API keys in autoRoute(). */
     val preferBridge: Boolean = true,
+)
+
+@Serializable
+data class EmailSettings(
+    val enabled: Boolean = false,
+    val smtpHost: String = "smtp.gmail.com",
+    val smtpPort: Int = 587,
+    val smtpUser: String = "",
+    val smtpPassword: String = "",
+    val fromAddress: String = "",
+    val imapHost: String = "imap.gmail.com",
+    val imapPort: Int = 993,
 )
 
 @Serializable
@@ -160,6 +173,7 @@ data class BehaviorRules(
         "antitheft_clear",
         // Sensitive data tools
         "sms_send",
+        "email_send",
         "call_phone",
         "location_current",
         "contacts_list",

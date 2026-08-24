@@ -170,9 +170,10 @@ class PermissionManager @Inject constructor(
             }
         }
 
-        // Check if destructive and requires confirmation
-        val needsConfirm = toolPerm.requiresConfirmation ||
-            (toolName in config.behaviorRules.confirmDestructive && !config.behaviorRules.autoConfirmToolCalls)
+        // Check if destructive and requires confirmation. autoConfirmToolCalls
+        // is a global bypass — when it's on nothing asks, for any tool.
+        val needsConfirm = !config.behaviorRules.autoConfirmToolCalls &&
+            (toolPerm.requiresConfirmation || toolName in config.behaviorRules.confirmDestructive)
 
         return PermissionCheckResult(allowed = true, requiresConfirmation = needsConfirm)
     }
@@ -231,6 +232,23 @@ class PermissionManager @Inject constructor(
         )
         permissions[userId] = updated
         Timber.i("Tool permission updated: $toolName = $enabled for $userId")
+    }
+
+    /**
+     * Sets the per-tool confirmation flag. Called by the Tools screen toggle
+     * alongside the persisted `behaviorRules.confirmDestructive` list, so both
+     * stores (per-user map + config) agree and checkTool honors the toggle for
+     * core tools that ship with requiresConfirmation=true (file_delete,
+     * shell_exec).
+     */
+    fun setRequiresConfirmation(userId: String = "default", toolName: String, requires: Boolean) {
+        val current = getPermissions(userId)
+        val updated = current.copy(
+            toolPermissions = current.toolPermissions + (toolName to
+                (current.toolPermissions[toolName] ?: ToolPermission(toolName)).copy(requiresConfirmation = requires))
+        )
+        permissions[userId] = updated
+        Timber.i("Tool confirmation updated: $toolName = $requires for $userId")
     }
 
     fun getPermissionSummary(userId: String = "default"): String {
