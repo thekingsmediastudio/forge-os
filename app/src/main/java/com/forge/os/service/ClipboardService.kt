@@ -16,6 +16,7 @@ import timber.log.Timber
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 /**
  * Manages clipboard operations for cross-device clipboard synchronization.
@@ -26,7 +27,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class ClipboardService @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
     private val broadcaster: EventBroadcaster
 ) {
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

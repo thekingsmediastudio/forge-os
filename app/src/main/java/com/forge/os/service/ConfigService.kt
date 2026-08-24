@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 /**
  * Manages device configuration for cross-device configuration synchronization.
@@ -25,7 +26,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class ConfigService @Inject constructor(
-    private val context: Context
+    @ApplicationContext private val context: Context
 ) {
     private val prefs: SharedPreferences = context.getSharedPreferences(
         "forge_desktop_config",

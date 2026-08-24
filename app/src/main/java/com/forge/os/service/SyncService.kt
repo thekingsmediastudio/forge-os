@@ -10,6 +10,7 @@ import java.nio.file.NoSuchFileException
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 /**
  * Manages file synchronization with chunked uploads from desktop clients.
@@ -21,7 +22,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class SyncService @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
     private val sandboxManager: SandboxManager,
     private val eventBroadcaster: EventBroadcaster
 ) {
