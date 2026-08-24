@@ -98,6 +98,13 @@ android {
     packaging {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
+            // java mail/activation both ship META-INF docs; keep the first
+            excludes += 'META-INF/NOTICE.md'
+            excludes += 'META-INF/LICENSE.md'
+            excludes += 'META-INF/NOTICE'
+            excludes += 'META-INF/LICENSE'
+            excludes += 'META-INF/notice.txt'
+            excludes += 'META-INF/license.txt'
         }
     }
 
