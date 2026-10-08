@@ -33,6 +33,7 @@ import android.os.Build
 import dagger.Lazy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -703,13 +704,8 @@ class ForgeHttpServer @Inject constructor(
                         val history = chatSessions.getOrPut(sessionId) { mutableListOf() }
                         // Serialize turns within a session — interleaved agent
                         // runs would corrupt the shared history.
-                        val reply = runBlocking {
-                            chatSessionsMutex.lock()
-                            try {
-                                runChatTurn(message, history)
-                            } finally {
-                                chatSessionsMutex.unlock()
-                            }
+                        val reply = withLock(chatSessionsMutex) {
+                            runChatTurn(message, history)
                         }
                         buildJsonObject {
                             put("ok", true)
